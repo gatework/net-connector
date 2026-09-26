@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-# Select a bounded sample or all ready Netdisco devices for native TFTP exports.
-# --stdin-credentials keeps secrets out of shell arguments and environment.
+# 从 Netdisco 清单选择少量样本或全部就绪设备，执行原生 TFTP 导出。
+# --stdin-credentials 使一次性凭据无需出现在命令参数或环境变量中。
 
 require "json"
 require "time"
@@ -22,7 +22,7 @@ local_tftp_root = if ENV.key?("TFTP_ROOT")
                   end
 Net::Connector::TftpTarget.new(host: server, path: "preflight.cfg")
 sample_size = Integer(ENV.fetch("NET_CONNECTOR_SAMPLE_PER_VENDOR", "5"), 10)
-raise ArgumentError, "sample size must be in 1..5" unless (1..5).cover?(sample_size)
+raise ArgumentError, "每厂商抽样数量须在 1 至 5 之间" unless (1..5).cover?(sample_size)
 all_devices = ENV.fetch("NET_CONNECTOR_ALL", "0") == "1"
 
 backup_root = File.join(__dir__, "backups")
@@ -40,10 +40,10 @@ if ARGV == ["--stdin-credentials"]
   begin
     input = JSON.parse(STDIN.gets || "")
   rescue JSON::ParserError
-    abort "invalid credential JSON"
+    abort "凭据 JSON 无效"
   end
   keys = %w[netdisco_username netdisco_password device_username device_password]
-  raise ArgumentError, "four credential strings are required" unless keys.all? { |key| input[key].is_a?(String) && !input[key].empty? }
+  raise ArgumentError, "需要四个非空凭据字符串" unless keys.all? { |key| input[key].is_a?(String) && !input[key].empty? }
 
   client = Net::Connector::Netdisco::Client.new(
     url: ENV.fetch("NETDISCO_URL"),
@@ -58,7 +58,7 @@ elsif ARGV.empty?
   client = settings.client
   credentials = settings.method(:credentials_for)
 else
-  abort "usage: ruby -Ilib examples/netdisco_tftp_backup.rb [--stdin-credentials]"
+  abort "用法：ruby -Ilib examples/netdisco_tftp_backup.rb [--stdin-credentials]"
 end
 
 rows = client.devices
@@ -83,7 +83,7 @@ plan = {
 preview = all_devices ? plan.reject { |key, _value| key == :selected } : plan
 puts JSON.generate(plan: preview, server: server, concurrency: settings.concurrency)
 $stdout.flush
-abort "backup cancelled" if ARGV == ["--stdin-credentials"] && STDIN.gets&.strip != "RUN"
+abort "备份已取消" if ARGV == ["--stdin-credentials"] && STDIN.gets&.strip != "RUN"
 
 File.write(File.join(directory, "plan.json"), JSON.pretty_generate(plan), mode: "w", perm: 0o600)
 source_files = settings.tftp_source_files

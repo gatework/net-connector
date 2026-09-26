@@ -325,6 +325,7 @@ module Net
         @config_strategy_scope = previous
       end
 
+      # 只允许当前 Fiber 复用采集中的策略；离线调用创建独立策略。
       def config_strategy
         scope = @config_strategy_scope
         scope && scope.first.equal?(Fiber.current) ? scope.last : RunningConfig.strategy(self)

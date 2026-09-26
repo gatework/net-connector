@@ -6,8 +6,8 @@ module Net
   module Connector
     module Radware
       class TftpBackup < Operations::Tftp::Strategy
-        # 生成 Radware 压缩配置的远端文件名。
-        def default_path(_source_file) = TftpTarget.filename(@device.host, extension: "tgz")
+        # Radware 原生导出生成压缩配置归档。
+        def self.file_extension = "tgz"
 
         # 构造当前厂商的 TFTP 导出交互脚本。
         def script(target, source_file:, vrf: nil)

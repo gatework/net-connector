@@ -6,19 +6,26 @@ module Net
   module Connector
     module PaloAlto
       class Topology < Operations::Topology::Strategy
+        # PAN-OS 提供 LLDP 邻居、接口备注读取和备注变更。
         def self.supports?(capability)
           %i[neighbors interface_descriptions interface_description_changes].include?(capability)
         end
 
+        # 读取各本机接口的 LLDP 邻居详情。
         def neighbor_command = "show lldp neighbors all"
+        # 从 set 格式配置解析接口备注。
         def description_template = "palo_alto_interface_descriptions.textfsm"
+        # 进入候选配置视图。
         def enter_configuration = "configure"
+        # 提交候选配置后退出配置视图。
         def finish_commands = ["commit", "exit"]
 
+        # 只计入非空邻居块，跳过没有对端的本机接口。
         def expected_neighbor_count(output, _template)
           neighbor_blocks(output).count { |block| !empty_neighbor_block?(block) }
         end
 
+        # 输出必须明确说明无邻居，或每个本机接口块都明确为空。
         def empty_neighbor_output?(output)
           return true if output.match?(/No LLDP neighbors/i)
 
@@ -34,6 +41,7 @@ module Net
           output.split(/^\s*Local information:\s*$/i).select { |block| block.match?(/^\s*Local interface:\s*\S+/i) }
         end
 
+        # 邻居字段区只有空行和提示符时，才视为明确的空块。
         def empty_neighbor_block?(block)
           tail = block.split(/^\s*Neighbor information:\s*$/i, 2)
           tail.size == 2 && tail.last.lines.all? { |line| line.strip.empty? || line.match?(/^\S+[>#]\s*$/) }
@@ -50,10 +58,12 @@ module Net
                                  code: :unrecognized_output, host: @device.host, phase: :parse)
         end
 
+        # 用 PAN-OS set 语法生成接口备注变更。
         def change_commands(change)
           [%Q(set network interface ethernet #{change.interface} comment "#{change.new_description}")]
         end
 
+        # commit 可能耗时较长，单独放宽该命令的超时。
         def script_command(command)
           command == "commit" ? Command.new(command, timeout: 300) : command
         end

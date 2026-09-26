@@ -155,6 +155,7 @@ module Net
           Result.new(steps: result.steps, error: error)
         end
 
+        # 下发描述前确认厂商提供配置能力，避免把只读发现当成可写能力。
         def check_change_support!(phase)
           return if @strategy.supports?(:interface_description_changes)
 

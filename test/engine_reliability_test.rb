@@ -3,6 +3,7 @@
 require "minitest/autorun"
 require "tmpdir"
 require "stringio"
+require "logger"
 require_relative "../lib/net/connector"
 require_relative "support/fake_transport"
 
@@ -74,7 +75,7 @@ class EngineReliabilityTest < Minitest::Test
 
   def test_application_logger_redacts_secrets_reconstructed_by_terminal_controls
     output = StringIO.new
-    configuration = Net::Connector::Configuration.new(logger: ActiveSupport::Logger.new(output), log_level: :debug)
+    configuration = Net::Connector::Configuration.new(logger: ::Logger.new(output), log_level: :debug)
     log = Net::Connector::Log.new(configuration, redactor: Net::Connector::Redactor.new("secret-token"))
     log.open(ConnectorFake.new)
     log.response_output("secret-tokXX\b\ben\n")
@@ -84,7 +85,7 @@ class EngineReliabilityTest < Minitest::Test
   end
 
   def test_raw_string_format_rejects_an_application_logger
-    logger = ActiveSupport::Logger.new(StringIO.new)
+    logger = ::Logger.new(StringIO.new)
     assert_raises(ArgumentError) { Net::Connector::Configuration.new(logger: logger, log_format: "raw") }
   end
 

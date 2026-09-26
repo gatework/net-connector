@@ -6,6 +6,7 @@ module Net
   module Connector
     module CiscoNxos
       class RunningConfig < CiscoIos::RunningConfig
+        # 先清除 NX-OS 分页与进度回显，再复用 IOS 的配置清理规则。
         def clean(text)
           without_pager = text.to_s.gsub(
             /[ \t]*(?:\x1b\[[0-9;]*[A-Za-z])*--More--

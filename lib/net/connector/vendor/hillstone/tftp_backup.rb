@@ -6,6 +6,9 @@ module Net
   module Connector
     module Hillstone
       class TftpBackup < Operations::Tftp::Strategy
+        # 山石原生导出的配置文件使用 dat 扩展名。
+        def self.file_extension = "dat"
+
         # 构造当前厂商的 TFTP 导出交互脚本。
         def script(target, source_file:, vrf: nil)
           raise ArgumentError, "Hillstone TFTP export does not use source_file" if source_file
@@ -31,6 +34,7 @@ module Net
 
         private
 
+        # 仅认可设备明确给出目标文件名的 Export ok 回显。
         def completion_line(result)
           completion_lines(result).find { |line| line.match?(/\AExport\s+ok\s*,\s*target\s+file\s+name\s+\S+\z/i) }
         end

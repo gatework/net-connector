@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
-# Device-initiated native configuration backup. Set device and destination
-# variables in your environment before running this script.
+# 由设备发起原生配置备份；运行前通过环境变量设置设备和目标服务器。
 require "json"
 require "time"
 require "net/connector"

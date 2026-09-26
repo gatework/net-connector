@@ -541,9 +541,18 @@ class NetdiscoTest < Minitest::Test
         fleet_factory: ->(_) { fleet }
       )
       assert_equal 2, cli.run
-      assert_match(/192\.0\.2\.2.*not found/, error.string)
+      assert_match(/清单中未找到设备 192\.0\.2\.2/, error.string)
       assert_empty output.string
     end
+  end
+
+  def test_cli_help_uses_chinese_descriptions
+    output = StringIO.new
+    status = Net::Connector::Netdisco::CLI.new(argv: ["--help"], env: {}, output: output, error: StringIO.new).run
+    assert_equal 0, status
+    assert_includes output.string, "用法：net-connector-backup"
+    assert_includes output.string, "预览设备清单，不连接设备"
+    assert_includes output.string, "显示帮助"
   end
 
   def test_report_write_failure_is_visible_without_losing_device_outcomes

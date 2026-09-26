@@ -21,37 +21,44 @@ module Net
           worker_count = [tasks.size, @concurrency].min
           worker_count.times { queue << nil }
           callback_errors = Queue.new
-          threads = Array.new(worker_count) do
-            Thread.new do
-              Thread.current.report_on_exception = false
-              while (task = queue.pop)
-                index, device = task
-                started_at = Time.now.utc
-                begin
-                  on_start&.call(device)
-                rescue StandardError => error
-                  callback_errors << { host: device.host, error_type: error.class.name }.freeze
-                end
-                result = begin
-                           yield device
-                         rescue StandardError => error
-                           on_error.call(device, error)
-                         end
-                result = result.with(started_at: started_at, finished_at: Time.now.utc)
-                outcomes[index] = result
-                Array(on_result).each do |callback|
+          finished = Queue.new
+          threads = []
+          completed = false
+          begin
+            # 创建线程也属于批次生命周期；后续创建失败时要关闭已有任务。
+            worker_count.times do
+              threads << Thread.new do
+                Thread.current.report_on_exception = false
+                while (task = queue.pop)
+                  index, device = task
+                  started_at = Time.now.utc
                   begin
-                    callback.call(result)
+                    on_start&.call(device)
                   rescue StandardError => error
                     callback_errors << { host: device.host, error_type: error.class.name }.freeze
                   end
+                  result = begin
+                             yield device
+                           rescue StandardError => error
+                             on_error.call(device, error)
+                           end
+                  result = result.with(started_at: started_at, finished_at: Time.now.utc)
+                  outcomes[index] = result
+                  Array(on_result).each do |callback|
+                    begin
+                      callback.call(result)
+                    rescue StandardError => error
+                      callback_errors << { host: device.host, error_type: error.class.name }.freeze
+                    end
+                  end
                 end
+              ensure
+                finished << Thread.current
               end
             end
-          end
-          completed = false
-          begin
-            threads.each(&:value)
+            # 按完成顺序观察失败，避免后启动线程的中断被前面的慢设备阻塞。
+            # 结果仍写回清单槽位，完成通知不会改变公开结果的顺序。
+            worker_count.times { finished.pop.value }
             completed = true
           ensure
             # 中断或某个 worker 抛出非 StandardError 时，不让其他设备任务

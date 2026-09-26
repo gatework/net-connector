@@ -1,24 +1,10 @@
 # frozen_string_literal: true
 
+require_relative "plan"
+
 module Net
   module Connector
     module Netdisco
-      # 固定一份清单上的选择结果与跳过原因，供预览和执行复用。
-      Plan = Data.define(:mode, :inventory, :ready, :outcomes) do
-        # Data 只冻结对象自身；这里复制并冻结可能由调用方修改的计划容器。
-        def initialize(mode:, inventory:, ready:, outcomes:)
-          unless inventory.is_a?(Array) && ready.is_a?(Array) && outcomes.is_a?(Array)
-            raise ArgumentError, "plan inventory, ready tasks, and outcomes must be Arrays"
-          end
-
-          tasks = ready.map { |task| task.is_a?(Array) ? task.dup.freeze : task }.freeze
-          super(mode: mode, inventory: inventory.dup.freeze, ready: tasks, outcomes: outcomes.dup.freeze)
-        end
-
-        # 按清单顺序返回选中的设备。
-        def selected = ready.map(&:last)
-      end
-
       # 根据设备就绪状态、厂商采样及远端文件冲突建立备份计划。
       class Planner
         # 保存本次规划使用的清单快照。
@@ -37,22 +23,25 @@ module Net
                      else
                        candidates
                      end
-          # PAN-OS 导出使用固定远端文件名，同批只允许一台设备写入。
-          palo_alto_index = selected.find { |device, _index| device.vendor == :palo_alto }&.last if mode == :tftp
           selected_indices = selected.to_h { |_device, index| [index, true] }
+          filenames = {}
+          if mode == :tftp
+            # 先按采样顺序保留每个目标的首台设备，再按清单顺序输出结果。
+            selected.each { |device, index| filenames[device.tftp_filename] ||= index }
+          end
           outcomes = Array.new(@inventory.size)
           ready = @inventory.each_with_index.filter_map do |device, index|
             if !device.ready?
               outcomes[index] = skipped(device, device.issue)
               nil
-            elsif mode == :tftp && device.vendor == :palo_alto && index != palo_alto_index
-              outcomes[index] = skipped(device, :remote_filename_collision)
-              nil
-            elsif selected_indices.key?(index)
-              [index, device].freeze
-            else
+            elsif !selected_indices.key?(index)
               outcomes[index] = skipped(device, :sample_limit)
               nil
+            elsif mode == :tftp && filenames.fetch(device.tftp_filename) != index
+              outcomes[index] = skipped(device, :remote_filename_collision)
+              nil
+            else
+              [index, device].freeze
             end
           end
           Plan.new(mode: mode, inventory: @inventory, ready: ready.freeze, outcomes: outcomes.freeze)

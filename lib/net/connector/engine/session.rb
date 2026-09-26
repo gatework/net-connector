@@ -75,6 +75,7 @@ module Net
         end
       end
 
+      # 一次操作从连接到结果处理始终持锁；异常或 throw 中断都关闭未完成会话。
       def perform_locked(phase)
         @performing = true
         completed = false

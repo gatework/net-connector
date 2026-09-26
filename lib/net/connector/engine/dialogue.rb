@@ -86,6 +86,7 @@ module Net
 
       private
 
+      # 只截取命中错误模式的当前行，避免把整段设备配置写进诊断信息。
       def diagnostic_line(output)
         match = command_errors.lazy.filter_map { |pattern| pattern.match(output) }.first
         return unless match

@@ -1,9 +1,7 @@
 # frozen_string_literal: true
 
-require "active_support"
-require "active_support/logger"
-require "active_support/tagged_logging"
 require "fileutils"
+require "logger"
 require_relative "terminal_renderer"
 require_relative "log_messages"
 require_relative "errors"
@@ -29,14 +27,16 @@ module Net
         if @configuration.log_format == :raw
           @writer = @output
         elsif @io || @configuration.logger
-          base = @configuration.logger || ActiveSupport::Logger.new(@io)
+          base = @configuration.logger || ::Logger.new(@io)
           unless @configuration.logger
             base.formatter = proc do |severity, time, _program, message|
               "[#{time.getlocal.strftime("%Y-%m-%d %H:%M:%S %:z")}] #{severity} #{message}\n"
             end
           end
-          @logger = ActiveSupport::TaggedLogging.new(base).tagged("host=#{@configuration.host}")
-          @logger.level = [base.level, LEVELS.fetch(@configuration.log_level)].max
+          # 前缀直接写入消息，不克隆或修改调用方注入的日志器。
+          @logger = base
+          @event_level = [base.level, LEVELS.fetch(@configuration.log_level)].max
+          @tag = "[host=#{@configuration.host}] "
           if @io && @configuration.log_level == :debug
             @writer = TerminalRenderer.new(@output, max_line_bytes: @configuration.max_output_bytes)
           end
@@ -67,7 +67,7 @@ module Net
         end
         safe_name = @redactor.call(name.to_s).scrub.gsub(/[[:cntrl:]]+/, " ").strip
         finish_line
-        @logger.public_send(level, LogMessages.format(safe_name, values))
+        @logger.public_send(level, "#{@tag}#{LogMessages.format(safe_name, values)}") if LEVELS.fetch(level) >= @event_level
       rescue Error
         raise
       rescue => error
@@ -92,7 +92,7 @@ module Net
         return unless detailed? && !@writer
 
         @redactor.call(TerminalRenderer.render(@redactor.call(bytes))).each_line do |line|
-          @logger.debug("  #{line.chomp}")
+          @logger.debug("#{@tag}  #{line.chomp}") if ::Logger::DEBUG >= @event_level
         end
       rescue Error
         raise
@@ -140,7 +140,7 @@ module Net
           begin
             @io&.close
           ensure
-            @writer = @output = @logger = @io = @transport = nil
+            @writer = @output = @logger = @io = @transport = @tag = @event_level = nil
             @attached = false
           end
         end
@@ -169,12 +169,14 @@ module Net
 
       # 文件写入边界保留短尾部，避免分片或终端控制符拼出明文凭据。
       class RedactingWriter
+        # 保存目标流、脱敏器和等待下一分片的尾部。
         def initialize(target, redactor)
           @target = target
           @redactor = redactor
           @pending = "".b
         end
 
+        # 写入已确认安全的前缀，暂存可能与下一分片组成秘密的尾部。
         def write(bytes)
           @pending << bytes.b
           safe, @pending = @redactor.stream_chunk(@pending)
@@ -182,8 +184,10 @@ module Net
           bytes.bytesize
         end
 
+        # 刷新目标流，仍不提前写出待判断的尾部。
         def flush = @target.flush
 
+        # 在日志结束时脱敏并写出剩余尾部。
         def finish
           safe, @pending = @redactor.stream_chunk(@pending, final: true)
           @target.write(safe)

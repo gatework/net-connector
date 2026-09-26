@@ -112,6 +112,7 @@ module Net
       # 敏感命令和交互的异常可能只引用秘密的一部分，不能只依赖完整词匹配。
       def sensitive! = @sensitive = true
 
+      # 判断当前脱敏范围是否包含敏感交互。
       def sensitive? = @sensitive
 
       # 记住新的敏感字节，并按长度排序避免短词先匹配。
@@ -165,6 +166,7 @@ module Net
         @pattern ||= /(?=(#{Regexp.union((@secrets + ["[REDACTED]"]).uniq.sort_by { |secret| -secret.bytesize })}))/n
       end
 
+      # 合并重叠的秘密匹配区间，防止替换顺序露出部分凭据。
       def matches(text)
         ranges = []
         text.to_enum(:scan, pattern).each do

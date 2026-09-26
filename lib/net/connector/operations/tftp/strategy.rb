@@ -13,6 +13,14 @@ module Net
         autoload :PaloAlto, File.expand_path("palo_alto", __dir__)
 
         class Strategy
+          # 厂商只声明格式差异，清单规划与设备直连共用同一命名规则。
+          def self.file_extension = "cfg"
+
+          # 不创建会话即可生成目标名，供批量计划检查文件覆盖风险。
+          def self.filename(host, label: nil)
+            TftpTarget.filename(host, extension: file_extension, label: label)
+          end
+
           # 保存 TFTP 厂商策略使用的设备对象。
           def initialize(device)
             @device = device
@@ -23,7 +31,7 @@ module Net
           def source_file(value) = value
 
           # 根据设备地址生成默认远端文件名。
-          def default_path(_source_file) = TftpTarget.filename(@device.host, extension: "cfg")
+          def default_path(_source_file) = self.class.filename(@device.host)
 
           # 返回目标中指定的远端文件名。
           def remote_path(target, _result) = target.path
@@ -51,16 +59,6 @@ module Net
           # 只接受字节数非零、已发送量与总量相同的 curl 完成进度行。
           def completed_progress?(line)
             line.match?(/\A100\s+([1-9]\d*(?:\.\d+)?[kMGT]?)\s+0\s+0\s+100\s+\1(?:\s+[\d.:kMGT-]+)*\z/i)
-          end
-
-          # H3C 和华为的上传完成消息使用相同的文本及进度格式。
-          def completed_upload?(line)
-            line.match?(/\A
-              (?:File\s+)?(?:transfer|upload)(?:\s+(?:is|was))?\s+
-              (?:success(?:ful(?:ly)?)?|succeeded|complete(?:d)?(?:\s+successfully)?)[.!]?
-              \z/ix) ||
-              line.match?(/\A[1-9]\d*\s+bytes?\s+sent(?:\s+in\s+[\d.]+\s+(?:secs?|seconds?))?[.!]?\z/i) ||
-              completed_progress?(line)
           end
 
           # Cisco 明确报告复制完成的字节数，可附带耗时和速率。

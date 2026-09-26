@@ -12,7 +12,7 @@ raise "Gem loaded outside isolated install" unless File.realpath(spec.full_gem_p
 raise "Bundler leaked into plain installation" if ARGV.first == "plain" && defined?(Bundler)
 raise "Development tools leaked into application" unless (Gem.loaded_specs.keys & %w[rake rubocop parallel]).empty?
 
-%w[expect-pty activesupport textfsm digest english fileutils forwardable ipaddr json net-http open3 openssl
+%w[expect-pty textfsm digest english fileutils forwardable ipaddr json logger net-http open3 openssl
    optparse securerandom shellwords stringio tempfile time uri yaml].each do |name|
   raise "Undeclared runtime dependency: #{name}" unless spec.runtime_dependencies.any? { |dependency| dependency.name == name }
 end

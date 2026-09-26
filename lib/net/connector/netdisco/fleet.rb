@@ -63,7 +63,7 @@ module Net
           end
         end
 
-        # 让设备主动导出配置，避免 PAN-OS 固定远端文件名在同批任务中冲突。
+        # 让设备主动导出配置，在执行前检查同批目标文件名冲突。
         def tftp_backup_all(server:, source_files: {}, concurrency: @settings.concurrency,
                             limit_per_vendor: 5, vrfs: {}, on_start: nil, on_result: nil, plan: nil,
                             report_directory: @settings.backup_directory)
@@ -131,53 +131,7 @@ module Net
         def validate_plan!(plan, mode)
           raise ArgumentError, "plan must be a #{mode} Netdisco plan" unless plan.is_a?(Plan) && plan.mode == mode
 
-          inventory = plan.inventory
-          ready = plan.ready
-          outcomes = plan.outcomes
-          unless inventory.is_a?(Array) && inventory.all?(Device) && ready.is_a?(Array) &&
-                 outcomes.is_a?(Array) && outcomes.size == inventory.size
-            raise ArgumentError, "plan inventory and outcomes must have the same device slots"
-          end
-
-          selected = {}
-          previous_index = -1
-          ready.each do |task|
-            unless task.is_a?(Array) && task.size == 2 && task.first.is_a?(Integer)
-              raise ArgumentError, "plan contains an invalid device task"
-            end
-
-            index, device = task
-            unless index > previous_index && index < inventory.size && inventory[index].equal?(device) && device.ready?
-              raise ArgumentError, "plan tasks must reference ready inventory devices in order"
-            end
-
-            selected[index] = true
-            previous_index = index
-          end
-          if mode == :tftp && ready.count { |_index, device| device.vendor == :palo_alto } > 1
-            raise ArgumentError, "plan cannot upload multiple Palo Alto devices to one TFTP filename"
-          end
-
-          inventory.each_with_index do |device, index|
-            result = outcomes[index]
-            next if selected[index] && result.nil?
-
-            unless !selected[index] && valid_skipped_outcome?(result, device, mode)
-              raise ArgumentError, "plan outcome does not match its inventory slot"
-            end
-          end
-        end
-
-        # 未执行设备必须保留与清单一致的跳过原因，且不能带有执行产物。
-        def valid_skipped_outcome?(result, device, mode)
-          return false unless result.is_a?(Outcome) && result.device.equal?(device) && result.backup.nil? &&
-                              result.error_code.nil? && result.error_type.nil? &&
-                              result.started_at.nil? && result.finished_at.nil?
-
-          return result.status == device.issue unless device.ready?
-
-          result.status == :sample_limit ||
-            (mode == :tftp && device.vendor == :palo_alto && result.status == :remote_filename_collision)
+          plan.validate!
         end
 
         # 构造包含错误类型的单台设备结果。

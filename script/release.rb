@@ -257,17 +257,17 @@ end
 if $PROGRAM_NAME == __FILE__
   options = {}
   parser = OptionParser.new do |arguments|
-    arguments.banner = "Usage: ruby script/release.rb [--rubygems-only] [--dry-run] [--artifact PATH] [--repository OWNER/REPO]"
-    arguments.on("--repository OWNER/REPO", "GitHub repository; defaults to GITHUB_REPOSITORY or origin") do |value|
+    arguments.banner = "用法：ruby script/release.rb [--rubygems-only] [--dry-run] [--artifact PATH] [--repository OWNER/REPO]"
+    arguments.on("--repository OWNER/REPO", "GitHub 仓库，默认读取 GITHUB_REPOSITORY 或 origin") do |value|
       options[:repository] = value
     end
-    arguments.on("--rubygems-only", "Publish only to RubyGems using the existing gem login; no GitHub access") do
+    arguments.on("--rubygems-only", "只用现有 gem 登录发布到 RubyGems，不访问 GitHub") do
       options[:rubygems_only] = true
     end
-    arguments.on("--artifact PATH", "Publish an already verified gem without rebuilding") do |path|
+    arguments.on("--artifact PATH", "发布已验证的 gem，不重新构建") do |path|
       options[:artifact] = File.expand_path(path)
     end
-    arguments.on("--dry-run", "Build and verify locally without publishing") { options[:dry_run] = true }
+    arguments.on("--dry-run", "仅在本地构建和验证，不发布") { options[:dry_run] = true }
   end
   begin
     parser.parse!
@@ -275,7 +275,7 @@ if $PROGRAM_NAME == __FILE__
 
     Dir.chdir(File.expand_path("..", __dir__)) { Release.new(**options).run }
   rescue StandardError => error
-    warn "Release aborted: #{error.message}"
+    warn "发布已中止：#{error.message}"
     exit 1
   end
 end

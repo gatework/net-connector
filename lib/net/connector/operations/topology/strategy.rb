@@ -15,24 +15,38 @@ module Net
 
         # 厂商拓扑规则；默认不提供任何设备能力。
         class Strategy
+          # 保存设备供厂商规则查询档案和会话状态。
           def initialize(device)
             @device = device
           end
 
+          # 声明策略类支持的拓扑能力，默认全部关闭。
           def self.supports?(_capability) = false
+          # 将实例级能力查询交给策略类声明。
           def supports?(capability) = self.class.supports?(capability)
 
+          # 返回读取邻居的命令，未定义时不支持发现。
           def neighbor_command = nil
+          # 根据原始输出选择邻居解析模板。
           def neighbor_template(_output) = nil
+          # 返回当前接口描述所用的解析模板。
           def description_template = nil
+          # 返回输出中应解析出的邻居数量，供完整性校验使用。
           def expected_neighbor_count(_output, _template) = 0
+          # 只有明确的空表证据才允许返回空邻居列表。
           def empty_neighbor_output?(_output) = false
+          # 返回进入设备配置视图的命令。
           def enter_configuration = nil
+          # 返回离开配置视图和保存配置所需的命令。
           def finish_commands = []
+          # 为一条接口描述变更生成厂商命令。
           def change_commands(_change) = []
+          # 标明邻居发现使用的协议。
           def protocol = :lldp
+          # 在下发前允许厂商调整命令对象及超时。
           def script_command(command) = command
 
+          # 将发现接口名归一为查找当前配置所用的键。
           def interface_key(name) = InterfaceName.key(name)
 
           # 将发现协议常用的接口简称展开为配置视图可识别的名称。

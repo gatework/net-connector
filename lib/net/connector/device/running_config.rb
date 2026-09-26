@@ -12,6 +12,7 @@ module Net
         @device = device
       end
 
+      # 从设备档案选定本次采集策略；无厂商规则时使用公共策略。
       def self.strategy(device)
         (device.profile.running_config_strategy || Strategy).new(device)
       end
@@ -33,6 +34,7 @@ module Net
 
       private
 
+      # 只从完成的配置步骤提取非空内容，并保留此前所有步骤。
       def finish(result)
         step = @device.send(:config_result_step, result)
         raise incomplete("configuration collection has no completed configuration step") unless step
@@ -44,6 +46,7 @@ module Net
         Result.new(steps: result.steps, config: content)
       end
 
+      # 用当前完整提示符构建结束匹配，避免配置正文中的单个 # 提前结束采集。
       def prompt_for(command, strategy)
         return command.prompt if command.prompt
 
@@ -54,6 +57,7 @@ module Net
         /(?:\A|(?<=[\r\n]))[ \t\x00]*#{Regexp.escape(prompt)}[ \t\x00]*[\r\n]*\z/
       end
 
+      # 排除命令回显和提示符，确认响应确实包含配置正文。
       def content?(step)
         body = TerminalRenderer.render(step.output.delete_suffix(step.prompt.to_s)).strip
         lines = body.lines
@@ -61,6 +65,7 @@ module Net
         !lines.join.strip.empty?
       end
 
+      # 将缺少配置的情况统一映射为可识别的设备错误码。
       def incomplete(message)
         DeviceError.new(message, code: :incomplete_configuration, host: @device.host, phase: :collect)
       end

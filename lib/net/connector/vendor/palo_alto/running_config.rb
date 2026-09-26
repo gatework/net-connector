@@ -7,6 +7,7 @@ module Net
   module Connector
     module PaloAlto
       class RunningConfig < Net::Connector::RunningConfig::Strategy
+        # 配置位于 show 步骤，最后的 exit 只负责离开候选视图。
         def result_step(result)
           result.steps.find { |step| step.command.text == "show" }
         end
@@ -21,6 +22,7 @@ module Net
           end
         end
 
+        # 采集前后都检查候选差异，拒绝把未提交配置误作运行配置。
         def check_response(command, response, _execution)
           return unless command.text == "show config diff"
           return if body(response.output, command.text).empty?
@@ -29,6 +31,7 @@ module Net
                                 code: :uncommitted_configuration, host: @device.host, phase: :collect)
         end
 
+        # 只接受完整的 set 命令文本，排除 XML 或截断的引号配置。
         def clean(text)
           normalized = body(text, "show").sub(/(?:\A|\n)[ \t]*\[edit\][ \t]*\z/, "").strip
           unless set_commands?(normalized)
@@ -60,6 +63,7 @@ module Net
           pending.empty?
         end
 
+        # 去掉命令回显和提示符，保留真正需要校验的设备响应。
         def body(text, command)
           text.gsub("\r\n", "\n").sub(/\A[ \t]*#{Regexp.escape(command)}[ \t]*\n/, "")
               .sub(@device.profile.command_prompt, "").strip

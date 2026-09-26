@@ -17,13 +17,14 @@ script/ci
 | `security:check` | 扫描待提交源码和可用的完整 Git 历史；拒绝混入源码的本地凭据、配置和产物 |
 | `lint` | 对库、脚本、示例、测试、Gemfile、gemspec 和 Rakefile 执行 RuboCop |
 | `lint:workflows` | 用 actionlint 校验 GitHub Actions 工作流 |
-| `test` | 执行全部 Minitest；敏感信息和发布测试使用临时文件、临时仓库与模拟远端响应 |
+| `test` | 执行全部 Minitest，并报告已加载库文件的行与分支覆盖率；敏感信息和发布测试使用临时文件、临时仓库与模拟远端响应 |
 | `package:verify` | 构建 gem，检查元数据、文件白名单、源文件字节和执行位，扫描解包内容及元数据，再进行隔离安装 |
 
 隔离安装清除当前 Bundler 和 Ruby 注入变量，分别验证普通 `gem install`
 和只有 `net-connector` 依赖的最小 Bundler 应用。烟测加载全部厂商，使用本地
 PTY 子进程采集配置，读取包内 TextFSM 模板，并检查 CLI。它不连接网络设备，
 也不证明现场设备协议或真实发布服务已验收。
+覆盖率目前只用于观察，不设硬性门槛；未加载文件会单独计数。
 
 CI 矩阵为 Ubuntu 24.04 / macOS 15 × Ruby 3.2、3.3、3.4、4.0。
 GitHub Actions 固定提交 SHA；Gitleaks 与 actionlint 固定版本和各平台归档

@@ -50,7 +50,7 @@ module Net
                  end
           if options[:host]
             host = IPAddr.new(options[:host]).to_s
-            raise ArgumentError, "host #{options[:host]} was not found in inventory" unless plan.inventory.any? { |device| device.host == host }
+            raise ArgumentError, "清单中未找到设备 #{options[:host]}" unless plan.inventory.any? { |device| device.host == host }
           end
           if options[:plan]
             @output.puts JSON.pretty_generate(plan_summary(plan))
@@ -74,7 +74,7 @@ module Net
           @error.puts "net-connector-backup: #{exception.message}"
           2
         rescue StandardError => exception
-          @error.puts "net-connector-backup failed (#{exception.class})"
+          @error.puts "net-connector-backup 失败（#{exception.class}）"
           2
         end
 
@@ -84,25 +84,25 @@ module Net
         def parse_options
           options = { config: @env["NET_CONNECTOR_CONFIG"] }
           parser = OptionParser.new do |args|
-            args.banner = "Usage: net-connector-backup [--config FILE] [--plan | --show-config | --export IP] [--tftp]"
-            args.on("--config FILE", "Read non-secret YAML settings") { |value| options[:config] = value }
-            args.on("--show-config", "Print effective non-secret settings") { options[:show_config] = true }
-            args.on("--plan", "Preview selected inventory without device connections") { options[:plan] = true }
-            args.on("--tftp", "Use device-initiated TFTP backup") { options[:tftp] = true }
-            args.on("--export IP", "Export a saved local configuration") { |value| options[:export] = value }
-            args.on("--output FILE", "Write exported configuration to a private file") { |value| options[:output] = value }
-            args.on("--directory PATH", "Backup and report directory") { |value| options[:directory] = value }
-            args.on("--host IP", "Select one inventory device by management IP") { |value| options[:host] = value }
-            args.on("--concurrency N", Integer, "Maximum simultaneous devices") { |value| options[:concurrency] = value }
-            args.on("--limit-per-vendor N", Integer, "Select N devices per vendor (1..5)") do |value|
+            args.banner = "用法：net-connector-backup [--config FILE] [--plan | --show-config | --export IP] [--tftp]"
+            args.on("--config FILE", "读取不含凭据的 YAML 设置") { |value| options[:config] = value }
+            args.on("--show-config", "显示生效的非敏感设置") { options[:show_config] = true }
+            args.on("--plan", "预览设备清单，不连接设备") { options[:plan] = true }
+            args.on("--tftp", "由设备发起 TFTP 备份") { options[:tftp] = true }
+            args.on("--export IP", "导出已保存的本地配置") { |value| options[:export] = value }
+            args.on("--output FILE", "将导出配置写入私有文件") { |value| options[:output] = value }
+            args.on("--directory PATH", "备份和报告目录") { |value| options[:directory] = value }
+            args.on("--host IP", "按管理地址选择一台设备") { |value| options[:host] = value }
+            args.on("--concurrency N", Integer, "最大并发设备数") { |value| options[:concurrency] = value }
+            args.on("--limit-per-vendor N", Integer, "每厂商选择 N 台设备（1 至 5）") do |value|
               options[:limit] = value
             end
-            args.on("--all", "Select all ready devices") { options[:all] = true }
-            args.on("-v", "--version", "Print version") do
+            args.on("--all", "选择全部就绪设备") { options[:all] = true }
+            args.on("-v", "--version", "显示版本") do
               @output.puts Net::Connector::VERSION
               options[:done] = true
             end
-            args.on("-h", "--help", "Show help") do
+            args.on("-h", "--help", "显示帮助") do
               @output.puts args
               options[:done] = true
             end
@@ -116,11 +116,11 @@ module Net
         # 拒绝互斥或缺少依赖的命令行选项。
         def validate_options!(options)
           modes = [:show_config, :plan, :export].count { |key| options[key] }
-          raise ArgumentError, "choose one of --show-config, --plan, or --export" if modes > 1
-          raise ArgumentError, "--output requires --export" if options[:output] && !options[:export]
-          raise ArgumentError, "--all and --limit-per-vendor cannot be combined" if options[:all] && options[:limit]
+          raise ArgumentError, "--show-config、--plan 和 --export 只能选择一项" if modes > 1
+          raise ArgumentError, "--output 需要同时指定 --export" if options[:output] && !options[:export]
+          raise ArgumentError, "--all 不能与 --limit-per-vendor 同时使用" if options[:all] && options[:limit]
           if options[:export] && (options[:tftp] || options[:all] || options[:limit] || options[:concurrency] || options[:host])
-            raise ArgumentError, "--export cannot be combined with backup options"
+            raise ArgumentError, "--export 不能与备份选项同时使用"
           end
         end
 

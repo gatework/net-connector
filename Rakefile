@@ -6,15 +6,16 @@ Rake::TestTask.new(:test) do |task|
   task.libs << "lib" << "test"
   task.pattern = "test/**/*_test.rb"
   task.warning = true
+  task.ruby_opts << "-r#{File.expand_path("script/coverage.rb", __dir__)}"
 end
 
-desc "Check Ruby code and gem declarations"
+desc "检查 Ruby 代码和 gem 声明"
 task :lint do
   ruby "-S", "rubocop"
 end
 
 namespace :lint do
-  desc "Validate GitHub Actions workflows"
+  desc "校验 GitHub Actions 工作流"
   task :workflows do
     require_relative "script/tools"
     sh BuildTools.path("actionlint"), "-color", *Dir[".github/workflows/*.yml"]
@@ -22,14 +23,14 @@ namespace :lint do
 end
 
 namespace :security do
-  desc "Scan publishable source and available Git history; redact all findings"
+  desc "扫描发布源码和完整 Git 历史，脱敏输出检查结果"
   task :check do
     ruby "script/security.rb"
   end
 end
 
 namespace :package do
-  desc "Build, inspect, scan and verify an isolated gem installation"
+  desc "构建、检查并扫描 gem，验证隔离安装"
   task :verify do
     require_relative "script/package"
     artifact = PackageCheck.build
@@ -37,11 +38,11 @@ namespace :package do
   end
 end
 
-desc "Run the same security, lint, tests and package checks as CI"
+desc "执行与 CI 相同的敏感数据、lint、测试和打包检查"
 task ci: ["security:check", :lint, "lint:workflows", :test, "package:verify"]
 
 namespace :release do
-  desc "Check code and the release artifact without publishing or requiring archived notes"
+  desc "检查代码及发布包，不上传，也不要求提前归档更新记录"
   task check: :ci
 end
 

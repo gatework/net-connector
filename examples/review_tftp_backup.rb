@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
-# Reconcile a completed TFTP batch without changing its original summary.
-# H3C progress reaching 100% is recorded as CLI evidence, not server readback.
+# 复核已结束的 TFTP 批次，不改写原始摘要。
+# H3C 进度达到 100% 只算设备回显证据，不代表已回读服务器文件。
 
 require "json"
 require "fileutils"

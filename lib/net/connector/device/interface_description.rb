@@ -6,6 +6,7 @@ module Net
   module Connector
     # 描述文本与常见接口视图命令的纯构造方法，不连接或修改设备。
     module InterfaceDescription
+      # 将邻居名称和接口拼成默认描述；只缩写邻居接口，保留原始大小写。
       def self.format(neighbor, abbreviate: true, lowercase: false)
         port = if abbreviate
                  InterfaceName.short(neighbor.neighbor_interface, lowercase: lowercase)
@@ -15,6 +16,7 @@ module Net
         validate!("To #{neighbor.neighbor_name} #{port}")
       end
 
+      # 生成进入接口、设置描述和退出视图的命令，不执行设备操作。
       def self.commands(interface:, description:, leave: "exit")
         validate_interface!(interface)
         validate!(description)
@@ -31,6 +33,7 @@ module Net
         raise ArgumentError, "description must be 1-80 bytes of plain interface text"
       end
 
+      # 拒绝可能把描述命令拆成多条命令的不安全接口名。
       def self.validate_interface!(value)
         return value if value.is_a?(String) && value.match?(/\A[A-Za-z][A-Za-z0-9.\/-]*\z/)
 

@@ -48,18 +48,14 @@ module Net
 
         # 生成设备 CLI 可用的 ASCII 远端文件名。
         def tftp_filename
-          return "running-config.xml" if vendor == :palo_alto
-
           label = name.to_s.encode(Encoding::US_ASCII, invalid: :replace, undef: :replace, replace: "-")
                       .gsub(/[^A-Za-z0-9._-]+/, "-").byteslice(0, 180)
                       .gsub(/\A[._-]+|[._-]+\z/, "")
           label = vendor&.to_s || "device" if label.empty?
-          extension = case vendor
-                      when :radware then "tgz"
-                      when :hillstone then "dat"
-                      else "cfg"
-                      end
-          TftpTarget.filename(host, extension: extension, label: label)
+          strategy = Net::Connector.vendor_class(vendor).profile.tftp_strategy if vendor
+          # 旧版自定义策略只需实现实例接口，缺少命名接口时沿用通用 cfg 名称。
+          strategy = Operations::Tftp::Strategy unless strategy.respond_to?(:filename)
+          TftpTarget.validate_path!(strategy.filename(host, label: label))
         end
 
         # 按厂商及设备地址实例化连接器。

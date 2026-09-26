@@ -2,6 +2,7 @@
 
 require "minitest/autorun"
 require "tmpdir"
+require "logger"
 require_relative "../lib/net/connector"
 require_relative "support/fake_transport"
 
@@ -208,7 +209,7 @@ class ConnectorTest < Minitest::Test
 
   def test_injected_logger_receives_tagged_events_without_being_closed_or_reconfigured
     output = StringIO.new
-    logger = ActiveSupport::Logger.new(output)
+    logger = ::Logger.new(output)
     logger.level = ::Logger::INFO
     transport = ConnectorFake.new("fw#", "device detail\nfw#")
     klass = Class.new(Net::Connector::Base) do
@@ -232,7 +233,7 @@ class ConnectorTest < Minitest::Test
 
   def test_debug_injected_logger_includes_device_output_in_same_stream
     output = StringIO.new
-    logger = ActiveSupport::Logger.new(output)
+    logger = ::Logger.new(output)
     logger.level = ::Logger::DEBUG
     transport = ConnectorFake.new("fw#", "show status\r\nready\r\nfw#")
     klass = Class.new(Net::Connector::Base) do

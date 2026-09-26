@@ -1,82 +1,90 @@
-# Changelog
+# 更新记录
 
-## Unreleased
+## 0.4.1 - 2026-09-27
+
+- 用 Ruby 标准库 `Logger` 替代 ActiveSupport 日志依赖，保留设备标记、级别、脱敏和注入日志器的所有权。
+- 批量任务按线程完成顺序传播中断；创建后续线程失败时也停止已有任务，避免批次退出后仍有设备会话运行。
+- TFTP 批次按实际文件名检查所有厂商的覆盖冲突，拒绝外部计划绕过检查，并正确区分采样限制与文件名冲突。
+- 直接备份和 Netdisco 共用厂商命名规则，H3C 与华为共用已保存文件的上传流程，厂商扩展无需重复维护相同逻辑。
+- 分离 `Profile` 声明构造器与不可变档案，补充公开扩展契约、会话租约及 Rails 线程接入说明。
+- 测试和 CI 输出已加载库文件的行与分支覆盖率，未加载文件单独计数，暂不设硬性门槛。
+- 增加中文 PR 和 Issue 模板，补齐方法注释，并统一公开文档及 CLI 帮助文案。
 
 ## 0.4.0 - 2026-09-26
 
-- Redact dynamic login challenge failures before logging or capturing their underlying exceptions, including partial credentials and backtraces.
-- Keep PAN-OS LLDP discovery usable when some local interfaces have no neighbors, while rejecting incomplete nonempty records.
-- Stop remaining batch workers after an interruption, close incomplete command sessions, and use unique directories for concurrent example backups.
-- Detect additional network device credential syntax before publishing, including privileged IOS usernames and hashed local passwords.
-- Add shared local/CI checks on Ruby 3.2–4.0 for Linux and macOS, pinned workflow tooling, isolated gem installation, and a real local PTY smoke test.
-- Require `expect-pty` 0.3.1 or later in the 0.3 series, declare directly used standard-library gems, and keep development dependencies compatible with Ruby 3.2.
-- Add artifact-preserving local and manual CI release scripts with version, changelog, Git, metadata, file-byte and remote-checksum verification.
-- Scan source, available Git history and the built gem for credentials and private network addresses; redact reports, replace example addresses and credential placeholders, and ignore local configurations, backups, logs and credentials.
-- Make running configuration a device capability under `device/`; move the facade and profile there, and bind one collection strategy per call while preserving inherited method hooks and configuration bytes.
-- Co-locate vendor collection, TFTP and topology rules under `vendor/<name>/`; retain old require paths and constants as forwarding aliases, and load vendors and TextFSM only when needed.
-- Share interface name matching, description formatting and interface-view command construction. Description plans now abbreviate known neighbor ports by default while preserving case; `abbreviate: false` retains previous formatting and `lowercase: true` is opt-in. Raw evidence, local command names, confirmation and readback remain unchanged.
-- Bind collection to the complete known session prompt so configuration descriptions cannot terminate a response early; incomplete responses preserve existing backups.
-- Require explicit TFTP completion messages, excluding command/reply/prompt echoes and retaining failure evidence across terminal edits.
-- Keep temporary secrets through command preparation, postprocessing, callbacks and exception normalization; redact secrets containing `[REDACTED]` in direct and streaming output.
-- Hold one session operation lease across topology revalidation, changes and readback while rejecting nested callbacks and concurrent callers.
-- Use normalized management IPs for local backup filenames, preserving rename baselines and unique legacy-file compatibility without deleting old files.
+- 在记录日志和底层异常前，对动态登录挑战失败脱敏，包括部分凭据与回溯。
+- PAN-OS LLDP 输出包含无邻居的本机接口时仍可发现其他邻居，缺字段的非空记录仍会被拒绝。
+- 中断批次时停止其他工作线程，关闭未完成的命令会话，并为并发示例备份建立唯一目录。
+- 发布前识别更多设备凭据语法，包括 IOS 特权用户和哈希形式的本地密码。
+- 增加 Linux、macOS 上 Ruby 3.2 至 4.0 共用的本地与 CI 检查，固定工作流工具版本，隔离安装 gem，并用真实本地 PTY 烟测。
+- 要求 `expect-pty` 0.3 系列至少为 0.3.1，声明直接使用的标准库 gem，并保持开发依赖兼容 Ruby 3.2。
+- 增加保留构建产物的本地及手动 CI 发布脚本，校验版本、更新记录、Git、元数据、文件字节与远端校验和。
+- 扫描源码、可用 Git 历史和 gem 中的凭据及私有地址；报告脱敏，公开示例改用占位值，本地配置、备份和日志加入忽略规则。
+- 将运行配置纳入 `device/` 的设备能力，每次采集绑定一个策略，保留旧钩子及配置字节。
+- 将厂商采集、TFTP、拓扑规则放到 `vendor/<厂商>/`；旧 require 路径和常量转发到同一实现，厂商与 TextFSM 按需加载。
+- 共用接口名称匹配、描述格式和接口视图命令。邻居接口默认缩写但保留大小写；`abbreviate: false` 关闭缩写，`lowercase: true` 显式转小写。原始证据、本机命令名、确认与回读规则不变。
+- 采集时匹配完整的已知会话提示符，避免配置描述提前结束响应；不完整响应保留旧备份。
+- TFTP 必须有明确完成回显；命令、应答、提示符回显不能作为证据，终端控制符覆盖的失败仍会保留。
+- 临时秘密贯穿命令准备、后处理、回调和异常归一化；直接和流式输出都能脱敏含 `[REDACTED]` 字面量的秘密。
+- 拓扑重验、变更和回读共用一个会话租约，同时拒绝嵌套回调与并发调用。
+- 本地备份按规范化管理地址命名，设备改名不改变比较基线，并兼容唯一的旧文件而不删除它。
 
-- Reject zero-width prompt matches so an old prompt cannot complete a later command, and map declared terminal width/height to PTY rows/columns correctly.
-- Reject prompt-only and command-echo-only configuration responses while preserving completed steps and existing backup files.
-- Reject unknown H3C/Hillstone neighbor rows instead of treating partial output as an empty or complete table; ignore H3C discovery command echoes in TextFSM parsing.
-- Recheck complete neighbor identity, including chassis ID, before applying description plans and reject truncated PAN-OS multiline comment evidence.
-- Recognize colorized command and TFTP failures while retaining failures overwritten by terminal controls.
-- Share safe TFTP filename generation and length limits between direct operations and inventory batches, including scoped IPv6 addresses.
-- Close log files when initialization fails and clear owned log state after close failures.
-- Simplify the private Profile block guard to `check_block!` and document Expect semantics and resource ownership.
+- 拒绝零宽度提示符匹配，避免旧提示符结束后续命令；终端宽高正确映射为 PTY 行列。
+- 拒绝只有提示符或命令回显的配置响应，保留已完成步骤和旧备份。
+- H3C、山石邻居输出含未知行时拒绝把部分解析当成空表或完整表；H3C TextFSM 解析忽略发现命令回显。
+- 下发描述前重验含机箱 ID 的完整邻居身份，并拒绝截断的 PAN-OS 多行备注证据。
+- 识别带颜色的命令与 TFTP 失败，同时保留被终端控制符覆盖的故障信息。
+- 直接操作与清单批次共用安全的 TFTP 文件名生成和长度限制，覆盖带作用域的 IPv6 地址。
+- 日志初始化失败时关闭文件，关闭失败后也清除会话持有状态。
+- 将 `Profile` 声明块校验简化为 `check_block!`，记录 Expect 语义与资源所有权。
 
-- Bind vendor TFTP and topology strategies through the existing Profile DSL, and expose read-only `supports?` capability queries.
-- Keep configuration collection in one locked execution path, including PAN-OS step selection; reject missing, blank, or invalid cleaned configuration as incomplete.
-- Move vendor-specific topology commands, parsing evidence, interface spelling, and commit rules into strategies while retaining plan revalidation and readback.
+- 通过现有 `Profile` DSL 绑定厂商 TFTP 与拓扑策略，并提供只读的 `supports?` 能力查询。
+- 配置采集统一在一条持锁执行路径中完成，包括 PAN-OS 步骤选择；清理后配置缺失、空白或无效时判定为不完整。
+- 将厂商拓扑命令、解析证据、接口拼写和提交规则移入策略，同时保留计划重验及回读。
 
-- Redact configured credentials across log chunks and terminal rendering, reject raw application loggers consistently, and release stale session state before reconnecting.
-- Commit PAN-OS interface descriptions before leaving configuration mode and parse NX-OS indented descriptions correctly.
-- Keep TFTP preview filenames consistent with execution and avoid treating diagnostic words inside filenames as transfer failures.
-- Suppress sensitive underlying Netdisco exceptions and preserve empty or invalid-inventory outcomes in backup examples.
+- 跨日志分片和终端渲染脱敏已配置凭据，一致拒绝原始格式与应用日志器混用，重连前释放旧会话状态。
+- PAN-OS 在退出配置视图前提交接口描述，正确解析 NX-OS 缩进的描述。
+- 保持 TFTP 预览与执行文件名一致，避免把文件名中的诊断词误判为传输失败。
+- 隐藏 Netdisco 底层敏感异常，批量示例保留空清单和无效清单结果。
 
-- Reject inconsistent inventory plans before device I/O, preserve immutable device snapshots, and require a backup artifact before reporting success.
-- Mark empty backup batches as `no_devices` and reject `--host` addresses absent from the inventory.
-- Reuse the private atomic file writer for batch JSON reports.
-- Use Active Support tagged logging for session events, with debug device output in the same log file.
-- Separate vendor CLI profiles from configuration collection, local backup, and TFTP export operation objects.
-- Move each vendor's TFTP command, prompt, source-file, and completion rules into a dedicated transfer strategy.
-- Add a backup CLI with safe non-secret YAML settings, effective-config display, inventory preview, targeted runs, and TFTP batch execution.
-- Export an existing local device configuration to stdout or a private file without reconnecting to Netdisco or the device.
-- Compare local configuration backups by SHA-256, preserve unchanged files, and expose created/changed/unchanged states.
-- Add per-device start and result callbacks plus change-only notification callbacks, with isolated callback failures and task timing.
-- Share batch worker and device lifecycle handling between local and TFTP backups.
-- Use `vrf:` for NX-OS and Hillstone device exports, and per-vendor `vrfs:` for fleet exports.
-- Move Netdisco batch planning and worker dispatch out of the examples; keep device failures independent.
-- Add batch execution summaries with private JSON reports by default and an injected database repository option.
-- Add Hillstone StoneOS running-configuration collection and native startup-configuration TFTP export.
-- Complete Radware Alteon TFTP prompts for `.tgz` filename, private-key choice, and `mansync`.
-- Distinguish explicit device-side TFTP failures from transfers without a success confirmation.
-- Add configurable session log levels, readable login and command events, full debug device output, and TFTP outcome events.
-- Render session events as human-readable Chinese actions with local timestamps, while retaining full device output at debug level.
-- Add concise per-device TFTP results to the end of each session log.
-- Match the observed PAN-OS TFTP export command order and require a positive `Sent ... bytes` completion line.
-- Allow full-inventory TFTP batches with 50 workers while preserving per-device outcomes and PAN-OS filename-collision protection.
-- Discover H3C startup paths from each device, recognize completed TFTP progress, and support host-specific Netdisco connector overrides.
-- Add a session-log review for full TFTP batches without rewriting original outcomes.
+- 设备 I/O 前拒绝不一致的清单计划，保留不可变设备快照，报告成功前要求真实备份产物。
+- 空批次标为 `no_devices`，拒绝清单中不存在的 `--host` 地址。
+- 批次 JSON 报告复用私有文件的原子写入器。
+- 会话事件使用 Active Support 标签日志，调试级设备回显写入同一文件。
+- 将厂商 CLI 档案与配置采集、本地备份及 TFTP 导出业务对象分离。
+- 将各厂商 TFTP 命令、提示、源文件和完成规则放入独立传输策略。
+- 增加备份 CLI，支持无凭据 YAML 设置、有效配置展示、清单预览、定向运行和 TFTP 批次。
+- 不重新连接 Netdisco 或设备，即可将已有本地配置导出到标准输出或私有文件。
+- 用 SHA-256 比较本地配置备份，未变化文件保持原样，并报告新建、变化和未变化状态。
+- 增加逐设备开始和结果回调、仅变化时的通知回调，隔离回调故障并记录耗时。
+- 本地和 TFTP 备份共用批量工作线程与设备生命周期处理。
+- NX-OS 与山石的单设备导出使用 `vrf:`，设备集合导出按厂商使用 `vrfs:`。
+- 将 Netdisco 批次规划与工作分派移出示例，让设备故障相互独立。
+- 增加批次摘要、默认私有 JSON 报告，以及可注入的数据库仓储。
+- 增加山石 StoneOS 运行配置采集和原生启动配置 TFTP 导出。
+- 补全 Radware Alteon 的 `.tgz` 文件名、私钥选择及 `mansync` TFTP 提示。
+- 区分设备明确报告传输失败与没有成功确认的传输。
+- 增加可配置会话日志级别、易读的登录和命令事件、调试级完整回显及 TFTP 结果事件。
+- 将会话事件写为带本地时间的中文动作，调试级仍保留完整设备回显。
+- 在每台设备日志末尾补充简洁的 TFTP 结果。
+- 按现场观察的顺序执行 PAN-OS TFTP 导出，并要求明确的 `Sent ... bytes` 完成行。
+- 全量 TFTP 批次允许 50 个工作线程，保留逐设备结果并避免 PAN-OS 固定文件名冲突。
+- 从 H3C 设备发现启动配置路径，识别已完成的 TFTP 进度，并支持按主机覆盖 Netdisco 连接器。
+- 增加全量 TFTP 会话日志复核，不改写原始结果。
 
 ## 0.3.0
 
-- Add device-initiated native TFTP backup with vendor-specific commands and transfer checks.
-- Save Netdisco backups as sanitized `<device name>-<IP>.txt` files for easier lookup.
-- Render terminal carriage returns in H3C and Huawei configuration backups.
+- 增加设备发起的原生 TFTP 备份、厂商命令和传输结果检查。
+- Netdisco 备份使用已清理的 `<设备名>-<IP>.txt` 文件名，便于查找。
+- H3C 和华为配置备份正确渲染终端回车。
 
 ## 0.2.0
 
-- Move shared connector implementation into `engine/` and remove the obsolete top-level core files.
-- Add a standalone Netdisco client with validated inventory pagination and legacy query support.
-- Map discovered devices to connector profiles with configurable selection and mapping rules.
-- Run bounded concurrent backups with environment-backed credentials, paths, and per-device outcomes.
+- 公共连接器实现移入 `engine/`，移除过时的顶层核心文件。
+- 增加独立 Netdisco 客户端，校验清单分页并兼容旧查询方式。
+- 将发现的设备映射到连接器档案，支持配置选择和映射规则。
+- 用有上限的并发执行备份，凭据、路径从环境变量读取，保留逐设备结果。
 
 ## 0.1.0
 
-- Initial standalone connector with SSH and Telnet sessions, script execution, configuration collection, logging, and seven vendor profiles.
+- 首个独立版本，支持 SSH、Telnet 会话、脚本执行、配置采集、日志和七个厂商档案。

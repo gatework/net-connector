@@ -32,6 +32,73 @@ class NetdiscoReliabilityTest < Minitest::Test
     blocker&.push(true)
   end
 
+  def test_interrupt_in_a_later_worker_does_not_wait_for_an_earlier_device
+    first = Struct.new(:host).new("192.0.2.1")
+    second = Struct.new(:host).new("192.0.2.2")
+    started = Queue.new
+    blocker = Queue.new
+    threads = []
+    thread_new = Thread.method(:new)
+    worker = Netdisco::Worker.new(concurrency: 2)
+    # 等首个线程确实进入设备任务后再创建第二个，固定复现等待顺序。
+    spawn = lambda do |&operation|
+      thread_new.call(&operation).tap do |thread|
+        threads << thread
+        started.pop if threads.size == 1
+      end
+    end
+    runner = thread_new.call do
+      Thread.stub(:new, spawn) do
+        worker.run([[0, first], [1, second]], outcomes: Array.new(2), on_error: ->(*) { flunk "unexpected error callback" }) do |device|
+          raise Interrupt, "later device interrupted" if device == second
+
+          started << true
+          blocker.pop
+        end
+      end
+    rescue Interrupt => error
+      error
+    end
+
+    assert runner.join(2), "后启动的线程中断后，批次不应继续等待前一台设备"
+    assert_instance_of Interrupt, runner.value
+    assert_equal "later device interrupted", runner.value.message
+    refute threads.any?(&:alive?)
+  ensure
+    runner&.kill
+    runner&.join
+  end
+
+  def test_worker_startup_failure_stops_already_started_device_tasks
+    first = Struct.new(:host).new("192.0.2.1")
+    second = Struct.new(:host).new("192.0.2.2")
+    started = Queue.new
+    blocker = Queue.new
+    thread_new = Thread.method(:new)
+    thread = nil
+    spawn = lambda do |&operation|
+      raise ThreadError, "cannot create worker" if thread
+
+      thread = thread_new.call(&operation)
+      started.pop
+      thread
+    end
+    worker = Netdisco::Worker.new(concurrency: 2)
+    Thread.stub(:new, spawn) do
+      error = assert_raises(ThreadError) do
+        worker.run([[0, first], [1, second]], outcomes: Array.new(2), on_error: ->(*) { flunk "unexpected error callback" }) do
+          started << true
+          blocker.pop
+        end
+      end
+      assert_equal "cannot create worker", error.message
+      refute thread.alive?, "线程创建失败后，已启动的设备任务必须完成清理"
+    end
+  ensure
+    thread&.kill
+    thread&.join
+  end
+
   def test_tftp_filenames_accept_scoped_ipv6_and_fit_target_limits
     ["fe80::1%en0", "2001:db8:1234:5678:9012:3456:789a:bcde", "fe80::1%#{"a" * 240}"].each do |address|
       %w[H3C Hillstone Radware].each do |vendor|

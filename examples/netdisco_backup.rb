@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-# Inspect a Netdisco inventory, then collect configurations into examples/backups/.
-# Credentials normally come from the environment documented in README.md.
-# For a one-off run, --stdin-credentials reads a JSON object from stdin and
-# waits for RUN on a second line before opening device sessions.
+# 检查 Netdisco 清单，然后把配置保存到 examples/backups/。
+# 凭据通常从 README.md 所列的环境变量读取。
+# 一次性运行可用 --stdin-credentials：先从标准输入读取 JSON 凭据，
+# 再等待第二行输入 RUN，之后才连接设备。
 
 require "json"
 require "time"
@@ -18,10 +18,10 @@ if ARGV == ["--stdin-credentials"]
   begin
     input = JSON.parse(STDIN.gets || "")
   rescue JSON::ParserError
-    abort "invalid credential JSON"
+    abort "凭据 JSON 无效"
   end
   keys = %w[netdisco_username netdisco_password device_username device_password]
-  raise ArgumentError, "four credential strings are required" unless keys.all? { |key| input[key].is_a?(String) && !input[key].empty? }
+  raise ArgumentError, "需要四个非空凭据字符串" unless keys.all? { |key| input[key].is_a?(String) && !input[key].empty? }
 
   client = Net::Connector::Netdisco::Client.new(
     url: ENV.fetch("NETDISCO_URL"),
@@ -37,7 +37,7 @@ elsif ARGV.empty?
   client = settings.client
   credentials = settings.method(:credentials_for)
 else
-  abort "usage: ruby -Ilib examples/netdisco_backup.rb [--stdin-credentials]"
+  abort "用法：ruby -Ilib examples/netdisco_backup.rb [--stdin-credentials]"
 end
 
 rules = settings.rules
@@ -46,7 +46,7 @@ snapshot = Struct.new(:devices).new(rows)
 fleet = Net::Connector::Netdisco::Fleet.new(client: snapshot, settings: settings,
                                             rules: rules, credentials: credentials)
 sample_size = Integer(ENV.fetch("NET_CONNECTOR_SAMPLE_PER_VENDOR", "3"), 10)
-raise ArgumentError, "sample size must be in 1..5" unless (1..5).cover?(sample_size)
+raise ArgumentError, "每厂商抽样数量须在 1 至 5 之间" unless (1..5).cover?(sample_size)
 
 backup_plan = fleet.plan_backup(limit_per_vendor: sample_size)
 devices = backup_plan.inventory
@@ -65,7 +65,7 @@ puts JSON.generate(plan: plan)
 $stdout.flush
 
 if ARGV == ["--stdin-credentials"]
-  abort "backup cancelled" unless STDIN.gets&.strip == "RUN"
+  abort "备份已取消" unless STDIN.gets&.strip == "RUN"
 end
 
 backup_root = File.join(__dir__, "backups")

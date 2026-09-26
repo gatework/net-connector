@@ -29,12 +29,20 @@ module InstalledPackageCheck
     Dir.mktmpdir("net-connector-installed-") do |directory|
       gems = File.join(directory, "gems")
       environment = cleaned.merge("GEM_HOME" => gems, "GEM_PATH" => gems)
-      (dependencies + [bundler]).each do |spec|
+      dependencies.each do |spec|
         if File.file?(spec.cache_file)
           FileUtils.cp(spec.cache_file, directory)
         elsif !spec.default_gem?
           raise "Missing gem cache: #{spec.full_name}; run bundle install before installed-package checks"
         end
+      end
+      # setup-ruby 的 Bundler 可能已安装但没有 .gem 缓存；仅补取测试工具本身，
+      # 运行时依赖仍必须来自已解析的本地缓存，保持消费者环境的隔离性。
+      if File.file?(bundler.cache_file)
+        FileUtils.cp(bundler.cache_file, directory)
+      elsif !bundler.default_gem?
+        PackageCheck.command(cleaned, RbConfig.ruby, "-S", "gem", "fetch", "bundler", "--version",
+                             bundler.version.to_s, chdir: directory)
       end
       FileUtils.cp(artifact, directory)
       FileUtils.cp(File.join(__dir__, "smoke.rb"), directory)
@@ -43,7 +51,7 @@ module InstalledPackageCheck
       PackageCheck.command(environment, RbConfig.ruby, "smoke.rb", "plain", chdir: directory)
       # 在 Gemfile 中仅声明消费者需要安装的 gem。
       # Ruby 随附的默认 Bundler 未必有 .gem 缓存，在隔离 GEM_HOME 下仍可按版本加载。
-      if File.file?(bundler.cache_file)
+      if File.file?(File.join(directory, "#{bundler.full_name}.gem"))
         PackageCheck.command(environment, RbConfig.ruby, "-S", "gem", "install", "--local", "--no-document",
                              File.join(directory, File.basename(bundler.cache_file)), chdir: directory)
       end

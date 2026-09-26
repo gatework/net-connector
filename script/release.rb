@@ -34,10 +34,6 @@ class Release
 
     @commit = capture("git", "rev-parse", "HEAD") unless @dry_run
     resolve_repository unless @dry_run || @rubygems_only
-    if !@dry_run && ENV["GITHUB_ACTIONS"] == "true" && ENV.fetch("GEM_HOST_API_KEY", "").empty?
-      raise "Set the repository Actions secret RUBYGEMS_API_KEY before publishing"
-    end
-
     if @build
       command("bash", "script/ci")
     else

@@ -114,8 +114,10 @@ class ReleaseTest < Minitest::Test
       capture = ->(*arguments) { arguments.include?("rev-parse") ? "verified" : statuses.shift }
       release.stub(:capture, capture) do
         release.stub(:get, ->(*) { flunk "changed source contacted RubyGems" }) do
-          capture_io do
-            assert_match "Source changed", assert_raises(RuntimeError) { release.run }.message
+          with_environment("GITHUB_ACTIONS" => "true", "GEM_HOST_API_KEY" => nil) do
+            capture_io do
+              assert_match "Source changed", assert_raises(RuntimeError) { release.run }.message
+            end
           end
         end
       end

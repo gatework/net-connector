@@ -1,0 +1,117 @@
+# frozen_string_literal: true
+
+require "minitest/autorun"
+require_relative "../lib/net/connector"
+require_relative "support/fake_transport"
+
+class TftpEvidenceTest < Minitest::Test
+  CASES = {
+    cisco_ios: ["router#", "copy running-config tftp:", "1280 bytes copied in 2.1 secs", "copy-complete.cfg"],
+    cisco_nxos: ["switch#", "copy running-config tftp://192.0.2.10/success.cfg vrf management", "Copy complete", "success.cfg"],
+    h3c: ["<H3C>", "tftp 192.0.2.10 put startup.cfg transfer-complete.cfg", "Transfer complete.", "transfer-complete.cfg"],
+    huawei: ["<HUAWEI>", "tftp 192.0.2.10 put startup.cfg transfer-complete.cfg", "Transfer completed successfully", "transfer-complete.cfg"],
+    hillstone: ["fw#", "export configuration startup to tftp server 192.0.2.10 vrouter mgt-vr backup.cfg", "Export ok,target file name backup.cfg", "backup.cfg"],
+    palo_alto: ["admin@fw>", "tftp export configuration to 192.0.2.10 from running-config.xml", "Sent 983442 bytes in 21.2 seconds", "running-config.xml"],
+    radware: [">> Main#", "/cfg/ptcfg 192.0.2.10 -tftp", "Current config successfully tftp'd", "config-uploaded.tgz"]
+  }.freeze
+
+  CASES.each do |vendor, (prompt, command, success, path)|
+    define_method("test_#{vendor}_command_echo_does_not_confirm_transfer") do
+      with_device(vendor, prompt, "#{command}\r\n#{prompt}") do |device|
+        error = assert_raises(Net::Connector::DeviceError) { backup(device, vendor, path) }
+        assert_equal :transfer_unconfirmed, error.code
+      end
+    end
+
+    define_method("test_#{vendor}_explicit_completion_confirms_transfer") do
+      with_device(vendor, prompt, "#{command}\r\n#{success}\r\n#{prompt}") do |device|
+        assert_equal path, backup(device, vendor, path).path
+      end
+    end
+
+    define_method("test_#{vendor}_failure_after_success_overrides_completion") do
+      with_device(vendor, prompt, "#{success}\r\nTransfer failed.\r\n#{prompt}") do |device|
+        error = assert_raises(Net::Connector::DeviceError) { backup(device, vendor, path) }
+        assert_equal :transfer_failed, error.code
+      end
+    end
+  end
+
+  def test_nxos_complete_filename_and_vrf_are_not_completion_messages
+    %w[complete.cfg copy-success.cfg transfer-complete.cfg].each do |path|
+      command = "copy running-config tftp://192.0.2.10/#{path} vrf copy-complete"
+      with_device(:cisco_nxos, "switch#", "#{command}\r\nswitch#") do |device|
+        error = assert_raises(Net::Connector::DeviceError) do
+          device.tftp_backup(host: "192.0.2.10", path: path, vrf: "copy-complete")
+        end
+        assert_equal :transfer_unconfirmed, error.code
+      end
+    end
+  end
+
+  def test_radware_interactive_filename_echo_does_not_confirm_transfer
+    with_device(:radware, ">> Main#", "Enter name of file on FTP/TFTP/SCP server:", "config-uploaded.tgz\r\n>> Main#") do |device|
+      error = assert_raises(Net::Connector::DeviceError) { backup(device, :radware, "config-uploaded.tgz") }
+      assert_equal :transfer_unconfirmed, error.code
+    end
+  end
+
+  def test_radware_success_words_in_prompt_do_not_confirm_transfer
+    with_device(:radware, ">> config complete", ">> config complete") do |device|
+      error = assert_raises(Net::Connector::DeviceError) { backup(device, :radware, "backup.tgz") }
+      assert_equal :transfer_unconfirmed, error.code
+    end
+  end
+
+  def test_future_or_incomplete_transfer_messages_are_not_completion
+    { cisco_nxos: ["Copy will complete after validation", "Copy successful.cfg"],
+      h3c: ["Transfer completion pending", "Upload successful.cfg"],
+      huawei: ["Transfer complete.cfg", "Upload success pending"],
+      radware: ["Configuration will be uploaded", "Configuration complete pending"] }.each do |vendor, messages|
+      prompt, _, _, path = CASES.fetch(vendor)
+      messages.each do |message|
+        with_device(vendor, prompt, "#{message}\r\n#{prompt}") do |device|
+          error = assert_raises(Net::Connector::DeviceError, "#{vendor}: #{message}") { backup(device, vendor, path) }
+          assert_equal :transfer_unconfirmed, error.code
+        end
+      end
+    end
+  end
+
+  def test_zero_or_mismatched_progress_is_not_completion
+    %i[h3c huawei].each do |vendor|
+      prompt, _, _, path = CASES.fetch(vendor)
+      ["100  0    0     0  100  0", "100  1000    0     0  100  10"].each do |progress|
+        with_device(vendor, prompt, "#{progress}\r\n#{prompt}") do |device|
+          error = assert_raises(Net::Connector::DeviceError, "#{vendor}: #{progress}") { backup(device, vendor, path) }
+          assert_equal :transfer_unconfirmed, error.code
+        end
+      end
+    end
+  end
+
+  def test_failure_evidence_survives_terminal_edits
+    ["Transfer \e[31mfailed\e[0m.\n", "Transfer failed.\rTransfer complete.\n",
+     "Transfer fa\e[31miled\e[0m.\rTransfer complete.\n"].each do |failure|
+      with_device(:h3c, "<H3C>", "Transfer complete.\n#{failure}<H3C>") do |device|
+        error = assert_raises(Net::Connector::DeviceError) { backup(device, :h3c, "backup.cfg") }
+        assert_equal :transfer_failed, error.code
+      end
+    end
+  end
+
+  private
+
+  def backup(device, vendor, path)
+    options = { host: "192.0.2.10", path: path }
+    options[:source_file] = "startup.cfg" if %i[h3c huawei].include?(vendor)
+    device.tftp_backup(**options)
+  end
+
+  def with_device(vendor, *events)
+    device = Net::Connector.build(vendor, host: "192.0.2.1", username: "admin", transport: ConnectorFake.new(*events))
+    yield device
+  ensure
+    device&.close
+  end
+end

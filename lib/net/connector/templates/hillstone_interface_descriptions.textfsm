@@ -1,0 +1,11 @@
+Value Required INTERFACE (\S+)
+Value DESCRIPTION (.*)
+
+Start
+  ^interface ${INTERFACE}$$ -> Interface
+
+Interface
+  ^\s+description ${DESCRIPTION}$$
+  ^\s*exit\s*$$ -> Record Start
+  ^interface .+ -> Continue.Record
+  ^interface ${INTERFACE}$$

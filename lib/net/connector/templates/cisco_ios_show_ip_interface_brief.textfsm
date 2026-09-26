@@ -1,0 +1,7 @@
+Value Required INTERFACE (\S+)
+Value IP_ADDRESS (\S+)
+Value STATUS (administratively down|up|down)
+Value PROTOCOL (up|down)
+
+Start
+  ^${INTERFACE}\s+${IP_ADDRESS}\s+\S+\s+\S+\s+${STATUS}\s+${PROTOCOL}$$ -> Record

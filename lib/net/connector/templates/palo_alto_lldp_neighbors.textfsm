@@ -1,0 +1,11 @@
+Value Required LOCAL_INTERFACE (\S+)
+Value NEIGHBOR_NAME (\S+)
+Value CHASSIS_ID (\S+)
+Value Required NEIGHBOR_INTERFACE (\S+)
+
+Start
+  ^\s*Local information:\s*$$ -> Record
+  ^\s*Local interface:\s*${LOCAL_INTERFACE}\s*$$
+  ^\s*Chassis ID:\s*${CHASSIS_ID}\s*$$
+  ^\s*Port ID:\s*${NEIGHBOR_INTERFACE}\s*$$
+  ^\s*System name:\s*${NEIGHBOR_NAME}\s*$$

@@ -1,0 +1,7 @@
+Value Required LOCAL_INTERFACE (\S+)
+Value Required NEIGHBOR_NAME (\S+)
+Value Required NEIGHBOR_INTERFACE (\S+)
+
+Start
+  ^\s*Device ID:\s*${NEIGHBOR_NAME}\s*$$
+  ^\s*Interface:\s*${LOCAL_INTERFACE},\s*Port ID \(outgoing port\):\s*${NEIGHBOR_INTERFACE}\s*$$ -> Record

@@ -1,0 +1,8 @@
+Value Required LOCAL_INTERFACE (\S+)
+Value NEIGHBOR_NAME (\S+)
+Value Required CHASSIS_ID (\S+)
+Value Required NEIGHBOR_INTERFACE (Port\s+\d+|\S+)
+
+Start
+  ^\s*display lldp neighbor-information list\s*$$
+  ^\s*${NEIGHBOR_NAME}\s+${LOCAL_INTERFACE}\s+${CHASSIS_ID}\s+${NEIGHBOR_INTERFACE}\s*$$ -> Record

@@ -1,0 +1,47 @@
+AllCops:
+  TargetRubyVersion: 3.2
+  NewCops: enable
+  SuggestExtensions: false
+  DisabledByDefault: true
+  Include:
+    - lib/**/*.rb
+    - exe/*
+    - examples/**/*.rb
+    - test/**/*.rb
+    - script/**/*.rb
+    - "*.gemspec"
+    - Gemfile
+    - Rakefile
+  Exclude:
+    - tmp/**/*
+    - pkg/**/*
+    - vendor/**/*
+    - examples/backups/**/*
+    - .bundle/**/*
+
+Lint:
+  Enabled: true
+
+Security:
+  Enabled: true
+
+Lint/EmptyBlock:
+  Exclude:
+    - test/**/*.rb
+
+Layout/TrailingWhitespace:
+  Enabled: true
+
+Layout/TrailingEmptyLines:
+  Enabled: true
+
+Style/StringLiterals:
+  Enabled: true
+  EnforcedStyle: double_quotes
+
+Style/StringLiteralsInInterpolation:
+  Enabled: true
+  EnforcedStyle: double_quotes
+
+Style/FrozenStringLiteralComment:
+  Enabled: true

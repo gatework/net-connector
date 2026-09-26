@@ -1,0 +1,61 @@
+# Bundler、本地安装与开发锁文件；CI 按各 Ruby 版本解析兼容依赖。
+/.bundle/
+/vendor/
+/Gemfile.lock
+
+# 构建、验证与设备运行产物。
+/pkg/
+/tmp/
+/*.gem
+/examples/backups/
+/backups/
+/exports/
+/logs/
+/log/
+/reports/
+/coverage/
+*.log
+/.rubocop_cache/
+/.ruby-lsp/
+/.yardoc/
+/doc/
+/rdoc/
+
+# 本地实施前评审快照；公开设计约定保存在 docs/architecture.md。
+/docs/refactoring-review.md
+
+# 凭据和现场配置；公开示例只能使用占位值与文档专用地址。
+.env
+.env.*
+!.env.example
+!.env.*.example
+/config.yml
+/config.yaml
+*.local.yml
+*.local.yaml
+/.ssh/
+/.gem/
+/.secrets/
+/secrets/
+credentials
+credentials.yml
+credentials.yaml
+known_hosts
+known_hosts.old
+id_rsa
+id_ed25519
+id_ecdsa
+id_dsa
+*.pem
+*.key
+*.p12
+*.pfx
+
+# 编辑器和操作系统文件。
+/.idea/
+/.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+._*

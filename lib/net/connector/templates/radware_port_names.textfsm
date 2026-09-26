@@ -1,0 +1,13 @@
+Value Required INTERFACE (\d+)
+Value DESCRIPTION (.*)
+
+Start
+  ^/(?:c|cfg)/port ${INTERFACE}/name "${DESCRIPTION}"\s*$$ -> Record
+  ^/(?:c|cfg)/port ${INTERFACE}\s*$$ -> Port
+
+Port
+  ^\s+name "${DESCRIPTION}"\s*$$
+  ^\s+name ${DESCRIPTION}$$
+  ^/.* -> Continue.Record
+  ^/(?:c|cfg)/port ${INTERFACE}/name "${DESCRIPTION}"\s*$$ -> Record Start
+  ^/(?:c|cfg)/port ${INTERFACE}\s*$$

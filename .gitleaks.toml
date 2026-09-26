@@ -1,0 +1,27 @@
+title = "net-connector source and release checks"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "network-private-address"
+description = "Use documentation addresses in public examples and fixtures"
+regex = '''\b(?:10\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}|172\.(?:1[6-9]|2[0-9]|3[01])\.[0-9]{1,3}\.[0-9]{1,3}|192\.168\.[0-9]{1,3}\.[0-9]{1,3})\b'''
+
+[[rules]]
+id = "network-device-secret"
+description = "Network configuration contains a literal credential"
+regex = '''(?im)^[\t ]*(?:snmp-server community|snmp-agent community (?:read|write)(?: cipher)?|enable (?:secret|password)(?: [0-9]+)?|password (?:cipher|simple|hash)|local-user [^\s]+(?: class [^\s]+)? password (?:cipher|simple|hash)|username [^\s]+(?: privilege [0-9]+)? (?:password|secret)(?: [0-9]+)?)\s+([^\s]+)'''
+secretGroup = 1
+[[rules.allowlists]]
+regexTarget = "secret"
+regexes = ['''(?i)^(?:\[REDACTED\]|<redacted>|replace-me|example-only)$''']
+
+[[rules]]
+id = "environment-credential"
+description = "Environment credential contains a literal value"
+regex = '''(?im)^[\t ]*(?:export[\t ]+)?[A-Z][A-Z0-9_]*(?:PASSWORD|TOKEN|API_KEY|SECRET)[\t ]*=[\t ]*["']?([^\s"']{4,})'''
+secretGroup = 1
+[[rules.allowlists]]
+regexTarget = "secret"
+regexes = ['''(?i)^(?:\[REDACTED\]|<redacted>|replace-me|example-only)$''', '''^\$''']

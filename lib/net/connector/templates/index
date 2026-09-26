@@ -1,0 +1,8 @@
+Template, Vendor, Command
+cisco_ios_show_ip_interface_brief.textfsm, cisco_ios, show ip interface brief$
+cisco_cdp_neighbors_detail.textfsm, cisco_ios, show cdp neighbors detail$
+cisco_cdp_neighbors_detail.textfsm, cisco_nxos, show cdp neighbors detail$
+h3c_lldp_name_first.textfsm, h3c, display lldp neighbor-information list$
+h3c_lldp_name_first.textfsm, h3c_wireless, display lldp neighbor-information list$
+hillstone_lldp_neighbors.textfsm, hillstone, show lldp neighbor-information$
+palo_alto_lldp_neighbors.textfsm, palo_alto, show lldp neighbors all$

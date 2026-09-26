@@ -1,0 +1,6 @@
+Value Required INTERFACE (\S+)
+Value DESCRIPTION (.*)
+
+Start
+  ^set network interface ethernet ${INTERFACE} comment ${DESCRIPTION}$$ -> Record
+  ^set network interface ethernet ${INTERFACE}\s+.*$$ -> Record

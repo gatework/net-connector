@@ -12,7 +12,7 @@ class NetdiscoPlanTest < Minitest::Test
     end
     requested = []
     fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), result_store: nil,
-                               credentials: ->(device) { requested << device.host; nil })
+                                credentials: ->(device) { requested << device.host; nil })
     plan = fleet.plan_tftp_backup(limit_per_vendor: nil)
 
     assert plan.inventory.all?(&:ready?)
@@ -32,7 +32,7 @@ class NetdiscoPlanTest < Minitest::Test
     end
     requested = []
     fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), result_store: nil,
-                               credentials: ->(device) { requested << device.host; nil })
+                                credentials: ->(device) { requested << device.host; nil })
     plan = fleet.plan_tftp_backup(limit_per_vendor: nil)
     unsafe = plan.with(ready: plan.inventory.each_with_index.map { |device, index| [index, device] },
                        outcomes: [nil, nil])
@@ -76,7 +76,7 @@ class NetdiscoPlanTest < Minitest::Test
     end
     profile = Net::Connector::Profile.define(parent: connector_class.profile) { tftp_strategy strategy }
     device = Netdisco::Device.from_row({ "ip" => "192.0.2.1", "name" => "edge", "vendor" => "Radware" },
-                                     rules: Netdisco::Rules.new)
+                                       rules: Netdisco::Rules.new)
     connector_class.stub(:profile, profile) do
       strategy.stub(:new, ->(*) { flunk "生成文件名不应构造会话策略" }) do
         assert_equal "edge-192.0.2.1.cfg", device.tftp_filename
@@ -89,7 +89,7 @@ class NetdiscoPlanTest < Minitest::Test
     connector_class = Net::Connector.vendor_class(:h3c)
     profile = Struct.new(:tftp_strategy).new(Class.new)
     device = Netdisco::Device.from_row({ "ip" => "192.0.2.1", "name" => "edge", "vendor" => "H3C" },
-                                     rules: Netdisco::Rules.new)
+                                       rules: Netdisco::Rules.new)
 
     connector_class.stub(:profile, profile) { assert_equal "edge-192.0.2.1.cfg", device.tftp_filename }
   end

@@ -1,0 +1,877 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-09-27T07:14:46Z",
+  "machine": {
+    "ruby": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]",
+    "platform": "arm64-darwin25",
+    "cpus": 10,
+    "memory_bytes": 17179869184,
+    "cpu": "Apple M5"
+  },
+  "samples": [
+    {
+      "metrics": [
+        {
+          "phase": "retain",
+          "elapsed_seconds": 0.007266000000527129,
+          "allocated_objects": 1122,
+          "rss_before_bytes": 34832384,
+          "rss_after_bytes": 37404672
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.00008199999865610152,
+          "allocated_objects": 8,
+          "rss_before_bytes": 37568512,
+          "rss_after_bytes": 38830080
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.0003349999897181988,
+          "allocated_objects": 20,
+          "rss_before_bytes": 38797312,
+          "rss_after_bytes": 44531712
+        }
+      ],
+      "retained_step_bytes": 1048583,
+      "result_count": 1,
+      "completed_steps": 1,
+      "commands_sent": 1,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "retain",
+        "response_bytes": 1048576,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 44580864,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/00-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "retain",
+          "elapsed_seconds": 0.05757900000025984,
+          "allocated_objects": 7394,
+          "rss_before_bytes": 49807360,
+          "rss_after_bytes": 69599232
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.0005710000114049762,
+          "allocated_objects": 8,
+          "rss_before_bytes": 69746688,
+          "rss_after_bytes": 78348288
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.0025750000058906153,
+          "allocated_objects": 20,
+          "rss_before_bytes": 78512128,
+          "rss_after_bytes": 120619008
+        }
+      ],
+      "retained_step_bytes": 8388615,
+      "result_count": 1,
+      "completed_steps": 1,
+      "commands_sent": 1,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "retain",
+        "response_bytes": 8388608,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 120651776,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/01-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "retain",
+          "elapsed_seconds": 0.23024800000712276,
+          "allocated_objects": 28898,
+          "rss_before_bytes": 99975168,
+          "rss_after_bytes": 179257344
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.006636999998590909,
+          "allocated_objects": 8,
+          "rss_before_bytes": 179437568,
+          "rss_after_bytes": 213041152
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.019710000007762574,
+          "allocated_objects": 20,
+          "rss_before_bytes": 213172224,
+          "rss_after_bytes": 313966592
+        }
+      ],
+      "retained_step_bytes": 33554439,
+      "result_count": 1,
+      "completed_steps": 1,
+      "commands_sent": 1,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "retain",
+        "response_bytes": 33554432,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 313982976,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/02-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "retain",
+          "elapsed_seconds": 0.07448499999009073,
+          "allocated_objects": 9835,
+          "rss_before_bytes": 34897920,
+          "rss_after_bytes": 55492608
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.0007719999994151294,
+          "allocated_objects": 8,
+          "rss_before_bytes": 55672832,
+          "rss_after_bytes": 66371584
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.006330000003799796,
+          "allocated_objects": 20,
+          "rss_before_bytes": 66535424,
+          "rss_after_bytes": 108658688
+        }
+      ],
+      "retained_step_bytes": 10485830,
+      "result_count": 1,
+      "completed_steps": 10,
+      "commands_sent": 10,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "retain",
+        "response_bytes": 1048576,
+        "commands": 10,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 108707840,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/03-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "retain",
+          "elapsed_seconds": 0.7317049999983283,
+          "allocated_objects": 97045,
+          "rss_before_bytes": 34783232,
+          "rss_after_bytes": 192905216
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.009797000006074086,
+          "allocated_objects": 8,
+          "rss_before_bytes": 193069056,
+          "rss_after_bytes": 298106880
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.054330999992089346,
+          "allocated_objects": 20,
+          "rss_before_bytes": 298287104,
+          "rss_after_bytes": 508149760
+        }
+      ],
+      "retained_step_bytes": 104858300,
+      "result_count": 1,
+      "completed_steps": 100,
+      "commands_sent": 100,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "retain",
+        "response_bytes": 1048576,
+        "commands": 100,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 508182528,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/04-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "retain",
+          "elapsed_seconds": 0.029910999990534037,
+          "allocated_objects": 4139,
+          "rss_before_bytes": 34734080,
+          "rss_after_bytes": 44728320
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.0003789999900618568,
+          "allocated_objects": 20,
+          "rss_before_bytes": 45137920,
+          "rss_after_bytes": 49577984
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.001580000011017546,
+          "allocated_objects": 80,
+          "rss_before_bytes": 49758208,
+          "rss_after_bytes": 71024640
+        }
+      ],
+      "retained_step_bytes": 4194332,
+      "result_count": 4,
+      "completed_steps": 4,
+      "commands_sent": 4,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "retain",
+        "response_bytes": 1048576,
+        "commands": 1,
+        "concurrency": 4,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 71057408,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/05-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "retain",
+          "elapsed_seconds": 0.1259790000040084,
+          "allocated_objects": 16081,
+          "rss_before_bytes": 34799616,
+          "rss_after_bytes": 70467584
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.0011430000013206154,
+          "allocated_objects": 68,
+          "rss_before_bytes": 70647808,
+          "rss_after_bytes": 87949312
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.006047999995644204,
+          "allocated_objects": 320,
+          "rss_before_bytes": 88113152,
+          "rss_after_bytes": 151699456
+        }
+      ],
+      "retained_step_bytes": 16777328,
+      "result_count": 16,
+      "completed_steps": 16,
+      "commands_sent": 16,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "retain",
+        "response_bytes": 1048576,
+        "commands": 1,
+        "concurrency": 16,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 151715840,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/06-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "retain",
+          "elapsed_seconds": 0.37333299999590963,
+          "allocated_objects": 24825,
+          "rss_before_bytes": 34897920,
+          "rss_after_bytes": 91766784
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.00007900000491645187,
+          "allocated_objects": 8,
+          "rss_before_bytes": 91897856,
+          "rss_after_bytes": 93143040
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.0007469999982276931,
+          "allocated_objects": 20,
+          "rss_before_bytes": 93323264,
+          "rss_after_bytes": 95617024
+        }
+      ],
+      "retained_step_bytes": 1048583,
+      "result_count": 1,
+      "completed_steps": 1,
+      "commands_sent": 1,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "pty",
+        "phase": "retain",
+        "response_bytes": 1048576,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 95666176,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/07-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "retain",
+          "elapsed_seconds": 3.0203079999919282,
+          "allocated_objects": 196857,
+          "rss_before_bytes": 49741824,
+          "rss_after_bytes": 243138560
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.0006729999877279624,
+          "allocated_objects": 8,
+          "rss_before_bytes": 243187712,
+          "rss_after_bytes": 251674624
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.0026040000084321946,
+          "allocated_objects": 20,
+          "rss_before_bytes": 251723776,
+          "rss_after_bytes": 293879808
+        }
+      ],
+      "retained_step_bytes": 8388615,
+      "result_count": 1,
+      "completed_steps": 1,
+      "commands_sent": 1,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "pty",
+        "phase": "retain",
+        "response_bytes": 8388608,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 293912576,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/08-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "retain",
+          "elapsed_seconds": 3.7112810000107856,
+          "allocated_objects": 246802,
+          "rss_before_bytes": 34832384,
+          "rss_after_bytes": 154763264
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.0009069999941857532,
+          "allocated_objects": 8,
+          "rss_before_bytes": 154812416,
+          "rss_after_bytes": 165380096
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.004451000000699423,
+          "allocated_objects": 20,
+          "rss_before_bytes": 165478400,
+          "rss_after_bytes": 218120192
+        }
+      ],
+      "retained_step_bytes": 10485830,
+      "result_count": 1,
+      "completed_steps": 10,
+      "commands_sent": 10,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "pty",
+        "phase": "retain",
+        "response_bytes": 1048576,
+        "commands": 10,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 218152960,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/09-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "retain",
+          "elapsed_seconds": 1.5031710000039311,
+          "allocated_objects": 98930,
+          "rss_before_bytes": 34799616,
+          "rss_after_bytes": 170639360
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.0005729999975301325,
+          "allocated_objects": 20,
+          "rss_before_bytes": 170835968,
+          "rss_after_bytes": 175210496
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.0011569999915082008,
+          "allocated_objects": 80,
+          "rss_before_bytes": 175341568,
+          "rss_after_bytes": 175341568
+        }
+      ],
+      "retained_step_bytes": 4194332,
+      "result_count": 4,
+      "completed_steps": 4,
+      "commands_sent": 4,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "pty",
+        "phase": "retain",
+        "response_bytes": 1048576,
+        "commands": 1,
+        "concurrency": 4,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 175374336,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/10-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "response",
+          "elapsed_seconds": 0.007926000005681999,
+          "allocated_objects": 1036,
+          "rss_before_bytes": 35028992,
+          "rss_after_bytes": 37601280
+        }
+      ],
+      "retained_step_bytes": 0,
+      "result_count": 1,
+      "completed_steps": 0,
+      "commands_sent": 1,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "response",
+        "response_bytes": 1048576,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 37617664,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/11-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "response",
+          "elapsed_seconds": 0.05850600000121631,
+          "allocated_objects": 7308,
+          "rss_before_bytes": 49512448,
+          "rss_after_bytes": 69287936
+        }
+      ],
+      "retained_step_bytes": 0,
+      "result_count": 1,
+      "completed_steps": 0,
+      "commands_sent": 1,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "response",
+        "response_bytes": 8388608,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 69320704,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/12-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "render",
+          "elapsed_seconds": 0.09188899998844136,
+          "allocated_objects": 14988,
+          "rss_before_bytes": 34848768,
+          "rss_after_bytes": 37994496
+        }
+      ],
+      "retained_step_bytes": 0,
+      "result_count": 1,
+      "completed_steps": 0,
+      "commands_sent": 0,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "render",
+        "response_bytes": 1048576,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 38027264,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/13-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "render",
+          "elapsed_seconds": 0.7148469999956433,
+          "allocated_objects": 119638,
+          "rss_before_bytes": 49545216,
+          "rss_after_bytes": 69287936
+        }
+      ],
+      "retained_step_bytes": 0,
+      "result_count": 1,
+      "completed_steps": 0,
+      "commands_sent": 0,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "render",
+        "response_bytes": 8388608,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 69320704,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/14-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "clean",
+          "elapsed_seconds": 0.12333099999523256,
+          "allocated_objects": 15003,
+          "rss_before_bytes": 34799616,
+          "rss_after_bytes": 37961728
+        }
+      ],
+      "retained_step_bytes": 0,
+      "result_count": 1,
+      "completed_steps": 0,
+      "commands_sent": 0,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "clean",
+        "response_bytes": 1048576,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 38010880,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/15-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "clean",
+          "elapsed_seconds": 0.9918480000051204,
+          "allocated_objects": 119653,
+          "rss_before_bytes": 49528832,
+          "rss_after_bytes": 69304320
+        }
+      ],
+      "retained_step_bytes": 0,
+      "result_count": 1,
+      "completed_steps": 0,
+      "commands_sent": 0,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "clean",
+        "response_bytes": 8388608,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 69337088,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/16-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "parse",
+          "elapsed_seconds": 0.12569499999517575,
+          "allocated_objects": 58441,
+          "rss_before_bytes": 34799616,
+          "rss_after_bytes": 42074112
+        }
+      ],
+      "retained_step_bytes": 0,
+      "result_count": 1,
+      "completed_steps": 0,
+      "commands_sent": 0,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "parse",
+        "response_bytes": 1048576,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 42106880,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/17-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "parse",
+          "elapsed_seconds": 0.9283299999951851,
+          "allocated_objects": 447141,
+          "rss_before_bytes": 49496064,
+          "rss_after_bytes": 83410944
+        }
+      ],
+      "retained_step_bytes": 0,
+      "result_count": 1,
+      "completed_steps": 0,
+      "commands_sent": 0,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "parse",
+        "response_bytes": 8388608,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 83427328,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/18-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "collect",
+          "elapsed_seconds": 0.22394399999757297,
+          "allocated_objects": 34492,
+          "rss_before_bytes": 34799616,
+          "rss_after_bytes": 47480832
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.00008299999171867967,
+          "allocated_objects": 8,
+          "rss_before_bytes": 47939584,
+          "rss_after_bytes": 49201152
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.0003149999974993989,
+          "allocated_objects": 20,
+          "rss_before_bytes": 49364992,
+          "rss_after_bytes": 54870016
+        }
+      ],
+      "retained_step_bytes": 1048590,
+      "result_count": 1,
+      "completed_steps": 2,
+      "commands_sent": 2,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "collect",
+        "response_bytes": 1048576,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 54919168,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/19-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "collect",
+          "elapsed_seconds": 1.7589129999978468,
+          "allocated_objects": 272489,
+          "rss_before_bytes": 49790976,
+          "rss_after_bytes": 132792320
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.0005110000056447461,
+          "allocated_objects": 8,
+          "rss_before_bytes": 132956160,
+          "rss_after_bytes": 141541376
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.005965000003925525,
+          "allocated_objects": 20,
+          "rss_before_bytes": 141705216,
+          "rss_after_bytes": 175472640
+        }
+      ],
+      "retained_step_bytes": 8388622,
+      "result_count": 1,
+      "completed_steps": 2,
+      "commands_sent": 2,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "collect",
+        "response_bytes": 8388608,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 175505408,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/20-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "retain",
+          "elapsed_seconds": 0.10643899999558926,
+          "allocated_objects": 35524,
+          "rss_before_bytes": 34897920,
+          "rss_after_bytes": 57671680
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.0001230000052601099,
+          "allocated_objects": 8,
+          "rss_before_bytes": 57737216,
+          "rss_after_bytes": 57802752
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.0003400000132387504,
+          "allocated_objects": 20,
+          "rss_before_bytes": 57966592,
+          "rss_after_bytes": 63488000
+        }
+      ],
+      "retained_step_bytes": 1048583,
+      "result_count": 1,
+      "completed_steps": 1,
+      "commands_sent": 1,
+      "logged_bytes": 1270505,
+      "error_codes": [],
+      "sample": {
+        "transport": "fake",
+        "phase": "retain",
+        "response_bytes": 1048576,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "debug"
+      },
+      "peak_rss_bytes": 63504384,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/21-time.txt"
+    },
+    {
+      "metrics": [
+        {
+          "phase": "collect",
+          "elapsed_seconds": 0.5748069999972358,
+          "allocated_objects": 58259,
+          "rss_before_bytes": 34816000,
+          "rss_after_bytes": 101761024
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.0000779999973019585,
+          "allocated_objects": 8,
+          "rss_before_bytes": 101810176,
+          "rss_after_bytes": 101974016
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.0003200000064680353,
+          "allocated_objects": 20,
+          "rss_before_bytes": 102137856,
+          "rss_after_bytes": 103383040
+        }
+      ],
+      "retained_step_bytes": 1048590,
+      "result_count": 1,
+      "completed_steps": 2,
+      "commands_sent": 2,
+      "logged_bytes": 0,
+      "error_codes": [],
+      "sample": {
+        "transport": "pty",
+        "phase": "collect",
+        "response_bytes": 1048576,
+        "commands": 1,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default"
+      },
+      "peak_rss_bytes": 103432192,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-baseline/22-time.txt"
+    }
+  ],
+  "limits": [
+    "Synthetic data and local PTY only; no network",
+    "Samples run serially in separate processes with normal GC",
+    "Peak RSS is the external time command high-water measurement; it is not summed device or worker RSS",
+    "RSS endpoints are measured with ps outside each timed allocation interval",
+    "Fixture construction and connection precede phase timing but are included in whole-process peak RSS",
+    "Default logging matches Configuration defaults; debug case uses Logger and a counting sink",
+    "Full outputs and normal protocol validation are retained; sample output envelope is limited to 128 MiB"
+  ],
+  "finished_at": "2026-09-27T07:15:05Z"
+}

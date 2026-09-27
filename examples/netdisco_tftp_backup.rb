@@ -115,16 +115,17 @@ summary.delete(:devices)
 summary.merge!(server: server, local_tftp_root: local_tftp_root,
                report_location: batch.report_location, report_error: batch.report_error,
                outcomes: batch.outcomes.map do |outcome|
-                 remote_path = outcome.backup&.path || (outcome.device.tftp_filename if outcome.device.host)
+                 # 完成回执中的 nil 表示实际路径未确认，不能改用计划文件名核验服务器文件。
+                 remote_path = outcome.backup ? outcome.backup.path : (outcome.device.tftp_filename if outcome.device.host)
                  verified = false
                  bytes = nil
                  sha256 = nil
-                 if outcome.backup && local_tftp_root
+                 if outcome.backup && remote_path && local_tftp_root
                    candidate = File.join(local_tftp_root, remote_path)
                    verified = File.file?(candidate) && File.size(candidate).positive? && File.mtime(candidate).utc >= batch.started_at
                    bytes = File.size(candidate) if verified
                    sha256 = Digest::SHA256.file(candidate).hexdigest if verified
-                 elsif outcome.backup && !all_devices
+                 elsif outcome.backup && remote_path && !all_devices
                    output, _error, status = Open3.capture3("curl", "--silent", "--show-error", "--max-time", "10",
                                                            "--output", File::NULL, "--write-out", "%{size_download}",
                                                            "tftp://#{server}/#{remote_path}")
@@ -151,7 +152,7 @@ summary.fetch(:outcomes).each do |item|
   next unless item[:session_log]
 
   result = if item.fetch(:status) == :reported_with_error
-             "设备报告上传成功，但会话关闭时出错；请核对服务器文件"
+             "设备报告上传成功，但路径确认或收尾处理出错；请核对服务器文件"
            elsif item.fetch(:server_file_verified)
              "成功：服务器文件已核验"
            elsif item.fetch(:status) == :reported_uploaded
@@ -174,7 +175,7 @@ summary.fetch(:outcomes).each do |item|
   lines = [
     "备份结果：#{result}",
     "设备：#{(item[:name] || item.fetch(:vendor).to_s).gsub(/[[:cntrl:]]+/, " ")}（#{item.fetch(:host)}）",
-    "目标：#{server}/#{item.fetch(:remote_path)}"
+    "目标：#{server}/#{item.fetch(:remote_path) || "（实际路径未确认）"}"
   ]
   lines << "文件大小：#{item.fetch(:bytes)} 字节" if item[:bytes]
   lines << "SHA-256：#{item.fetch(:sha256)}" if item[:sha256]

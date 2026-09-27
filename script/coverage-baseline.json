@@ -1,0 +1,46 @@
+{
+  "source": "docs/optimization/NC-00-baseline.json",
+  "ruby": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]",
+  "groups": {
+    "核心引擎": {
+      "lines": {
+        "hit": 944,
+        "total": 999
+      },
+      "branches": {
+        "hit": 376,
+        "total": 440
+      }
+    },
+    "脱敏与错误（含 Redactor）": {
+      "lines": {
+        "hit": 102,
+        "total": 102
+      },
+      "branches": {
+        "hit": 19,
+        "total": 20
+      }
+    },
+    "批量并发": {
+      "lines": {
+        "hit": 45,
+        "total": 45
+      },
+      "branches": {
+        "hit": 7,
+        "total": 7
+      }
+    },
+    "library": {
+      "lines": {
+        "hit": 2969,
+        "total": 3091
+      },
+      "branches": {
+        "hit": 890,
+        "total": 1103
+      }
+    }
+  }
+}

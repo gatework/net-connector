@@ -2,6 +2,7 @@
 /.bundle/
 /vendor/
 /Gemfile.lock
+/gemfiles/*.lock
 
 # 构建、验证与设备运行产物。
 /pkg/

@@ -9,23 +9,23 @@ require_relative "support/fake_transport"
 class TextfsmTest < Minitest::Test
   def test_command_uses_vendor_and_command_index
     output = "Interface IP-Address OK? Method Status Protocol\r\n" \
-             "GigabitEthernet0/0 192.0.2.1 YES manual up up\r\n" \
-             "GigabitEthernet0/1 unassigned YES unset administratively down down\r\nrouter#"
+      "GigabitEthernet0/0 192.0.2.1 YES manual up up\r\n" \
+      "GigabitEthernet0/1 unassigned YES unset administratively down down\r\nrouter#"
     device = Net::Connector.build(:cisco_ios, host: "192.0.2.1", username: "admin",
                                   transport: ConnectorFake.new("router#", output))
 
     assert_equal [
-      { "INTERFACE" => "GigabitEthernet0/0", "IP_ADDRESS" => "192.0.2.1", "STATUS" => "up", "PROTOCOL" => "up" },
-      { "INTERFACE" => "GigabitEthernet0/1", "IP_ADDRESS" => "unassigned",
-        "STATUS" => "administratively down", "PROTOCOL" => "down" }
-    ], device.parse_command("show ip interface brief")
+                   { "INTERFACE" => "GigabitEthernet0/0", "IP_ADDRESS" => "192.0.2.1", "STATUS" => "up", "PROTOCOL" => "up" },
+                   { "INTERFACE" => "GigabitEthernet0/1", "IP_ADDRESS" => "unassigned",
+                     "STATUS" => "administratively down", "PROTOCOL" => "down" }
+                 ], device.parse_command("show ip interface brief")
   ensure
     device&.close
   end
 
   def test_running_and_saved_config_use_the_same_explicit_template
     config = "hostname edge\ninterface GigabitEthernet0/0\n description uplink\n!\n" \
-             "interface GigabitEthernet0/1\n shutdown\n!\n"
+      "interface GigabitEthernet0/1\n shutdown\n!\n"
     device = Net::Connector.build(:cisco_ios, host: "192.0.2.1", username: "admin", transport: ConnectorFake.new)
     device.define_singleton_method(:running_config) { Net::Connector::Result.new(config: config) }
     expected = [

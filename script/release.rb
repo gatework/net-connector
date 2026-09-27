@@ -187,7 +187,7 @@ class Release
         entry = release.fetch("assets").find { |item| item.fetch("name") == File.basename(asset) }
         if entry && entry.fetch("state") != "uploaded"
           raise "Incomplete GitHub asset: #{entry.fetch("name")}; stop any active upload, remove the incomplete " \
-                "asset in GitHub Release, then retry with the same artifact"
+                  "asset in GitHub Release, then retry with the same artifact"
         end
         entry
       end

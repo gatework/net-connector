@@ -1,0 +1,170 @@
+{
+  "schema": 1,
+  "tasks": [
+    "NC-01: published shared Redactor dependency",
+    "NC-15: dependency documentation"
+  ],
+  "measured_at": "2026-09-27T06:50:57Z",
+  "status": "local_ci_verified_with_published_expect_0_5_0; full_plan_active",
+  "base_commit": "3192377190fa8b28334e1f39007789ef2ae5cc6e",
+  "runtime": {
+    "ruby": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]",
+    "platform": "arm64-darwin25",
+    "bundler": "4.0.20"
+  },
+  "dependency_requirement": "~> 0.5.0",
+  "rubygems_metadata": {
+    "name": "expect-pty",
+    "version": "0.5.0",
+    "version_created_at": "2026-09-27T06:38:28.944Z",
+    "sha": "3f132008607c12122650b80cb3562c14ae52b55c22bbd074d25dbf14c63f80cf",
+    "gem_uri": "https://rubygems.org/gems/expect-pty-0.5.0.gem",
+    "source_code_uri": "https://github.com/gatework/expect-ruby"
+  },
+  "official_api": {
+    "version": "0.5.0",
+    "sha256": "3f132008607c12122650b80cb3562c14ae52b55c22bbd074d25dbf14c63f80cf",
+    "required_ruby_version": ">= 3.2",
+    "public_api": true,
+    "whole_text": "passed",
+    "fragmented_stream": "passed",
+    "redactor_sha256": "ebb4b0b701962bb999155eb34617b9bbaa673e8c66be28459d27d7549ea7cc92"
+  },
+  "actual_loaded_dependency": {
+    "version": "0.5.0",
+    "loaded_from": "/opt/homebrew/lib/ruby/gems/4.0.0/gems/expect-pty-0.5.0",
+    "redactor_source": "/opt/homebrew/lib/ruby/gems/4.0.0/gems/expect-pty-0.5.0/lib/expect/redactor.rb",
+    "cache_file": "/opt/homebrew/lib/ruby/gems/4.0.0/cache/expect-pty-0.5.0.gem",
+    "cache_sha256": "3f132008607c12122650b80cb3562c14ae52b55c22bbd074d25dbf14c63f80cf",
+    "public_api": true,
+    "shared_filter": "Expect::Redactor"
+  },
+  "commands": [
+    {
+      "command": "bundle update expect-pty --conservative",
+      "exit_code": 0,
+      "log": "tmp/nc-optimization/expect-050-bundle.log",
+      "other_dependency_versions_unchanged": true
+    },
+    {
+      "command": "bundle exec ruby -Ilib:test -e 'ARGV.each { |file| require_relative file }' test/redaction_contract_test.rb test/output_sensitive_test.rb test/transport_test.rb test/module_loading_test.rb",
+      "exit_code": 0,
+      "log": "tmp/nc-optimization/expect-050-focused.log",
+      "tests": {
+        "runs": 56,
+        "assertions": 875,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    },
+    {
+      "command": "bundle exec rake ci",
+      "exit_code": 0,
+      "log": "tmp/nc-optimization/expect-050-ci.log",
+      "log_sha256": "3baf05bbdb058cc0515243e71164ba42cd5a5f3786a9a6ebe19d3f913ad50b4a",
+      "tests": {
+        "runs": 404,
+        "assertions": 4390,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "ruby_lint_files": 151,
+      "workflow_lint": "passed",
+      "source_scan": "passed",
+      "history_scan": "passed",
+      "package_scan": "passed",
+      "installed_smokes": [
+        "plain",
+        "bundler"
+      ]
+    }
+  ],
+  "coverage": {
+    "loaded_files": 85,
+    "total_files": 98,
+    "lines_hit": 3675,
+    "lines_total": 3808,
+    "branches_hit": 1212,
+    "branches_total": 1452
+  },
+  "dependencies": {
+    "ast": "2.4.3",
+    "bundler": "4.0.20",
+    "date": "3.5.1",
+    "digest": "3.2.1",
+    "english": "0.8.1",
+    "expect-pty": "0.5.0",
+    "fileutils": "1.8.0",
+    "forwardable": "1.4.0",
+    "io-console": "0.9.4",
+    "io-wait": "0.4.0",
+    "ipaddr": "1.2.9",
+    "json": "2.21.2",
+    "language_server-protocol": "3.17.0.6",
+    "lint_roller": "1.1.0",
+    "logger": "1.7.0",
+    "minitest": "5.27.0",
+    "net-connector": "0.4.2",
+    "net-http": "0.9.1",
+    "open3": "0.2.1",
+    "openssl": "4.0.2",
+    "optparse": "0.8.1",
+    "parallel": "1.28.0",
+    "parser": "3.3.12.0",
+    "prism": "1.9.0",
+    "racc": "1.8.1",
+    "rainbow": "3.1.1",
+    "rake": "13.4.2",
+    "regexp_parser": "2.13.0",
+    "rubocop": "1.91.0",
+    "rubocop-ast": "1.50.0",
+    "ruby-progressbar": "1.13.0",
+    "securerandom": "0.4.1",
+    "shellwords": "0.2.2",
+    "stringio": "3.2.0",
+    "strscan": "3.1.8",
+    "tempfile": "0.3.1",
+    "textfsm": "0.2.0",
+    "time": "0.4.2",
+    "timeout": "0.6.1",
+    "tmpdir": "0.3.1",
+    "unicode-display_width": "3.3.0",
+    "unicode-emoji": "4.3.0",
+    "uri": "1.1.1",
+    "yaml": "0.4.0"
+  },
+  "artifacts": {
+    "net_connector": {
+      "path": "tmp/nc-optimization/net-connector-expect-0.5.0.gem",
+      "sha256": "d2657be1224f69ea2c74f55c52ee8f17e7751589a9a6deed7a07a9139fbfc005"
+    },
+    "expect_published": {
+      "path": "tmp/nc-optimization/expect-pty-0.5.0-published.gem",
+      "sha256": "3f132008607c12122650b80cb3562c14ae52b55c22bbd074d25dbf14c63f80cf"
+    }
+  },
+  "source_sha256": {
+    "net-connector.gemspec": "deec95243c8024052264cc5554e9f6d413e3e529048ca22aba37aff011628518",
+    "README.md": "ea04191b86c0ac59ddc658481cc8aafa0c3aa8d7aa915aef9ae1853a983847a3",
+    "CHANGELOG.md": "a8a99e525ff439ff6c8813dee01f936b3ce8a78ca800a014a4e9fe2adebdf4f8",
+    "docs/architecture.md": "24ed860961e06a61508174023ec3db910b3d33e1cae4766bc8136eda08db73c6",
+    "docs/VERIFICATION.md": "e9e876c4d2a43d2b9eb758da3809fb3285b7ffcc9157e1eab265f9ca1805fdf1",
+    "lib/net/connector/engine/errors.rb": "72d6f746cdbbc8786e40767578f396b12f5d782105795f7a44aed8ac5abeb379",
+    "lib/net/connector/engine/log.rb": "d0ea46f2e45f423b6901c46b38d9dfd37ccf6f4c96d7f665716bef2f08ced6d2",
+    "test/redaction_contract_test.rb": "ec15a4f6028f76a2286cd472bfdbb0e8b88f3793720706a5d11eef15431da51a",
+    "script/smoke.rb": "c897bd74fbd44c136cc7fdb7e7cd712a7f90c793917b73a01e6d2edd4eb01e13"
+  },
+  "worktree_preservation": {
+    "other_net_connector_tracked_patches_unchanged": 57,
+    "expect_worktree_unchanged": true,
+    "historical_artifacts_verified": 8
+  },
+  "limits": [
+    "macOS arm64 / Ruby 4.0.6 local validation only; no remote CI matrix",
+    "synthetic fixtures and local PTY only; no production devices",
+    "no source VERSION changes, commits, push or publication",
+    "NC-07C and remaining NC-09 through NC-15 work continues"
+  ]
+}

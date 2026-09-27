@@ -1,0 +1,297 @@
+{
+  "schema": 1,
+  "tasks": [
+    "NC-13",
+    "NC-14",
+    "NC-15"
+  ],
+  "measured_at": "2026-09-27T07:54:43.321604+00:00",
+  "status": "required_local_scope_completed; NC-07C and NC-12 deferred as optional extensions",
+  "base_commit": "3192377190fa8b28334e1f39007789ef2ae5cc6e",
+  "ruby": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]",
+  "platform": "arm64-darwin25",
+  "commands": [
+    {
+      "command": "bundle exec rake ci",
+      "exit_code": 0,
+      "log": "tmp/nc-optimization/nc13-15-ci-final.log",
+      "log_sha256": "43d8c77642f78f2159cecf71ce3dd4e68c225cde294d732322aa389e19a81551",
+      "tests": {
+        "runs": 442,
+        "assertions": 4758,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "installed_smokes": [
+        "plain",
+        "bundler"
+      ],
+      "ruby_lint_files": 160,
+      "workflow_lint": "passed",
+      "source_scan": "passed",
+      "history_scan": "passed",
+      "package_scan": "passed",
+      "benchmark_smoke_samples": 9,
+      "package_files": 120
+    },
+    {
+      "command": "BUNDLE_GEMFILE=gemfiles/minimum.gemfile bundle install --local",
+      "exit_code": 0,
+      "log": "tmp/nc-optimization/nc13-minimum-install.log",
+      "log_sha256": "5d8c36390a907798adbb109c3ba06a233c29f081fb9cfe1428d055c466918186"
+    },
+    {
+      "command": "BUNDLE_GEMFILE=gemfiles/minimum.gemfile bundle exec rake test package:verify",
+      "exit_code": 0,
+      "log": "tmp/nc-optimization/nc13-minimum.log",
+      "log_sha256": "4ea265bb297f9613bba5df62bd46a5dbb864479c83ff609e5f8551b69b364530",
+      "tests": {
+        "runs": 442,
+        "assertions": 4758,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "installed_smokes": [
+        "plain",
+        "bundler"
+      ]
+    }
+  ],
+  "reproductions": [
+    {
+      "log": "tmp/nc-optimization/nc13-coverage-before.log",
+      "exit_code": 1,
+      "reason": "missing structured coverage and ratchet interface; three new tests errored"
+    },
+    {
+      "log": "tmp/nc-optimization/nc13-15-ci.log",
+      "exit_code": 1,
+      "tests_passed": true,
+      "reason": "ratchet correctly failed errors branch ratio 15/16 below NC-00 19/20; final test protects pending stream while nil/empty/repeated registration is ignored"
+    }
+  ],
+  "coverage": {
+    "loaded_files": 86,
+    "total_files": 99,
+    "coverage": {
+      "lines": {
+        "hit": 3788,
+        "total": 3916
+      },
+      "branches": {
+        "hit": 1260,
+        "total": 1498
+      }
+    },
+    "groups": {
+      "核心引擎": {
+        "lines": {
+          "hit": 980,
+          "total": 1023
+        },
+        "branches": {
+          "hit": 410,
+          "total": 462
+        }
+      },
+      "脱敏与错误（含 Redactor）": {
+        "lines": {
+          "hit": 89,
+          "total": 89
+        },
+        "branches": {
+          "hit": 16,
+          "total": 16
+        }
+      },
+      "批量并发": {
+        "lines": {
+          "hit": 47,
+          "total": 47
+        },
+        "branches": {
+          "hit": 7,
+          "total": 7
+        }
+      }
+    },
+    "ratchet": {
+      "status": "passed",
+      "regressions": []
+    },
+    "unloaded_files": [
+      "net/connector/operations/running_config/cisco.rb",
+      "net/connector/operations/running_config/hillstone.rb",
+      "net/connector/operations/running_config/palo_alto.rb",
+      "net/connector/operations/running_config/strategy.rb",
+      "net/connector/operations/tftp/cisco_ios.rb",
+      "net/connector/operations/tftp/cisco_nxos.rb",
+      "net/connector/operations/tftp/h3c.rb",
+      "net/connector/operations/tftp/hillstone.rb",
+      "net/connector/operations/tftp/huawei.rb",
+      "net/connector/operations/tftp/palo_alto.rb",
+      "net/connector/operations/tftp/radware.rb",
+      "net/connector/version.rb",
+      "net-connector.rb"
+    ],
+    "reports": [
+      {
+        "path": "docs/optimization/coverage/NC-13-normal.json",
+        "sha256": "f23fc7bd5beb6e3dfac58826809d50beae422078cb8692b9fcb9137bb48584da"
+      },
+      {
+        "path": "docs/optimization/coverage/NC-13-minimum.json",
+        "sha256": "80ccb6db0d665ce89a0cc9ef1a6647d08fca30c12fdedc585ddfaed0a8aa7e0b"
+      }
+    ]
+  },
+  "dependencies": {
+    "ast": "2.4.3",
+    "bundler": "4.0.20",
+    "date": "3.5.1",
+    "digest": "3.2.1",
+    "english": "0.8.1",
+    "expect-pty": "0.5.0",
+    "fileutils": "1.8.0",
+    "forwardable": "1.4.0",
+    "io-console": "0.9.4",
+    "io-wait": "0.4.0",
+    "ipaddr": "1.2.9",
+    "json": "2.21.2",
+    "language_server-protocol": "3.17.0.6",
+    "lint_roller": "1.1.0",
+    "logger": "1.7.0",
+    "minitest": "5.27.0",
+    "net-connector": "0.4.2",
+    "net-http": "0.9.1",
+    "open3": "0.2.1",
+    "openssl": "4.0.2",
+    "optparse": "0.8.1",
+    "parallel": "1.28.0",
+    "parser": "3.3.12.0",
+    "prism": "1.9.0",
+    "racc": "1.8.1",
+    "rainbow": "3.1.1",
+    "rake": "13.4.2",
+    "regexp_parser": "2.13.0",
+    "rubocop": "1.91.0",
+    "rubocop-ast": "1.50.0",
+    "ruby-progressbar": "1.13.0",
+    "securerandom": "0.4.1",
+    "shellwords": "0.2.2",
+    "stringio": "3.2.0",
+    "strscan": "3.1.8",
+    "tempfile": "0.3.1",
+    "textfsm": "0.2.0",
+    "time": "0.4.2",
+    "timeout": "0.6.1",
+    "tmpdir": "0.3.1",
+    "unicode-display_width": "3.3.0",
+    "unicode-emoji": "4.3.0",
+    "uri": "1.1.1",
+    "yaml": "0.4.0"
+  },
+  "minimum_dependencies": {
+    "ast": "2.4.3",
+    "bundler": "4.0.20",
+    "date": "3.5.1",
+    "digest": "3.2.1",
+    "english": "0.8.1",
+    "etc": "1.4.6",
+    "expect-pty": "0.5.0",
+    "fileutils": "1.8.0",
+    "forwardable": "1.4.0",
+    "io-console": "0.9.4",
+    "io-wait": "0.4.0",
+    "ipaddr": "1.2.9",
+    "json": "2.21.2",
+    "language_server-protocol": "3.17.0.6",
+    "lint_roller": "1.1.0",
+    "logger": "1.7.0",
+    "minitest": "5.27.0",
+    "net-connector": "0.4.2",
+    "net-http": "0.9.1",
+    "open3": "0.2.1",
+    "openssl": "4.0.2",
+    "optparse": "0.8.1",
+    "parallel": "1.28.0",
+    "parser": "3.3.12.0",
+    "prism": "1.9.0",
+    "racc": "1.8.1",
+    "rainbow": "3.1.1",
+    "rake": "13.4.2",
+    "regexp_parser": "2.13.0",
+    "rubocop": "1.91.0",
+    "rubocop-ast": "1.50.0",
+    "ruby-progressbar": "1.13.0",
+    "securerandom": "0.4.1",
+    "shellwords": "0.2.2",
+    "stringio": "3.2.0",
+    "strscan": "3.1.8",
+    "tempfile": "0.3.1",
+    "textfsm": "0.2.0",
+    "time": "0.4.2",
+    "timeout": "0.6.1",
+    "tmpdir": "0.3.1",
+    "unicode-display_width": "3.3.0",
+    "unicode-emoji": "4.3.0",
+    "uri": "1.1.1",
+    "yaml": "0.4.0"
+  },
+  "actual_expect": {
+    "version": "0.5.0",
+    "path": "/opt/homebrew/lib/ruby/gems/4.0.0/gems/expect-pty-0.5.0",
+    "cache_sha256": "3f132008607c12122650b80cb3562c14ae52b55c22bbd074d25dbf14c63f80cf",
+    "redactor_sha256": "ebb4b0b701962bb999155eb34617b9bbaa673e8c66be28459d27d7549ea7cc92",
+    "stream_class": "Expect::Redactor"
+  },
+  "artifacts": {
+    "net_connector": {
+      "path": "tmp/nc-optimization/net-connector-nc13-nc15.gem",
+      "sha256": "3c11106a805e68bc24418553c478671f7d883f943312403391b44327bf305ae6"
+    },
+    "minimum_artifact_identical": true
+  },
+  "source_sha256": {
+    "docs/optimization/README.md": "4788eef739562999695886671db4199fddc04bd06e9174e9dff448f355f57467",
+    "script/coverage_report.rb": "ca064f0682d7a560c7bdd1557782c40b9790d04ea7edec51c0f24c2b60e8d0c5",
+    "test/coverage_test.rb": "97e12d655f151c23651401f2812e693c24ee43145325aa532154c54c2fd7f484",
+    ".github/workflows/ci.yml": "ee4678b173dfef4896410837dcdcbc8e0930d22b0b096cdd37359e9ed5001c6f",
+    ".gitignore": "b6d286d32e3a5e9b729945cdd0e47fd275ab07049c5019c68de18b11b56974a9",
+    ".rubocop.yml": "25c67d6469dea625b9dc595a2181886c709ed67c7fed6b1114b79fed7ff2d866",
+    "CHANGELOG.md": "e69f9fff7b6f713b80e255e1a31ced008e167f9d2ebf96302a5be0fdaf2c9c6c",
+    "docs/VERIFICATION.md": "ff6f76e99fe4e3c763efdbc1b297658d4c712b20a4a512776644fab50309786a",
+    "docs/architecture.md": "edb240d5777bc657f909ba375e7594cd75d84d5a248e6ce1cb050461cec00502",
+    "script/coverage.rb": "38d7730eb7cb919b427fb4caf42a9414dff0a33a80215d07c6af7674dabaee2a",
+    "script/security.rb": "6379c02741b6c6cea6bf45dd6b5f8d37468b3c7f32ac4f7db1389d090697ba5c",
+    "test/redaction_contract_test.rb": "11e46390a6f6877ab105f4da5ec7eeb9edf0d070ae683b5f9a3a7e26625a20cc",
+    "test/topology_test.rb": "d5612f81b54f87593ed2de01d19f5de9feed8d941432c9bf5d3f0c8be5a1df80",
+    "gemfiles/minimum.gemfile": "00a4f1087e341957947761518e8d73775a4f94182d250695d3c1239dbf0fe879",
+    "script/coverage-baseline.json": "2c0ab001ced595f76dc4043eb6c51ccd95cb69f3e83ae6f5ad2daaf122cdb26b",
+    "test/fixtures/README.md": "db29d69856b9277fc55a9f81f5d9aa9d9b2d4f9d2f5e38bbeba232c5fc8c6730",
+    "docs/optimization/FINAL-AUDIT.md": "2b08b85b7fedc28553d6280b466f27a7c7dd60e3edba569acc58980a97672b99"
+  },
+  "worktree_preservation": {
+    "other_existing_source_files_unchanged": 222,
+    "existing_source_files_intentionally_changed": 13,
+    "original_VERSION_patch_unchanged": true,
+    "staged_changes": false,
+    "historical_gem_archives_verified": 12,
+    "expect_repository_edits_by_this_batch": 0,
+    "expect_parallel_work": "new changes detected independently; not reset, overwritten or loaded for this validation"
+  },
+  "deferred": {
+    "NC-07C": "optional server verifier; no device/target/version association protocol supplied; default device_reported preserved",
+    "NC-12": "optional cooperative cancellation and batch deadline; existing interruption cleanup retained, no new cancellation guarantee",
+    "source_encoding": "conditional extension awaits an actual non-UTF-8 device sample"
+  },
+  "validation_limits": [
+    "Local macOS arm64 Ruby 4.0.6 only. CI workflow linted, remote matrix not run under local-only authorization.",
+    "No real devices, credentials, save/commit, TFTP server, filesystem crash or network-filesystem certification.",
+    "No production performance percentage claim, automatic retries, rollback, VERSION changes, commits, pushes or releases.",
+    "NC-00 has group and library aggregate data only; per-file historical floors were not invented."
+  ],
+  "final_security_log": "tmp/nc-optimization/final-security.log"
+}

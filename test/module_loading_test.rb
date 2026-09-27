@@ -11,6 +11,17 @@ class ModuleLoadingTest < Minitest::Test
               "cisco_nxos" => "CiscoNxos", "huawei" => "Huawei", "hillstone" => "Hillstone",
               "palo_alto" => "PaloAlto", "radware" => "Radware" }.freeze
 
+  def test_legacy_engine_entry_points_share_the_public_device_classes
+    require_relative "../lib/net/connector"
+    base = Net::Connector::Base
+    profile = Net::Connector::Profile
+    require_relative "../lib/net/connector/engine/base"
+    require_relative "../lib/net/connector/engine/profile"
+    require_relative "../lib/net/connector/engine"
+    assert_same base, Net::Connector::Base
+    assert_same profile, Net::Connector::Profile
+  end
+
   def test_engine_core_has_no_device_or_business_dependencies
     result = isolated(<<~RUBY)
       require "net/connector/engine/core"
@@ -48,6 +59,38 @@ class ModuleLoadingTest < Minitest::Test
       assert_empty loaded - allowed, vendor
       refute result.fetch("features").any? { |path| path.include?("/textfsm") }, vendor
     end
+  end
+
+  def test_netdisco_and_offline_export_defer_textfsm_until_actual_parsing
+    result = isolated(<<~'RUBY')
+      require "net/connector/netdisco"
+      require "tmpdir"
+      require "stringio"
+      parser_loaded = -> { $LOADED_FEATURES.any? { |path| path.include?("/textfsm") } }
+      loaded_at_entry = parser_loaded.call
+      Dir.mktmpdir do |directory|
+        config = "interface Ethernet1/1\n description uplink\n!\n"
+        File.binwrite(File.join(directory, "192.0.2.1.txt"), config)
+        output = StringIO.new
+        errors = StringIO.new
+        status = Net::Connector::Netdisco::CLI.new(
+          argv: ["--export", "192.0.2.1", "--directory", directory], env: {}, output: output, error: errors,
+          fleet_factory: ->(*) { raise "offline export must not build Fleet" }
+        ).run
+        loaded_after_export = parser_loaded.call
+        saved = Net::Connector::Operations::SavedConfig.new(directory: directory)
+        rows = saved.parse(host: "192.0.2.1", template: "cisco_ios_running_config_interfaces.textfsm")
+        puts JSON.generate(entry: loaded_at_entry, exported: loaded_after_export, parsed: parser_loaded.call,
+                           status: status, errors: errors.string, exact_export: output.string == config, rows: rows)
+      end
+    RUBY
+    refute result.fetch("entry")
+    refute result.fetch("exported")
+    assert result.fetch("parsed")
+    assert_equal 0, result.fetch("status")
+    assert_empty result.fetch("errors")
+    assert result.fetch("exact_export")
+    assert_equal [{ "INTERFACE" => "Ethernet1/1", "DESCRIPTION" => "uplink" }], result.fetch("rows")
   end
 
   def test_legacy_paths_and_constants_resolve_to_the_same_implementations_in_both_load_orders

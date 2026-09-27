@@ -1,0 +1,168 @@
+{
+  "schema": 1,
+  "tasks": [
+    "NC-00",
+    "NC-01"
+  ],
+  "measured_at": "2026-09-27T04:12:00Z",
+  "status": "local_patch_validated; released_dependency_API_not_available; full_plan_active",
+  "commands": [
+    {
+      "command": "ruby tmp/nc-optimization/with_local_expect.rb exec rake ci",
+      "cwd": "/Users/crate/Works/ruby/net-connector",
+      "exit_code": 0,
+      "tests": {
+        "runs": 313,
+        "assertions": 2815,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "log": "tmp/nc-optimization/shared-redactor-ci.log"
+    },
+    {
+      "command": "zsh -ic 'script/ci'",
+      "cwd": "/Users/crate/Works/ruby/expect",
+      "exit_code": 0,
+      "tests": {
+        "runs": 330,
+        "assertions": 1894,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "log": "tmp/nc-optimization/expect-ci.log"
+    },
+    {
+      "command": "ruby tmp/nc-optimization/with_local_expect.rb exec ruby -Ilib:test test/redaction_contract_test.rb",
+      "exit_code": 0,
+      "tests": {
+        "runs": 20,
+        "assertions": 204,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      }
+    },
+    {
+      "command": "git diff --check (both repositories)",
+      "exit_code": 0
+    }
+  ],
+  "coverage": {
+    "loaded_files": 78,
+    "total_files": 91,
+    "lines_hit": 2974,
+    "lines_total": 3091,
+    "branches_hit": 902,
+    "branches_total": 1109,
+    "unloaded_files": [
+      "net/connector/operations/running_config/cisco.rb",
+      "net/connector/operations/running_config/hillstone.rb",
+      "net/connector/operations/running_config/palo_alto.rb",
+      "net/connector/operations/running_config/strategy.rb",
+      "net/connector/operations/tftp/cisco_ios.rb",
+      "net/connector/operations/tftp/cisco_nxos.rb",
+      "net/connector/operations/tftp/h3c.rb",
+      "net/connector/operations/tftp/hillstone.rb",
+      "net/connector/operations/tftp/huawei.rb",
+      "net/connector/operations/tftp/palo_alto.rb",
+      "net/connector/operations/tftp/radware.rb",
+      "net/connector/version.rb",
+      "net-connector.rb"
+    ]
+  },
+  "dependencies": {
+    "ast": "2.4.3",
+    "bundler": "4.0.20",
+    "date": "3.5.1",
+    "digest": "3.2.1",
+    "english": "0.8.1",
+    "expect-pty": "0.4.0",
+    "fileutils": "1.8.0",
+    "forwardable": "1.4.0",
+    "io-console": "0.9.4",
+    "io-wait": "0.4.0",
+    "ipaddr": "1.2.9",
+    "json": "2.21.2",
+    "language_server-protocol": "3.17.0.6",
+    "lint_roller": "1.1.0",
+    "logger": "1.7.0",
+    "minitest": "5.27.0",
+    "net-connector": "0.4.2",
+    "net-http": "0.9.1",
+    "open3": "0.2.1",
+    "openssl": "4.0.2",
+    "optparse": "0.8.1",
+    "parallel": "1.28.0",
+    "parser": "3.3.12.0",
+    "prism": "1.9.0",
+    "racc": "1.8.1",
+    "rainbow": "3.1.1",
+    "rake": "13.4.2",
+    "regexp_parser": "2.13.0",
+    "rubocop": "1.91.0",
+    "rubocop-ast": "1.50.0",
+    "ruby-progressbar": "1.13.0",
+    "securerandom": "0.4.1",
+    "shellwords": "0.2.2",
+    "stringio": "3.2.0",
+    "strscan": "3.1.8",
+    "tempfile": "0.3.1",
+    "textfsm": "0.2.0",
+    "time": "0.4.2",
+    "timeout": "0.6.1",
+    "tmpdir": "0.3.1",
+    "unicode-display_width": "3.3.0",
+    "unicode-emoji": "4.3.0",
+    "uri": "1.1.1",
+    "yaml": "0.4.0"
+  },
+  "artifacts": {
+    "net_connector": {
+      "path": "tmp/nc-optimization/net-connector-nc01.gem",
+      "sha256": "ebd3cf2165e1ad349e964da455a087908cc1e8d7556a697c26e61b565533477c"
+    },
+    "expect_local_patch": {
+      "path": "tmp/nc-optimization/expect-pty-0.4.0-local.gem",
+      "sha256": "e9f4eb7447bb467b508f374eb6e97c87a4945158bd88e5cfc84e657ad330831f"
+    },
+    "expect_published": {
+      "path": "tmp/nc-optimization/expect-pty-0.4.0-published.gem",
+      "sha256": "dd2788f7608c49c0e5c2e6311990febf6a6f7888cdab80db2587d3909fe554e9"
+    }
+  },
+  "dependency_library_files_verified_against_source": 15,
+  "dependency_source_sha256": "ebb4b0b701962bb999155eb34617b9bbaa673e8c66be28459d27d7549ea7cc92",
+  "source_sha256": {
+    "lib/net/connector/device/base.rb": "60d1456835ca9159227b05f15cb86653bfa2a0c8249885e2c418819bba527e63",
+    "lib/net/connector/device/running_config.rb": "017b13dba9b9e4d8be5f6b75102a1365d36af232cfa995b59521ed850c308cb4",
+    "lib/net/connector/engine/command.rb": "c07c949a14ae91fe4d5e2a304de1c2bcd294cf156bb0a824d666f0ed4c19d7b5",
+    "lib/net/connector/engine/errors.rb": "72d6f746cdbbc8786e40767578f396b12f5d782105795f7a44aed8ac5abeb379",
+    "lib/net/connector/engine/log.rb": "d0ea46f2e45f423b6901c46b38d9dfd37ccf6f4c96d7f665716bef2f08ced6d2",
+    "lib/net/connector/engine/session.rb": "99fb6518c240c626d277be4b4714d0ee9205dc3518fc507143c8d58cf47a497f",
+    "test/output_sensitive_test.rb": "6cf23cc70b10f64ac69eebfa9fc2143b8e4601df0df330fb51a32fa3f6f64f0e",
+    "test/redaction_contract_test.rb": "ec15a4f6028f76a2286cd472bfdbb0e8b88f3793720706a5d11eef15431da51a",
+    "test/transport_test.rb": "6ac4a89b1e0318e35d27f2984f7f4b60d6d181aaed4b6bc59896ec0187829c31",
+    "script/smoke.rb": "a6da3b70ff7648ea9f77f3ea4c88c822156db703a668d4b8cf7886ef180067a4",
+    "net-connector.gemspec": "61eb13a138600e852b4c698f4ee06010103ba792b5ee1786fb5aa40c19371580"
+  },
+  "source_preservation": {
+    "untouched_net_connector_initial_tracked_patches": 28,
+    "expect_initial_tracked_patches": 8
+  },
+  "released_dependency_check": {
+    "version": "0.4.0",
+    "download": "https://rubygems.org/downloads/expect-pty-0.4.0.gem",
+    "published_at": "2026-09-27T03:58:35.418Z",
+    "public_redactor_api": false,
+    "direct_package_probe": "LoadError before constructing a connector redaction scope, as expected",
+    "release_gate": "publish upstream public API, select its actual minimum version, rerun against official package"
+  },
+  "limits": [
+    "macOS arm64 / Ruby 4.0.6 only",
+    "no real device or production credentials",
+    "no push, PR, tag, gem publication or source VERSION edits",
+    "NC-02 through NC-14 remain deferred except supporting privacy tests and existing local gates"
+  ]
+}

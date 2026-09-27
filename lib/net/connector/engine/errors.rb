@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
+require "expect/redactor"
+
 module Net
   module Connector
-    # 操作错误携带已脱敏上下文；原始配置只存在于明确的结果或日志中。
+    # 操作错误携带已脱敏上下文；敏感配置正文只存在于明确返回的业务结果中。
     class Error < StandardError
       attr_reader :code, :host, :phase, :command, :output, :source, :line, :underlying
 
@@ -48,6 +50,8 @@ module Net
 
     class OutputLimitExceeded < Error; end
 
+    class ScriptOutputLimitExceeded < OutputLimitExceeded; end
+
     class SessionBusy < Error; end
 
     class UnsupportedOperation < Error; end
@@ -72,10 +76,16 @@ module Net
       def inspect = "#<#{self.class} type=#{type}>"
     end
 
-    # 每个会话独立保存脱敏词，包括配置凭据和动态认证响应。
+    # 管理连接器的秘密作用域和输出敏感性；字节过滤统一委托给 expect-pty。
     class Redactor
+      MASK = "[REDACTED]".b.freeze
+
       # 保存初始凭据，并建立第一版脱敏词表。
       def initialize(*secrets)
+        unless Expect.constants(false).include?(:Redactor) && Expect::Redactor.respond_to?(:redact)
+          raise LoadError, "net-connector requires expect-pty with the public Expect::Redactor API"
+        end
+
         @configured = secrets.compact.map(&:b).map(&:freeze).freeze
         reset
       end
@@ -83,9 +93,10 @@ module Net
       # 重置动态词表，同时保留配置中的固定凭据。
       def reset
         @secrets = []
-        @pattern = nil
+        @patterns = nil
         @scoped = false
         @sensitive = false
+        @output_sensitive = false
         @configured.each { |secret| remember(secret) }
       end
 
@@ -94,18 +105,20 @@ module Net
         return yield if reuse && @scoped
 
         previous = @secrets
-        previous_pattern = @pattern
+        previous_patterns = @patterns
         previous_scoped = @scoped
         previous_sensitive = @sensitive
+        previous_output_sensitive = @output_sensitive
         @secrets = previous.dup
         @scoped = true
         begin
           yield
         ensure
           @secrets = previous
-          @pattern = previous_pattern
+          @patterns = previous_patterns
           @scoped = previous_scoped
           @sensitive = previous_sensitive
+          @output_sensitive = previous_output_sensitive
         end
       end
 
@@ -115,7 +128,16 @@ module Net
       # 判断当前脱敏范围是否包含敏感交互。
       def sensitive? = @sensitive
 
-      # 记住新的敏感字节，并按长度排序避免短词先匹配。
+      # 输出敏感时不把正文加入词表；只在当前范围内屏蔽日志和任意错误正文。
+      def output_sensitive!
+        @output_sensitive = true
+        sensitive!
+      end
+
+      # 后续查询继承输出边界，即使查询命令本身没有敏感标记。
+      def output_sensitive? = @output_sensitive
+
+      # 只维护当前作用域的注册词；匹配次序和重叠区间交给共享过滤器。
       def remember(secret)
         return if secret.nil? || secret.empty?
 
@@ -123,63 +145,26 @@ module Net
         return if @secrets.include?(bytes)
 
         @secrets << bytes.freeze
-        @secrets.sort_by! { |value| -value.bytesize }
-        @pattern = nil
+        @patterns = nil
       end
 
-      # 保留可能跨下一分片的尾部；完整匹配始终作为整体脱敏。
-      def stream_chunk(bytes, final: false)
-        return [call(bytes), "".b] if final || @secrets.empty?
-
-        retained = [@secrets.first.bytesize, "[REDACTED]".bytesize].max - 1
-        boundary = [bytes.bytesize - retained, 0].max
-        matches(bytes).each do |start, finish|
-          if start < boundary && finish > boundary
-            boundary = start
-            break
-          end
-        end
-        [call(bytes.byteslice(0, boundary)), bytes.byteslice(boundary..)]
-      end
-
-      # 单次扫描替换所有敏感词，并保留已有脱敏标记。
+      # 一次性诊断不共享流状态；原标记作为不透明区间，避免再次展开它。
       def call(text)
-        text = text.to_s.b
-        return text if @secrets.empty?
+        Expect::Redactor.redact(text.to_s.b, patterns, replacement: MASK)
+      end
 
-        output = +"".b
-        offset = 0
-        matches(text).each do |start, finish|
-          output << text.byteslice(offset, start - offset) << "[REDACTED]"
-          offset = finish
-        end
-        output << text.byteslice(offset..)
+      # 每个日志目标独占过滤流，跨分片尾部和重叠掩码由依赖库维护。
+      def stream
+        Expect::Redactor.new(patterns, replacement: MASK)
+      end
+
+      # 临时范围恢复时，日志流可以同步恢复注册词表，不缓存配置正文。
+      def patterns
+        @patterns ||= (@secrets.empty? ? [] : (@secrets + [MASK]).uniq).freeze
       end
 
       # 返回脱敏器类型摘要。
       def inspect = "#<#{self.class}>"
-
-      private
-
-      # 前瞻保留重叠匹配；跨标记边界的真实秘密不能被已有标记遮蔽。
-      def pattern
-        @pattern ||= /(?=(#{Regexp.union((@secrets + ["[REDACTED]"]).uniq.sort_by { |secret| -secret.bytesize })}))/n
-      end
-
-      # 合并重叠的秘密匹配区间，防止替换顺序露出部分凭据。
-      def matches(text)
-        ranges = []
-        text.to_enum(:scan, pattern).each do
-          match = Regexp.last_match
-          start, finish = match.begin(1), match.end(1)
-          if ranges.last && start < ranges.last.last
-            ranges.last[1] = [ranges.last.last, finish].max
-          else
-            ranges << [start, finish]
-          end
-        end
-        ranges
-      end
     end
   end
 end

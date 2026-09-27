@@ -6,10 +6,17 @@ module Net
   module Connector
     module CiscoIos
       class TftpBackup < Operations::Tftp::Strategy
+        # 在连接前拒绝当前厂商不支持的参数组合。
+        def validate_options!(_target, source_file:, vrf: nil)
+          raise ArgumentError, "Cisco IOS does not use source_file" unless source_file.nil?
+          raise ArgumentError, "Cisco IOS TFTP backup does not use vrf" unless vrf.nil?
+        end
+
+        def receipt_metadata(_target, **) = { configuration_kind: :running, format: :cfg }
+
         # 构造当前厂商的 TFTP 导出交互脚本。
         def script(target, source_file:, vrf: nil)
-          raise ArgumentError, "Cisco IOS does not use source_file" if source_file
-          raise ArgumentError, "Cisco IOS TFTP backup does not use vrf" if vrf
+          validate_options!(target, source_file: source_file, vrf: vrf)
 
           Script.new([Command.new("copy running-config tftp:", timeout: 180,
                                   interactions: [

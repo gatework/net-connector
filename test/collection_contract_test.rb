@@ -15,6 +15,7 @@ class CollectionContractTest < Minitest::Test
           command(/device#\z/)
         end
       end
+
       def clean_config(text) = text.sub(/device#\z/, "").strip
     end
     klass.class_eval(&definition) if definition

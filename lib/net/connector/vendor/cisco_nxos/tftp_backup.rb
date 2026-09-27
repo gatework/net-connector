@@ -6,9 +6,16 @@ module Net
   module Connector
     module CiscoNxos
       class TftpBackup < Operations::Tftp::Strategy
+        # 在连接前拒绝当前厂商不支持的参数组合。
+        def validate_options!(_target, source_file:, **)
+          raise ArgumentError, "Cisco NX-OS does not use source_file" unless source_file.nil?
+        end
+
+        def receipt_metadata(_target, **) = { configuration_kind: :running, format: :cfg }
+
         # 构造当前厂商的 TFTP 导出交互脚本。
         def script(target, source_file:, vrf: nil)
-          raise ArgumentError, "Cisco NX-OS does not use source_file" if source_file
+          validate_options!(target, source_file: source_file, vrf: vrf)
 
           vrf ||= "management"
           command = "copy running-config tftp://#{target.host}/#{target.path} vrf #{vrf}"

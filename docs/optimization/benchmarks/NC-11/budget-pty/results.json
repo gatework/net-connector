@@ -1,0 +1,486 @@
+{
+  "schema_version": 1,
+  "started_at": "2026-09-27T07:27:57Z",
+  "machine": {
+    "ruby": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]",
+    "platform": "arm64-darwin25",
+    "cpus": 10,
+    "memory_bytes": 17179869184,
+    "cpu": "Apple M5"
+  },
+  "samples": [
+    {
+      "metrics": [
+        {
+          "phase": "retain",
+          "elapsed_seconds": 0.7462289999966742,
+          "allocated_objects": 49880,
+          "rss_before_bytes": 35012608,
+          "rss_after_bytes": 128663552
+        },
+        {
+          "phase": "result_output_once",
+          "elapsed_seconds": 0.0001320000010309741,
+          "allocated_objects": 7,
+          "rss_before_bytes": 128811008,
+          "rss_after_bytes": 128991232
+        },
+        {
+          "phase": "result_output_repeated",
+          "elapsed_seconds": 0.0010270000057062134,
+          "allocated_objects": 20,
+          "rss_before_bytes": 129138688,
+          "rss_after_bytes": 139837440
+        }
+      ],
+      "retained_step_bytes": 2097166,
+      "result_count": 1,
+      "completed_steps": 2,
+      "commands_sent": 2,
+      "logged_bytes": 0,
+      "error_codes": [
+        "script_output_limit_exceeded"
+      ],
+      "dependency_versions": {
+        "expect-pty": "0.5.0",
+        "textfsm": "0.2.0"
+      },
+      "sample": {
+        "transport": "pty",
+        "phase": "retain",
+        "response_bytes": 1048576,
+        "commands": 10,
+        "concurrency": 1,
+        "output_calls": 5,
+        "logging": "default",
+        "script_budget_bytes": 2097152
+      },
+      "peak_rss_bytes": 139870208,
+      "time_log": "tmp/nc-optimization/nc11-benchmark-budget-pty/00-time.txt"
+    }
+  ],
+  "source_sha256": [
+    {
+      "path": "lib/net-connector.rb",
+      "sha256": "08e655e996db692381f062bca354e0aac67713d108949a3fbd883d281d15429d"
+    },
+    {
+      "path": "lib/net/connector.rb",
+      "sha256": "46576bde906913c84bdf9407953532a32cb2913238348def53124aa162180a8b"
+    },
+    {
+      "path": "lib/net/connector/device/base.rb",
+      "sha256": "233511257a312997ed2380e0273e8cf6d24b596261398955e623abc34530518e"
+    },
+    {
+      "path": "lib/net/connector/device/interface_description.rb",
+      "sha256": "a84d9291ecdeb2da8789533217ffd6f94ab2472af4c8c1990823738066ab18b5"
+    },
+    {
+      "path": "lib/net/connector/device/interface_name.rb",
+      "sha256": "890d6a6c827d10df00fac6fcedb19812bbb50bdcf2dcf22fd5c3bc272f26f208"
+    },
+    {
+      "path": "lib/net/connector/device/profile.rb",
+      "sha256": "5c6336d3b1db76564334de88d8b2ce918ebf87f50c6107ff2b10c2f747bb9472"
+    },
+    {
+      "path": "lib/net/connector/device/profile/builder.rb",
+      "sha256": "9e04744287bbea56fb0cc03546d4e83827198484e77e423a77cbd735506f3b23"
+    },
+    {
+      "path": "lib/net/connector/device/running_config.rb",
+      "sha256": "017b13dba9b9e4d8be5f6b75102a1365d36af232cfa995b59521ed850c308cb4"
+    },
+    {
+      "path": "lib/net/connector/device/running_config/strategy.rb",
+      "sha256": "6ac0e5700b715f73b8379583d7deac1ead18f5ee94c26e68dea8628be41c4af7"
+    },
+    {
+      "path": "lib/net/connector/engine.rb",
+      "sha256": "54e8021791b92b50e64f53daacfce7c1943f91a3e7ebb2e0ce416c771ff7c406"
+    },
+    {
+      "path": "lib/net/connector/engine/authentication.rb",
+      "sha256": "d6845d4f5f7e27bc116063879f5d3aaec6f70a4abb90fe05bde35f7aed111f2d"
+    },
+    {
+      "path": "lib/net/connector/engine/base.rb",
+      "sha256": "0cc8423b544b96379f0c3430d82514907cfef30158bdbee326a8fc65a6d012f5"
+    },
+    {
+      "path": "lib/net/connector/engine/command.rb",
+      "sha256": "c07c949a14ae91fe4d5e2a304de1c2bcd294cf156bb0a824d666f0ed4c19d7b5"
+    },
+    {
+      "path": "lib/net/connector/engine/configuration.rb",
+      "sha256": "f61f9d3aa180da349ab0efbf1206e1b5b441dad380202c8a35b2e6f632973cac"
+    },
+    {
+      "path": "lib/net/connector/engine/core.rb",
+      "sha256": "e13951013ac91a8612d15a33e96277bc5651fdbf99b89e8dd48093f25ad6f229"
+    },
+    {
+      "path": "lib/net/connector/engine/dialogue.rb",
+      "sha256": "36baf60832331a7caf89b29d6518d1804e2beeb523bf48c8f9c6b6ea5fc83fce"
+    },
+    {
+      "path": "lib/net/connector/engine/errors.rb",
+      "sha256": "b70c02aa8c14d2b3176dce1dcfe5d72eb6277f0968d2a7a0860a0458707638a9"
+    },
+    {
+      "path": "lib/net/connector/engine/execution.rb",
+      "sha256": "1ef5af43950e1ca8e91b0f51472304476002247398b7c5ea02dc38e95e8c623b"
+    },
+    {
+      "path": "lib/net/connector/engine/log.rb",
+      "sha256": "d0ea46f2e45f423b6901c46b38d9dfd37ccf6f4c96d7f665716bef2f08ced6d2"
+    },
+    {
+      "path": "lib/net/connector/engine/log_messages.rb",
+      "sha256": "cbcf0d8fc4899e9292e465c17c1b536db20fbd2d17c9a2a3206ef557b9865d74"
+    },
+    {
+      "path": "lib/net/connector/engine/profile.rb",
+      "sha256": "0f4fd33a91847f768c21542398db4c5a61d5275a06c395a3c01225040cd95d9f"
+    },
+    {
+      "path": "lib/net/connector/engine/recovery.rb",
+      "sha256": "2fce303db923a77cf3fa99d7bbc70196ae5b4a5bb88b648fc5db0e7f0a42c229"
+    },
+    {
+      "path": "lib/net/connector/engine/result.rb",
+      "sha256": "e16174105375bac53ea00ddc6d3a65a91fab5a0d094c7cd4e02fa50c8253aa69"
+    },
+    {
+      "path": "lib/net/connector/engine/session.rb",
+      "sha256": "0c603e741424f540a85c3a91a39280e200b02e881e403e6ce555b7421e3c4da8"
+    },
+    {
+      "path": "lib/net/connector/engine/terminal_renderer.rb",
+      "sha256": "ed280ebfbd8be2e2b7a46a677f72165eda081b58ec6fc0054efd75e0b401086b"
+    },
+    {
+      "path": "lib/net/connector/engine/transport.rb",
+      "sha256": "416430e83c7cba7eeeb3fc743cfbea28c20df48e223091d7678af804b907d28e"
+    },
+    {
+      "path": "lib/net/connector/netdisco.rb",
+      "sha256": "b2a0991202c8aa0ec656e799f0e45ce5d8af5a2eb126e965660585bf2b3a1925"
+    },
+    {
+      "path": "lib/net/connector/netdisco/batch.rb",
+      "sha256": "9827ce0321d8a09215aa25f430e7b5698c45db3a7e23991be9700e489282362a"
+    },
+    {
+      "path": "lib/net/connector/netdisco/cli.rb",
+      "sha256": "371b8fcb445eb001305af4a6b70f8c9df85c0f2042acb2ed31f82a33974bdd5f"
+    },
+    {
+      "path": "lib/net/connector/netdisco/client.rb",
+      "sha256": "568a5cee73c83eed280254e5c17d5175811c578ed7b3b526a844ba7a01ce1971"
+    },
+    {
+      "path": "lib/net/connector/netdisco/config_file.rb",
+      "sha256": "6f0403f6daa6c75d34c04afeae3e7bf3de7fbb8e6665aa40a42fda94a1cec622"
+    },
+    {
+      "path": "lib/net/connector/netdisco/device.rb",
+      "sha256": "ae938acb82f3b84afda3fbc4b1e270dac8aa480fff87991a26c54c48fd360f13"
+    },
+    {
+      "path": "lib/net/connector/netdisco/diagnostic.rb",
+      "sha256": "3f8201690609bac4c183f9a45d06ea9ff01d0ba8a6e3dfeb2620a25fb2c4ae3e"
+    },
+    {
+      "path": "lib/net/connector/netdisco/fleet.rb",
+      "sha256": "4210cf055576e3b82adf36a402ebf26374f369b5bb755b5439ab92273382a4ea"
+    },
+    {
+      "path": "lib/net/connector/netdisco/inventory_budget.rb",
+      "sha256": "5e9a3e301d0dd79dd5abded5db09a99b75c6d8ad723f571689d61e50eae33e3d"
+    },
+    {
+      "path": "lib/net/connector/netdisco/plan.rb",
+      "sha256": "f4502d5f5822c05f31020de4e88e66667c488696570b66594cbbab163fddce49"
+    },
+    {
+      "path": "lib/net/connector/netdisco/planner.rb",
+      "sha256": "6c0b30800d94c6f7bb2f81c53a5d247dbed8c53543d78cec74fb947db5363169"
+    },
+    {
+      "path": "lib/net/connector/netdisco/report.rb",
+      "sha256": "67b400dbe748f79f8ca6f7c28ac7376802b41bce053ce6931882cf0f817dfe2c"
+    },
+    {
+      "path": "lib/net/connector/netdisco/result_store.rb",
+      "sha256": "bc391927d61d27f008deb5feabde63dd56c6af2bba0d4ee62c7bcbb68412f00c"
+    },
+    {
+      "path": "lib/net/connector/netdisco/rules.rb",
+      "sha256": "c51ac7a6274eaa144df17b9f723c3efe88821d9421cf1889720e325839daa231"
+    },
+    {
+      "path": "lib/net/connector/netdisco/settings.rb",
+      "sha256": "492e343aa9c55ca28ef0f05695fb59cbb49aa8548a8876f2dcfbbd36f7cfe549"
+    },
+    {
+      "path": "lib/net/connector/netdisco/worker.rb",
+      "sha256": "ffae9efcba169efb57bb80d205b40c56b4c959609e4cd1297efaf1d1e572bcd8"
+    },
+    {
+      "path": "lib/net/connector/operations.rb",
+      "sha256": "6c584c1d263049a36650e758e4cf471b9ee7ad316efcb80fe8919ad96b68d4b6"
+    },
+    {
+      "path": "lib/net/connector/operations/backup_lock.rb",
+      "sha256": "c6a50f192ae18da6315998c9f1131d0caae4f65a15cffb086055aa4130ac7d8c"
+    },
+    {
+      "path": "lib/net/connector/operations/local_backup.rb",
+      "sha256": "cb3c9ae21ecdc13b56848c8b9bef999f27f8365ae90e86796986aeef7e31601d"
+    },
+    {
+      "path": "lib/net/connector/operations/parse_output.rb",
+      "sha256": "3fd457e8ac2d38c09a9b41a448c922a0138c4ed266501b2aee09751b2858b8d9"
+    },
+    {
+      "path": "lib/net/connector/operations/private_file.rb",
+      "sha256": "dd34a435dd67216bed77709dee53fa34650ac59f03880927b89d60d58ff864f6"
+    },
+    {
+      "path": "lib/net/connector/operations/running_config.rb",
+      "sha256": "2bdc958103f9d3af3a7eaff0696c41c401cee329bcbf7b13bb1a0344df2fdb66"
+    },
+    {
+      "path": "lib/net/connector/operations/running_config/cisco.rb",
+      "sha256": "c23f85cc202cd6a8e8c8823ac0f2b4c2ac0ade608655317c2637dab7d69b0e04"
+    },
+    {
+      "path": "lib/net/connector/operations/running_config/hillstone.rb",
+      "sha256": "a92613225f0b6dcba735ed34f311f4b3841ec228eff4666493f72ae1e672f805"
+    },
+    {
+      "path": "lib/net/connector/operations/running_config/palo_alto.rb",
+      "sha256": "f7aea0008454e1858eb0641556f505de7423ff40ab55471e4a6db32000c5125a"
+    },
+    {
+      "path": "lib/net/connector/operations/running_config/strategy.rb",
+      "sha256": "31a79ca02d6f17394c5789b53c18213bee64f7768bfcea853966d07dfed75fb6"
+    },
+    {
+      "path": "lib/net/connector/operations/safe_file.rb",
+      "sha256": "55ecbaaf7e16e8e1ed782cc9179f5aaf12a19b7c4456fd2d326017b1caff7de3"
+    },
+    {
+      "path": "lib/net/connector/operations/saved_config.rb",
+      "sha256": "cb8f223adf913800351a2fb521a0bfd39bfd52d4f381c63705f636cbae3f7ddc"
+    },
+    {
+      "path": "lib/net/connector/operations/saved_config/legacy_index.rb",
+      "sha256": "739a51c7ccc549dcc52f619d80cffcf42f4eebf552653dc260c676b913c12cd0"
+    },
+    {
+      "path": "lib/net/connector/operations/tftp/cisco_ios.rb",
+      "sha256": "b5bc993a2828d18131b1fba5e335153f2b7bc35a04c2a8a0726aac7ae4037cfc"
+    },
+    {
+      "path": "lib/net/connector/operations/tftp/cisco_nxos.rb",
+      "sha256": "9cb69b2e96ed876ebd4ed8c1718c72c0acb1b321108323ec932da211778c764d"
+    },
+    {
+      "path": "lib/net/connector/operations/tftp/file_upload.rb",
+      "sha256": "ff6e4f310b0b08f1482fc8fdedd5a03e85f239c31d70b59df646da5b22491c3f"
+    },
+    {
+      "path": "lib/net/connector/operations/tftp/h3c.rb",
+      "sha256": "d85f42771ed19fa9a5227bb057875db5a0dc4c96ee61ed53d4d341010a3d6a68"
+    },
+    {
+      "path": "lib/net/connector/operations/tftp/hillstone.rb",
+      "sha256": "339aaf53ee44b3d1873e8d5b68f964ab21ecbb3ea95cc36a06de9a06d1e28adf"
+    },
+    {
+      "path": "lib/net/connector/operations/tftp/huawei.rb",
+      "sha256": "f43e451bd842a32593536e9652c17f0db2f6abb4478aa4bc75d5d0553706548e"
+    },
+    {
+      "path": "lib/net/connector/operations/tftp/palo_alto.rb",
+      "sha256": "f547198d23faae92df76be2ae015351dc325544518358505745291bbdc114335"
+    },
+    {
+      "path": "lib/net/connector/operations/tftp/radware.rb",
+      "sha256": "d4cdb8ace73807a24fb3e3c44564f4612c67a2d659c1f43df125ff3daf5da055"
+    },
+    {
+      "path": "lib/net/connector/operations/tftp/strategy.rb",
+      "sha256": "4be57119a9fbb441244322c70a729a48bf471f5b0401bbefc84851b0059bf2f2"
+    },
+    {
+      "path": "lib/net/connector/operations/tftp_backup.rb",
+      "sha256": "61781392572770b2cf35827a2a3a7a7cdd16dc0084441837db9c31bc66400712"
+    },
+    {
+      "path": "lib/net/connector/operations/tftp_receipt.rb",
+      "sha256": "4029592e701fec177442649aad14d91ff29a579a5487599d35aa84d22d5ca2fe"
+    },
+    {
+      "path": "lib/net/connector/operations/topology.rb",
+      "sha256": "fe3a4d19e5df7026f32eb78762456efb25883453f9d0b8fb3755d9ec3f184183"
+    },
+    {
+      "path": "lib/net/connector/operations/topology/cisco.rb",
+      "sha256": "4851c1a5c56c660bb9fd40c04fc704b33640360c751a443ee0f77e0d75380714"
+    },
+    {
+      "path": "lib/net/connector/operations/topology/h3c.rb",
+      "sha256": "776ca3958e23f3fffc41d953a9247bf87fac17963a6a45643fafa30c14eb26c6"
+    },
+    {
+      "path": "lib/net/connector/operations/topology/hillstone.rb",
+      "sha256": "f114229dbd4b279088dd54517b9d2197ccc1684bbec663c7ffa12d8afd4ecca0"
+    },
+    {
+      "path": "lib/net/connector/operations/topology/immediate_strategy.rb",
+      "sha256": "2b7612a5c9132f5c644969fbdaa533b919b1882689342611cfbad4f264551742"
+    },
+    {
+      "path": "lib/net/connector/operations/topology/palo_alto.rb",
+      "sha256": "aa48bc426879fdde042753dadf9e2ebddb92dd726f28bd8045d7229ae1d28136"
+    },
+    {
+      "path": "lib/net/connector/operations/topology/radware.rb",
+      "sha256": "b9395879d697855c0218714cd3724a5f3ee8b0151d5fe75ba53202376024dedf"
+    },
+    {
+      "path": "lib/net/connector/operations/topology/strategy.rb",
+      "sha256": "a68f62cf995a3b34b02d1779dba24784fac5a4a801b2396f761072b1037db01d"
+    },
+    {
+      "path": "lib/net/connector/vendor/cisco_ios.rb",
+      "sha256": "302478cc6ff55ce2a5ca90707f2caad4a1d67735fe71e242194a65fc888d09fb"
+    },
+    {
+      "path": "lib/net/connector/vendor/cisco_ios/running_config.rb",
+      "sha256": "11d809feea41de17c823da3fe6bd107e3df2db444ec1eb285d0ae8d3434f7b9d"
+    },
+    {
+      "path": "lib/net/connector/vendor/cisco_ios/tftp_backup.rb",
+      "sha256": "e0a68f760915bb6f2531ed1a62894177b9a1f3a2dc75d978bd8bc6ffbf7f8a77"
+    },
+    {
+      "path": "lib/net/connector/vendor/cisco_ios/topology.rb",
+      "sha256": "602c5e954219fb5e8c9712fcd21161f31eda6bc98e0a33752c52867045083c05"
+    },
+    {
+      "path": "lib/net/connector/vendor/cisco_nxos.rb",
+      "sha256": "8ee07b00730437b736d5313473eb2e6765be9aa0f69d70584427c217548b4c3d"
+    },
+    {
+      "path": "lib/net/connector/vendor/cisco_nxos/running_config.rb",
+      "sha256": "259aae62625b8f37c65e7391486c4e994dc92187a1482152bfc4eb54968d2664"
+    },
+    {
+      "path": "lib/net/connector/vendor/cisco_nxos/tftp_backup.rb",
+      "sha256": "b416aa1dc8338517662dac4861b09194131782d63c50d6bb1dca49f32c37cdb8"
+    },
+    {
+      "path": "lib/net/connector/vendor/h3c.rb",
+      "sha256": "04a316922791ff44d2363fc307b3c03be3e6fd89cd12d1aec54ff8b9d70ec0c6"
+    },
+    {
+      "path": "lib/net/connector/vendor/h3c/tftp_backup.rb",
+      "sha256": "2b79a0095af7c99b70e0e49e434c82d44ab38f335445d32ccbeb54c4af5ec8be"
+    },
+    {
+      "path": "lib/net/connector/vendor/h3c/topology.rb",
+      "sha256": "968f883b123dad6ef0f4d1d5bc948bbf4d6ee643bd4f345ac28ad127f059d9fe"
+    },
+    {
+      "path": "lib/net/connector/vendor/h3c_wireless.rb",
+      "sha256": "b702b34128b8b6e8cdc6275392d5420d640319f7e001327c5229622bd582eef3"
+    },
+    {
+      "path": "lib/net/connector/vendor/hillstone.rb",
+      "sha256": "c921078be010469d762f1820420c08e03a2eaba917a4ab1c00d6a6c8da74bdc8"
+    },
+    {
+      "path": "lib/net/connector/vendor/hillstone/running_config.rb",
+      "sha256": "c84649f204dd00f08a2e9f4706995495fdd12fcd43179c9095a2f3177d10ec1e"
+    },
+    {
+      "path": "lib/net/connector/vendor/hillstone/tftp_backup.rb",
+      "sha256": "704508acfbc667063c156ba75b34acd47b929025ef7526b682b86f503f902c58"
+    },
+    {
+      "path": "lib/net/connector/vendor/hillstone/topology.rb",
+      "sha256": "e14f38f9a6fcb02ca949bb39e22bd772d16856fa422ab97e4c564a3c80e978ed"
+    },
+    {
+      "path": "lib/net/connector/vendor/huawei.rb",
+      "sha256": "eb6fa5b3ec88b9450f183757cfdcf065c3cfcb881427f2513039200f896dd323"
+    },
+    {
+      "path": "lib/net/connector/vendor/huawei/tftp_backup.rb",
+      "sha256": "125722c7f7d8b00a710bde978b7f4d61fb6ce5e3a0d98d830a209243ff0fabbb"
+    },
+    {
+      "path": "lib/net/connector/vendor/palo_alto.rb",
+      "sha256": "e057bf2c0dd5c2e3e4fddc8953304aeacb05e1970409838dce47f70ce11326c3"
+    },
+    {
+      "path": "lib/net/connector/vendor/palo_alto/running_config.rb",
+      "sha256": "99eb43be02913fbb73698fe79f88b23745deac8d0b4b6fd79b7e75b13ef0ac61"
+    },
+    {
+      "path": "lib/net/connector/vendor/palo_alto/tftp_backup.rb",
+      "sha256": "6c1819c84b41d599e1c7faa02011de8c628170b592cac560de2a88cd380c4dda"
+    },
+    {
+      "path": "lib/net/connector/vendor/palo_alto/topology.rb",
+      "sha256": "f3932b77fd52a65b50bed25860d92d303b1bbf397f8dfe2aec687af42c3ab455"
+    },
+    {
+      "path": "lib/net/connector/vendor/radware.rb",
+      "sha256": "97e640bba271ef68f816cbf4b6bd69bebbfee04d1587aba06afe6bf83df5ded4"
+    },
+    {
+      "path": "lib/net/connector/vendor/radware/tftp_backup.rb",
+      "sha256": "8ed4f6894f84ee3e7506a6a0177dc10ba292e3a7c5163cf4aefb97b98313ea92"
+    },
+    {
+      "path": "lib/net/connector/vendor/radware/topology.rb",
+      "sha256": "f8cf3eb983817a0b5df770bcfc18a3240723932c8d964b927220530ae32d1cad"
+    },
+    {
+      "path": "lib/net/connector/version.rb",
+      "sha256": "4622f92645299a7ab8d7d84a12aa10166eed8de2eac3c105847f3885a91eb570"
+    },
+    {
+      "path": "script/benchmark_memory.rb",
+      "sha256": "17d2074126b3b3a509bd99d228dce4ba58aa7c7417b4187c52bbc001c8cf7f0f"
+    },
+    {
+      "path": "script/benchmarks/memory_fixture.rb",
+      "sha256": "d9eb274d3e68db8e738aa14663a235b627d3fd048fe68dbe82aa123acc07bd45"
+    },
+    {
+      "path": "script/benchmarks/memory_workload.rb",
+      "sha256": "9ac4d45179f4228eff9aebac93d87340c4495bfc325700a22df7a6e32f8288d5"
+    },
+    {
+      "path": "test/support/fake_transport.rb",
+      "sha256": "399740b562b969c8c8f97d196f5c11afff40041e9ee0c6cb8988d6b165c068af"
+    }
+  ],
+  "limits": [
+    "Synthetic data and local PTY only; no network",
+    "Samples run serially in separate processes with normal GC",
+    "Peak RSS is the external time command high-water measurement; it is not summed device or worker RSS",
+    "RSS endpoints are measured with ps outside each timed allocation interval",
+    "Fixture construction and connection precede phase timing but are included in whole-process peak RSS",
+    "Default logging matches Configuration defaults; debug case uses Logger and a counting sink",
+    "Full outputs and normal protocol validation are retained; planned response payload is limited to 128 MiB"
+  ],
+  "finished_at": "2026-09-27T07:27:58Z"
+}

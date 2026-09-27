@@ -8,13 +8,13 @@ module Net
     # 显式且不可变的连接设置；环境变量读取由调用库的可执行程序负责。
     class Configuration
       attr_reader :host, :username, :password, :enable_password, :protocol, :port, :login_timeout,
-                  :command_timeout, :write_timeout, :max_output_bytes, :log_file, :log_format, :log_level,
+                  :command_timeout, :write_timeout, :max_output_bytes, :max_script_output_bytes, :log_file, :log_format, :log_level,
                   :known_hosts, :host_key_policy, :challenges, :logger
 
       # 校验端点、凭据、超时、日志、主机密钥和挑战配置，然后冻结设置。
       def initialize(host: nil, username: nil, password: nil, enable_password: nil, protocol: :ssh, port: nil,
                      login_timeout: 10, command_timeout: nil, write_timeout: 10,
-                     max_output_bytes: 32 * 1024 * 1024, log_file: nil, logger: nil,
+                     max_output_bytes: 32 * 1024 * 1024, max_script_output_bytes: nil, log_file: nil, logger: nil,
                      log_format: :text, log_level: :info,
                      known_hosts: nil, host_key_policy: :strict, telnet_fallback: false, legacy_ssh: false,
                      challenges: [])
@@ -32,11 +32,8 @@ module Net
         @login_timeout = timeout_seconds(login_timeout, :login_timeout)
         @command_timeout = command_timeout.nil? ? nil : timeout_seconds(command_timeout, :command_timeout)
         @write_timeout = timeout_seconds(write_timeout, :write_timeout)
-        unless max_output_bytes.is_a?(Integer) && max_output_bytes.positive?
-          raise ArgumentError, "max_output_bytes must be a positive Integer"
-        end
-
-        @max_output_bytes = max_output_bytes
+        @max_output_bytes = positive_integer(max_output_bytes, :max_output_bytes)
+        @max_script_output_bytes = positive_integer(max_script_output_bytes, :max_script_output_bytes) unless max_script_output_bytes.nil?
         @log_file = absolute_path(log_file)
         if logger && (!logger.respond_to?(:debug) || !logger.respond_to?(:info) ||
           !logger.respond_to?(:warn) || !logger.respond_to?(:error) ||
@@ -85,6 +82,12 @@ module Net
       def inspect = "#<#{self.class} host=#{host.inspect} protocol=#{protocol.inspect}>"
 
       private
+
+      def positive_integer(value, name)
+        raise ArgumentError, "#{name} must be a positive Integer" unless value.is_a?(Integer) && value.positive?
+
+        value
+      end
 
       # 将可选值校验为字符串副本。
       def frozen_string(value)

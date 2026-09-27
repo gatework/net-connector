@@ -10,7 +10,13 @@ module Net
       class ConfigFile
         FIELDS = {
           "netdisco" => { "url" => ["NETDISCO_URL", :string],
-                          "page_size" => ["NETDISCO_PAGE_SIZE", :integer] },
+                          "page_size" => ["NETDISCO_PAGE_SIZE", :integer],
+                          "max_pages" => ["NETDISCO_MAX_PAGES", :integer],
+                          "max_response_bytes" => ["NETDISCO_MAX_RESPONSE_BYTES", :integer],
+                          "max_inventory_bytes" => ["NETDISCO_MAX_INVENTORY_BYTES", :integer],
+                          "max_devices" => ["NETDISCO_MAX_DEVICES", :integer],
+                          "inventory_timeout" => ["NETDISCO_INVENTORY_TIMEOUT", :number],
+                          "allow_insecure_http" => ["NETDISCO_ALLOW_INSECURE_HTTP", :boolean] },
           "backup" => { "directory" => ["NET_CONNECTOR_BACKUP_DIRECTORY", :string],
                         "concurrency" => ["NET_CONNECTOR_CONCURRENCY", :integer],
                         "limit_per_vendor" => ["NET_CONNECTOR_SAMPLE_PER_VENDOR", :integer] },
@@ -21,12 +27,16 @@ module Net
                            "host_overrides" => ["NET_CONNECTOR_HOST_OVERRIDES", :json],
                            "device_rules" => ["NET_CONNECTOR_DEVICE_RULES", :json] },
           "ssh" => { "protocol" => ["NET_CONNECTOR_PROTOCOL", :string],
+                     "max_script_output_bytes" => ["NET_CONNECTOR_MAX_SCRIPT_OUTPUT_BYTES", :optional_integer],
                      "known_hosts" => ["NET_CONNECTOR_KNOWN_HOSTS", :string],
                      "host_key_policy" => ["NET_CONNECTOR_HOST_KEY_POLICY", :string],
                      "log_directory" => ["NET_CONNECTOR_LOG_DIRECTORY", :string],
                      "log_level" => ["NET_CONNECTOR_LOG_LEVEL", :string] },
           "tftp" => { "server" => ["TFTP_HOST", :string],
-                      "vrfs" => ["NET_CONNECTOR_TFTP_VRFS", :json] }
+                      "vrfs" => ["NET_CONNECTOR_TFTP_VRFS", :json],
+                      "h3c_source_file" => ["NET_CONNECTOR_H3C_TFTP_SOURCE_FILE", :string],
+                      "h3c_wireless_source_file" => ["NET_CONNECTOR_H3C_WIRELESS_TFTP_SOURCE_FILE", :string],
+                      "huawei_source_file" => ["NET_CONNECTOR_HUAWEI_TFTP_SOURCE_FILE", :string] }
         }.freeze
 
         # 安全读取 YAML 配置并映射到环境变量格式。
@@ -52,7 +62,7 @@ module Net
             end
           end
         rescue Psych::Exception => error
-          raise ArgumentError, "invalid YAML config (#{error.class})"
+          raise ArgumentError, "invalid YAML config (#{error.class})", cause: nil
         end
 
         # 按字段类型校验并编码单项配置。
@@ -62,8 +72,20 @@ module Net
             raise ArgumentError, "#{section}.#{name} must be a nonempty String" unless value.is_a?(String) && !value.strip.empty?
 
             value
-          when :integer
+          when :integer, :optional_integer
+            return nil if type == :optional_integer && value.nil?
+
             raise ArgumentError, "#{section}.#{name} must be a positive Integer" unless value.is_a?(Integer) && value.positive?
+
+            value.to_s
+          when :number
+            unless value.is_a?(Numeric) && value.real? && value.finite? && value.positive? && value.to_f.finite?
+              raise ArgumentError, "#{section}.#{name} must be a positive finite number"
+            end
+
+            value.to_s
+          when :boolean
+            raise ArgumentError, "#{section}.#{name} must be true or false" unless [true, false].include?(value)
 
             value.to_s
           when :list

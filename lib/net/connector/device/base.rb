@@ -172,14 +172,20 @@ module Net
 
       # 采集配置并以原子方式保存为私有文件。
       # 采集失败时保留已有备份文件。
-      def backup(path:)
-        Operations::LocalBackup.new(self).call(path: path)
+      def backup(path:, lock_timeout: 0)
+        @session.assert_path_lock_order!(:backup)
+        Operations::LocalBackup.new(self).call(path: path, lock_timeout: lock_timeout)
       end
 
       # 要求设备直接向 TFTP 服务器导出原生配置。
       # 完成仅表示设备报告传输成功，未读取服务器端文件。
       def tftp_backup(host:, path: nil, source_file: nil, vrf: nil)
         Operations::TftpBackup.new(self).call(host: host, path: path, source_file: source_file, vrf: vrf)
+      end
+
+      # 明确请求来源、格式及设备报告等级；旧入口继续返回原有三字段对象。
+      def tftp_backup_receipt(host:, path: nil, source_file: nil, vrf: nil)
+        Operations::TftpBackup.new(self).call_receipt(host: host, path: path, source_file: source_file, vrf: vrf)
       end
 
       # 配置采集是设备的基础能力，两个公共入口共享同一流程。
@@ -356,10 +362,11 @@ module Net
                                   prepare: method(:prepare_command), after_command: finish_step, prompt: prompt)
         execution.context[:operation] = operation if operation
         execution.context[:privilege] = privilege
+        output_sensitive = script.any?(&:output_sensitive?)
         @session.perform(:script) do
-          before_batch(execution)
+          @session.output_scope(output_sensitive) { before_batch(execution) }
           result = execution.execute(script, &on_step)
-          finalize ? finalize.call(result) : result
+          @session.output_scope(output_sensitive) { finalize ? finalize.call(result) : result }
         end
       rescue Error => error
         Result.new(steps: execution ? execution.steps : [], error: error)

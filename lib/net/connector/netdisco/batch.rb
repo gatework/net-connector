@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "time"
+require_relative "diagnostic"
 
 module Net
   module Connector
@@ -8,9 +9,29 @@ module Net
       # 单台设备的最终结果，保留状态、配置产物和错误类型。
       Outcome = Data.define(:device, :status, :backup, :error_code, :error_type,
                             :started_at, :finished_at) do
+        attr_reader :diagnostic
+
         # 创建结果，允许计划阶段尚无执行时间。
-        def initialize(device:, status:, backup:, error_code:, error_type:, started_at: nil, finished_at: nil)
-          super
+        def initialize(device:, status:, backup:, error_code:, error_type:, started_at: nil, finished_at: nil,
+                       duration_ms: nil, diagnostic: nil)
+          unless duration_ms.nil? || (duration_ms.is_a?(Numeric) && duration_ms.real? && duration_ms.finite? && duration_ms >= 0)
+            raise ArgumentError, "duration_ms must be nonnegative and finite"
+          end
+          raise ArgumentError, "diagnostic must be a Diagnostic" unless diagnostic.nil? || diagnostic.instance_of?(Diagnostic)
+
+          @duration_ms, @diagnostic = duration_ms, diagnostic
+          super(device: device, status: status, backup: backup, error_code: error_code, error_type: error_type,
+                started_at: started_at, finished_at: finished_at)
+        end
+
+        # Data 成员保持不变；Worker 加上时间、旧文件迁移调整产物时仍保留内部元数据。
+        def with(**attributes)
+          return self if attributes.empty?
+
+          metadata = { duration_ms: @duration_ms, diagnostic: diagnostic }
+          metadata[:duration_ms] = nil if attributes.key?(:started_at) || attributes.key?(:finished_at)
+          metadata[:diagnostic] = nil if attributes.key?(:error_code) || attributes.key?(:error_type)
+          self.class.new(**to_h, **metadata.merge(attributes))
         end
 
         # 判断设备是否完成配置保存或上报上传成功。
@@ -24,7 +45,9 @@ module Net
 
         # 计算设备任务的耗时，计划阶段没有时间时返回空值。
         def duration_ms
-          ((finished_at - started_at) * 1000).round if started_at && finished_at
+          return @duration_ms unless @duration_ms.nil?
+
+          [((finished_at - started_at) * 1000).round, 0].max if started_at && finished_at
         end
       end
 
@@ -39,6 +62,9 @@ module Net
 
         # 空清单与已尝试但未全部成功的批次分别标记。
         def status = outcomes.empty? ? :no_devices : (success? ? :succeeded : :incomplete)
+
+        # 单独请求 v2 包装，不改变旧 Data 的成员、解构或默认 summary。
+        def report(policy: :strict) = Report.new(self, policy: policy)
 
         # 生成可写入报告及供命令行展示的结构化摘要。
         def summary
@@ -66,6 +92,8 @@ module Net
           }
         end
       end
+
+      autoload :Report, File.expand_path("report", __dir__)
     end
   end
 end

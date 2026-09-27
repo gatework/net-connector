@@ -15,11 +15,11 @@ Gem::Specification.new do |spec|
   # 使用明确的发布清单；本地凭据、设备备份、日志和开发产物不能进入安装包。
   spec.files = Dir["lib/**/*.rb", "lib/net/connector/templates/*.textfsm", "lib/net/connector/templates/index",
                    "exe/net-connector-backup", "docs/architecture.md", "docs/RELEASING.md", "docs/VERIFICATION.md",
-                   "README.md", "LICENSE", "CHANGELOG.md"].sort
+                   "README.md", "LICENSE", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md"].sort
   spec.require_paths = ["lib"]
   spec.bindir = "exe"
   spec.executables = ["net-connector-backup"]
-  spec.add_dependency "expect-pty", "~> 0.3.1"
+  spec.add_dependency "expect-pty", "~> 0.5.0"
   spec.add_dependency "textfsm", "~> 0.2.0"
   # 直接使用的标准库 gem 也要声明，最小 Bundler 应用不能借用开发工具的依赖。
   spec.add_dependency "digest", ">= 3.1", "< 4.0"
@@ -38,6 +38,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "stringio", "~> 3.0"
   spec.add_dependency "tempfile", ">= 0.1", "< 1.0"
   spec.add_dependency "time", ">= 0.2", "< 1.0"
+  spec.add_dependency "timeout", ">= 0.3", "< 1.0"
   spec.add_dependency "uri", ">= 0.12", "< 2.0"
   spec.add_dependency "yaml", ">= 0.2", "< 1.0"
   spec.metadata["rubygems_mfa_required"] = "true"

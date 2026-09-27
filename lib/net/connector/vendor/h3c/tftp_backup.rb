@@ -6,6 +6,11 @@ module Net
   module Connector
     module H3c
       class TftpBackup < Operations::Tftp::FileUpload
+        # 自动探测选择的是启动配置；显式文件仍不能推断为运行或启动配置。
+        def receipt_metadata(target, source_file:, explicit_source:)
+          super.merge(configuration_kind: explicit_source ? :saved_file : :startup)
+        end
+
         # 选取并校验 H3C 启动配置文件路径。
         def source_file(value)
           return TftpTarget.validate_source_file!(value) if value

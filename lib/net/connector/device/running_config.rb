@@ -22,6 +22,8 @@ module Net
         script = Script.new(@device.config_commands)
         return Result.new(error: incomplete("configuration collection has no commands")) if script.empty?
 
+        # 所有厂商的采集步骤都收紧输出边界，包括候选差异、模式切换及扩展查询。
+        script = Script.new(script.map(&:with_output_sensitive))
         strategy = self.class.strategy(@device)
         prompt = ->(command) { prompt_for(command, strategy) }
         @device.execute_operation(script, name: :running_config, prompt: prompt,

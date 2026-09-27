@@ -12,9 +12,8 @@ class CapabilitiesTest < Minitest::Test
       %i[running_config backup tftp_backup].each { |capability| assert device.supports?(capability), "#{vendor}: #{capability}" }
       assert_equal vendor != :palo_alto, device.supports?(:save_config), vendor.to_s
       assert_equal vendor != :huawei, device.supports?(:interface_descriptions), vendor.to_s
-      %i[neighbors interface_description_changes].each do |capability|
-        assert_equal !%i[huawei radware].include?(vendor), device.supports?(capability), "#{vendor}: #{capability}"
-      end
+      assert_equal !%i[huawei radware].include?(vendor), device.supports?(:neighbors), vendor.to_s
+      assert_equal !%i[huawei radware palo_alto].include?(vendor), device.supports?(:interface_description_changes), vendor.to_s
       refute device.supports?(:unknown)
       refute device.supports?(nil)
       assert device.supports?("running_config")
@@ -94,7 +93,9 @@ class CapabilitiesTest < Minitest::Test
   def test_method_based_custom_collection_remains_supported
     klass = Class.new(Net::Connector::Base) do
       profile { prompts { login(/device>/); command(/device>/) } }
+
       def config_commands = ["collect"]
+
       def save_commands = ["save"]
     end
     device = klass.new(transport: ConnectorFake.new)
@@ -104,6 +105,7 @@ class CapabilitiesTest < Minitest::Test
     refute device.supports?(:tftp_backup)
     empty = Class.new(klass) do
       def config_commands = []
+
       def save_commands = []
     end.new(transport: ConnectorFake.new)
     refute empty.supports?(:running_config)

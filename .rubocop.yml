@@ -11,6 +11,7 @@ AllCops:
     - script/**/*.rb
     - "*.gemspec"
     - Gemfile
+    - gemfiles/*.gemfile
     - Rakefile
   Exclude:
     - tmp/**/*
@@ -45,3 +46,19 @@ Style/StringLiteralsInInterpolation:
 
 Style/FrozenStringLiteralComment:
   Enabled: true
+
+# 先约束会话引擎和批量编排，避免复杂控制流继续增长。
+# 不生成按文件排除的基线；超限方法按职责拆分。
+Metrics/MethodLength:
+  Enabled: true
+  Max: 40
+  Include:
+    - lib/net/connector/engine/**/*.rb
+    - lib/net/connector/netdisco/**/*.rb
+
+Metrics/AbcSize:
+  Enabled: true
+  Max: 60
+  Include:
+    - lib/net/connector/engine/**/*.rb
+    - lib/net/connector/netdisco/**/*.rb

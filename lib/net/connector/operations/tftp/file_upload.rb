@@ -11,9 +11,22 @@ module Net
           # 未指定目标名时，设备使用配置源文件的 basename。
           def default_path(source_file) = File.basename(source_file)
 
+          # H3C 探测源文件之前先拒绝不支持的参数；探测本身不能放进纯校验钩子。
+          def validate_options!(_target, source_file:, vrf: nil)
+            raise ArgumentError, "TFTP file upload does not use vrf" unless vrf.nil?
+
+            TftpTarget.validate_source_file!(source_file) unless source_file.nil?
+          end
+
+          # 指定文件的内容与格式未知，不能仅凭 .cfg 后缀声称是当前运行配置。
+          def receipt_metadata(_target, source_file:, **)
+            { configuration_kind: :saved_file, source_file: source_file, format: :unknown }
+          end
+
           # 仅在调用方指定目标名时追加参数，保留设备原生命名行为。
           def script(target, source_file:, vrf: nil)
-            raise ArgumentError, "TFTP file upload does not use vrf" if vrf
+            validate_options!(target, source_file: source_file, vrf: vrf)
+            TftpTarget.validate_source_file!(source_file)
 
             destination = target.explicit_path? ? " #{target.path}" : ""
             Script.new([Command.new("tftp #{target.host} put #{source_file}#{destination}", timeout: 180)])

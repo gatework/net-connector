@@ -119,20 +119,34 @@ class NetdiscoReliabilityTest < Minitest::Test
     assert_equal "core-a-192.0.2.1.cfg", device.tftp_filename
   end
 
+  def test_tftp_labels_are_validated_before_byte_truncation
+    ["核心交换机", ("a" * 300) + "设备", "\xFF".b, 123].each do |label|
+      error = assert_raises(ArgumentError) do
+        Net::Connector::TftpTarget.filename("192.0.2.1", extension: "cfg", label: label)
+      end
+      assert_includes error.message, "TFTP label"
+    end
+    filename = Net::Connector::TftpTarget.filename("192.0.2.1", extension: "cfg", label: "a" * 300)
+    assert_equal Net::Connector::TftpTarget::MAX_PATH_BYTES, filename.bytesize
+    assert filename.end_with?("-192.0.2.1.cfg")
+    assert_equal "site/core-192.0.2.1.cfg",
+                 Net::Connector::TftpTarget.filename("192.0.2.1", extension: "cfg", label: "site/core")
+  end
+
   def test_tftp_preview_and_execution_use_the_same_palo_alto_filename
     rows = [{ "ip" => "192.0.2.1", "name" => "firewall", "vendor" => "Palo Alto" }]
     paths = []
     factory = lambda do |settings|
       Netdisco::Fleet.new(settings: settings, client: Struct.new(:devices).new(rows), result_store: nil,
                           credentials: ->(_) { { username: "backup" } }, connector_factory: lambda { |*_args|
-        Object.new.tap do |connector|
-          connector.define_singleton_method(:tftp_backup) do |**options|
-            paths << options.fetch(:path)
-            Net::Connector::TftpBackup.new(server: options.fetch(:host), path: paths.last, completed_at: Time.now.utc)
+          Object.new.tap do |connector|
+            connector.define_singleton_method(:tftp_backup) do |**options|
+              paths << options.fetch(:path)
+              Net::Connector::TftpBackup.new(server: options.fetch(:host), path: paths.last, completed_at: Time.now.utc)
+            end
+            connector.define_singleton_method(:close) {}
           end
-          connector.define_singleton_method(:close) {}
-        end
-      })
+        })
     end
     output = StringIO.new
     error = StringIO.new

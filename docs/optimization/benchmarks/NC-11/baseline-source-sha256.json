@@ -1,0 +1,786 @@
+[
+  {
+    "path": "CONTRIBUTING.md",
+    "sha256": "2d3810ac5e5e0bfb5df701f9dc939f2aa6f71d23ea4727342f2085841208a174"
+  },
+  {
+    "path": "SECURITY.md",
+    "sha256": "f3c955eb5c84f3269bc7b555b714195983071a01f080f68055a31738b172b2c6"
+  },
+  {
+    "path": "docs/optimization/NC-00-baseline.json",
+    "sha256": "94c898503a19197378267de09bf592d67323516e1278727092781e467d2304a5"
+  },
+  {
+    "path": "docs/optimization/NC-01-published-dependency-verification.json",
+    "sha256": "bddfdf9d80f4f2f38c2b06dd7b048d2e2f6185c62c208c4495c70804a576f4d8"
+  },
+  {
+    "path": "docs/optimization/NC-01-verification.json",
+    "sha256": "ddf8c7635864c630af5b2a4638e9c3f15639a4b89b5a27042d4018757c2ca5c5"
+  },
+  {
+    "path": "docs/optimization/NC-02-05-verification.json",
+    "sha256": "723bb3de6b696273131146377a5b93dd42aa29897e514547247624fd6cb1d593"
+  },
+  {
+    "path": "docs/optimization/NC-03-04-verification.json",
+    "sha256": "e09cf55b13cee40c3ecea8491c9eea7ec7402a9c33a35b5a814f4494623f8c2c"
+  },
+  {
+    "path": "docs/optimization/NC-06-verification.json",
+    "sha256": "4e2fb9407e0916c31f617b5a9b88b1f05b4ec7a3f68089da533d9b29603b272c"
+  },
+  {
+    "path": "docs/optimization/NC-07-verification.json",
+    "sha256": "2dd46b0db3dd59e66a2e753661dcbddc4426e6839095db9e29c2dbae9bbb395f"
+  },
+  {
+    "path": "docs/optimization/NC-08-verification.json",
+    "sha256": "626c3fac9cbc4d7413f5e7f7b16a7eee219a572d0c0ed6e326fef41189f69c93"
+  },
+  {
+    "path": "docs/optimization/NC-09-10-verification.json",
+    "sha256": "d4da0e9239155e18e7e25b0e690d75482224fa2d53d1f544e657c0bbd1c9c370"
+  },
+  {
+    "path": "docs/optimization/README.md",
+    "sha256": "c3c660579f4ad349886f752d2d25cc3a6af4dac1e8c602e0aebda31b7ea60313"
+  },
+  {
+    "path": "lib/net/connector/netdisco/diagnostic.rb",
+    "sha256": "a3c0c18e4025946abb8650890386199e12aec30a883b2d6dcb9f30c3cb821389"
+  },
+  {
+    "path": "lib/net/connector/netdisco/inventory_budget.rb",
+    "sha256": "5e9a3e301d0dd79dd5abded5db09a99b75c6d8ad723f571689d61e50eae33e3d"
+  },
+  {
+    "path": "lib/net/connector/netdisco/report.rb",
+    "sha256": "67b400dbe748f79f8ca6f7c28ac7376802b41bce053ce6931882cf0f817dfe2c"
+  },
+  {
+    "path": "lib/net/connector/operations/backup_lock.rb",
+    "sha256": "c6a50f192ae18da6315998c9f1131d0caae4f65a15cffb086055aa4130ac7d8c"
+  },
+  {
+    "path": "lib/net/connector/operations/safe_file.rb",
+    "sha256": "55ecbaaf7e16e8e1ed782cc9179f5aaf12a19b7c4456fd2d326017b1caff7de3"
+  },
+  {
+    "path": "lib/net/connector/operations/saved_config/legacy_index.rb",
+    "sha256": "739a51c7ccc549dcc52f619d80cffcf42f4eebf552653dc260c676b913c12cd0"
+  },
+  {
+    "path": "lib/net/connector/operations/tftp_receipt.rb",
+    "sha256": "4029592e701fec177442649aad14d91ff29a579a5487599d35aa84d22d5ca2fe"
+  },
+  {
+    "path": "lib/net/connector/operations/topology/immediate_strategy.rb",
+    "sha256": "2b7612a5c9132f5c644969fbdaa533b919b1882689342611cfbad4f264551742"
+  },
+  {
+    "path": "script/coverage_report.rb",
+    "sha256": "a7d373773332886ef25d5ca448dbb5c9dab71cc6ad1167f7a470a1a28ce6fdcf"
+  },
+  {
+    "path": "test/backup_lock_test.rb",
+    "sha256": "7f4b8c325960ea2af51d363e16714b7a8c53e563cacf7e7852cac77a129a983e"
+  },
+  {
+    "path": "test/coverage_test.rb",
+    "sha256": "8a45146b13a850e3f6b0b0284a89b5984a0dbcbaf09276f22e5c23aa81ec0794"
+  },
+  {
+    "path": "test/engine_boundary_test.rb",
+    "sha256": "7235e01113c4b3b1b482f4c7ca1753bb08c3a5fde2f746dc279b010e7cf0d56e"
+  },
+  {
+    "path": "test/file_persistence_test.rb",
+    "sha256": "12635c824bf0b1d8a3cba912bc81046dbe3f503d3f660e6422a0c795bc30df61"
+  },
+  {
+    "path": "test/fixtures/tftp/README.md",
+    "sha256": "58f21572c42d3811bf5928db96644f593b012c5d1f63d3610a579c7f48323a18"
+  },
+  {
+    "path": "test/fixtures/topology/README.md",
+    "sha256": "a017c3c68222b28fc179cf65e318133de518cc6cc4711f40394c021062dac7d5"
+  },
+  {
+    "path": "test/legacy_index_test.rb",
+    "sha256": "38332f62f4f2243442f9aa1f3efd5f7c3ed3641714c875223f77c2e01bf43502"
+  },
+  {
+    "path": "test/netdisco_budget_test.rb",
+    "sha256": "8082772fcd8e3c44c9d76f86a57297f7bc5d6ed78d6357a1e547df8feb0873a5"
+  },
+  {
+    "path": "test/netdisco_reporting_test.rb",
+    "sha256": "9658cc121e59696332fdc70c74a41af04c0f9461361330db9ddbe37c9919147a"
+  },
+  {
+    "path": "test/netdisco_settings_test.rb",
+    "sha256": "a249ac874bdd0b529dee084ca8f28e650e4afb3972b78582c25598932b8703f0"
+  },
+  {
+    "path": "test/output_sensitive_test.rb",
+    "sha256": "6cf23cc70b10f64ac69eebfa9fc2143b8e4601df0df330fb51a32fa3f6f64f0e"
+  },
+  {
+    "path": "test/parsing_encoding_test.rb",
+    "sha256": "b0b48cab93349f79c748369332a7990e9fe6c90f51068f1a3fdaaf802b1ebc5e"
+  },
+  {
+    "path": "test/support/tftp_fixture.rb",
+    "sha256": "efbecd4e0aafb4d7e0e91e4ea45080bce451f8f09962353b2db960edaf3591bd"
+  },
+  {
+    "path": "test/support/topology_fixture.rb",
+    "sha256": "0791ebf878f92af4014fae7db1782c40d72af6f0581d844e1a95878674161cc7"
+  },
+  {
+    "path": "test/tftp_boundary_test.rb",
+    "sha256": "e2df4d482e00c0d4ff43ba857f4f9334dc3b484060786366c3d38cfb0ba5c822"
+  },
+  {
+    "path": "test/topology_stages_test.rb",
+    "sha256": "6c7b91e12532701b072814255d4a361e03f49e7ea72d4090262721309da8ac6f"
+  },
+  {
+    "path": ".env.example",
+    "sha256": "af06089876842d9b2c250486205f980d759c41e05c21d9cfeea8e387ef172ff9"
+  },
+  {
+    "path": ".github/ISSUE_TEMPLATE/bug_report.md",
+    "sha256": "d80195e34201c19770389f38a74bc79409295651fa6c0ebbe05c2bc775abac29"
+  },
+  {
+    "path": ".github/ISSUE_TEMPLATE/feature_request.md",
+    "sha256": "82e156b959088cfe5249e7e0a69f88ba2535f7d418d3c9d3f6fac639669a81fc"
+  },
+  {
+    "path": ".github/PULL_REQUEST_TEMPLATE.md",
+    "sha256": "ad34e8e383a3966a094a52f213cf6cf0346cdd30d5b304efdf736b48b7dc6858"
+  },
+  {
+    "path": ".github/workflows/ci.yml",
+    "sha256": "f99a1dc777c1ea48ab4aff80e27f9318017e38714dbe650fe1596a080e4b33d5"
+  },
+  {
+    "path": ".github/workflows/release.yml",
+    "sha256": "d0ad5c475f07e6a08b9db86080f5d6a387dd237b18a544e4c52795b9674a7ab4"
+  },
+  {
+    "path": ".gitignore",
+    "sha256": "4384f7230f42db868d5dad3837d5ffbcf3d338f1fee5ce7eca1b90faabe9ff8f"
+  },
+  {
+    "path": ".gitleaks.toml",
+    "sha256": "0880a3e7d6c382396e12d289c1842561867db32787a9f2438adf0054f35703cf"
+  },
+  {
+    "path": ".rubocop.yml",
+    "sha256": "c0be9c44039bb6517207a1853db238b942ec73eeed45db572e7af9c865ab4cdb"
+  },
+  {
+    "path": "CHANGELOG.md",
+    "sha256": "dfe438029dae500e8c6de5ebb7dc0ce89787e02f19c7f29016a4ce6cd6adf4be"
+  },
+  {
+    "path": "Gemfile",
+    "sha256": "892c29372ad1693bb6df3791acd368e21fe8dfc499a134a1bb5060735bb99a0b"
+  },
+  {
+    "path": "LICENSE",
+    "sha256": "0cb8b9523733358cf1f1c4c3dbcc3db5959770eb05bc9e88bf0f7e2b1c866d15"
+  },
+  {
+    "path": "README.md",
+    "sha256": "551c48cb3312523750c48095f1aaf87b02f48ab94c78142b1c2f8dd0d4229537"
+  },
+  {
+    "path": "Rakefile",
+    "sha256": "6e967db4def252283f80904d077322b92ee66c9ef1a132762e07f1b176165a7a"
+  },
+  {
+    "path": "docs/RELEASING.md",
+    "sha256": "d8199b7c4582ce8f55879369df1d82bcf1478c5f56b5bba4f66d6564d7e37eda"
+  },
+  {
+    "path": "docs/VERIFICATION.md",
+    "sha256": "5b2eed636b5ccc95c0d0153e7fb034395d896a4cc18dcf39f5b7dc304ff00c2b"
+  },
+  {
+    "path": "docs/architecture.md",
+    "sha256": "3dc653ed13fc15fffe5f53475e88ae14d686cef3a50aa6491a03d7dfe4a46602"
+  },
+  {
+    "path": "examples/netdisco_backup.rb",
+    "sha256": "67c6aea5aaea92d61dc466e4ff12f883c2c33f05a14d1d8a9d774303f0e7ac25"
+  },
+  {
+    "path": "examples/netdisco_tftp_backup.rb",
+    "sha256": "6c8863dbae6c04e485344d9871478b82749a2a2af9fda0bebdb1dece358e8795"
+  },
+  {
+    "path": "examples/review_tftp_backup.rb",
+    "sha256": "a08701dfbce700ab0dab1f7525f44c8dda171279e795ea5c51b30981f8d98488"
+  },
+  {
+    "path": "examples/tftp_backup.rb",
+    "sha256": "3fe84549d427b82016dfa29af593c474210a3d985acc3d3e8d2f36a4add3e8be"
+  },
+  {
+    "path": "exe/net-connector-backup",
+    "sha256": "c6d0f3225dda2f7914dcff1c518d163ffb16c46797ca8cbbb57b8e92528657cb"
+  },
+  {
+    "path": "lib/net-connector.rb",
+    "sha256": "08e655e996db692381f062bca354e0aac67713d108949a3fbd883d281d15429d"
+  },
+  {
+    "path": "lib/net/connector.rb",
+    "sha256": "46576bde906913c84bdf9407953532a32cb2913238348def53124aa162180a8b"
+  },
+  {
+    "path": "lib/net/connector/device/base.rb",
+    "sha256": "233511257a312997ed2380e0273e8cf6d24b596261398955e623abc34530518e"
+  },
+  {
+    "path": "lib/net/connector/device/interface_description.rb",
+    "sha256": "a84d9291ecdeb2da8789533217ffd6f94ab2472af4c8c1990823738066ab18b5"
+  },
+  {
+    "path": "lib/net/connector/device/interface_name.rb",
+    "sha256": "890d6a6c827d10df00fac6fcedb19812bbb50bdcf2dcf22fd5c3bc272f26f208"
+  },
+  {
+    "path": "lib/net/connector/device/profile.rb",
+    "sha256": "5c6336d3b1db76564334de88d8b2ce918ebf87f50c6107ff2b10c2f747bb9472"
+  },
+  {
+    "path": "lib/net/connector/device/profile/builder.rb",
+    "sha256": "9e04744287bbea56fb0cc03546d4e83827198484e77e423a77cbd735506f3b23"
+  },
+  {
+    "path": "lib/net/connector/device/running_config.rb",
+    "sha256": "017b13dba9b9e4d8be5f6b75102a1365d36af232cfa995b59521ed850c308cb4"
+  },
+  {
+    "path": "lib/net/connector/device/running_config/strategy.rb",
+    "sha256": "6ac0e5700b715f73b8379583d7deac1ead18f5ee94c26e68dea8628be41c4af7"
+  },
+  {
+    "path": "lib/net/connector/engine.rb",
+    "sha256": "54e8021791b92b50e64f53daacfce7c1943f91a3e7ebb2e0ce416c771ff7c406"
+  },
+  {
+    "path": "lib/net/connector/engine/authentication.rb",
+    "sha256": "d6845d4f5f7e27bc116063879f5d3aaec6f70a4abb90fe05bde35f7aed111f2d"
+  },
+  {
+    "path": "lib/net/connector/engine/base.rb",
+    "sha256": "0cc8423b544b96379f0c3430d82514907cfef30158bdbee326a8fc65a6d012f5"
+  },
+  {
+    "path": "lib/net/connector/engine/command.rb",
+    "sha256": "c07c949a14ae91fe4d5e2a304de1c2bcd294cf156bb0a824d666f0ed4c19d7b5"
+  },
+  {
+    "path": "lib/net/connector/engine/configuration.rb",
+    "sha256": "184f65b79907965a4ff88f63bbedfa459260ff35b90cfdeea20b71b27b5cccfb"
+  },
+  {
+    "path": "lib/net/connector/engine/core.rb",
+    "sha256": "e13951013ac91a8612d15a33e96277bc5651fdbf99b89e8dd48093f25ad6f229"
+  },
+  {
+    "path": "lib/net/connector/engine/dialogue.rb",
+    "sha256": "36baf60832331a7caf89b29d6518d1804e2beeb523bf48c8f9c6b6ea5fc83fce"
+  },
+  {
+    "path": "lib/net/connector/engine/errors.rb",
+    "sha256": "72d6f746cdbbc8786e40767578f396b12f5d782105795f7a44aed8ac5abeb379"
+  },
+  {
+    "path": "lib/net/connector/engine/execution.rb",
+    "sha256": "30393ef367517f91dc68b245d7cc9980ff740c05957c8c2dd62a8354049fa903"
+  },
+  {
+    "path": "lib/net/connector/engine/log.rb",
+    "sha256": "d0ea46f2e45f423b6901c46b38d9dfd37ccf6f4c96d7f665716bef2f08ced6d2"
+  },
+  {
+    "path": "lib/net/connector/engine/log_messages.rb",
+    "sha256": "cbcf0d8fc4899e9292e465c17c1b536db20fbd2d17c9a2a3206ef557b9865d74"
+  },
+  {
+    "path": "lib/net/connector/engine/profile.rb",
+    "sha256": "0f4fd33a91847f768c21542398db4c5a61d5275a06c395a3c01225040cd95d9f"
+  },
+  {
+    "path": "lib/net/connector/engine/recovery.rb",
+    "sha256": "2fce303db923a77cf3fa99d7bbc70196ae5b4a5bb88b648fc5db0e7f0a42c229"
+  },
+  {
+    "path": "lib/net/connector/engine/result.rb",
+    "sha256": "e16174105375bac53ea00ddc6d3a65a91fab5a0d094c7cd4e02fa50c8253aa69"
+  },
+  {
+    "path": "lib/net/connector/engine/session.rb",
+    "sha256": "0c603e741424f540a85c3a91a39280e200b02e881e403e6ce555b7421e3c4da8"
+  },
+  {
+    "path": "lib/net/connector/engine/terminal_renderer.rb",
+    "sha256": "ed280ebfbd8be2e2b7a46a677f72165eda081b58ec6fc0054efd75e0b401086b"
+  },
+  {
+    "path": "lib/net/connector/engine/transport.rb",
+    "sha256": "416430e83c7cba7eeeb3fc743cfbea28c20df48e223091d7678af804b907d28e"
+  },
+  {
+    "path": "lib/net/connector/netdisco.rb",
+    "sha256": "b2a0991202c8aa0ec656e799f0e45ce5d8af5a2eb126e965660585bf2b3a1925"
+  },
+  {
+    "path": "lib/net/connector/netdisco/batch.rb",
+    "sha256": "9827ce0321d8a09215aa25f430e7b5698c45db3a7e23991be9700e489282362a"
+  },
+  {
+    "path": "lib/net/connector/netdisco/cli.rb",
+    "sha256": "fface129a9917db38db8b8a67383316dee3c933d0c521446bb13f8ee63e5c60f"
+  },
+  {
+    "path": "lib/net/connector/netdisco/client.rb",
+    "sha256": "568a5cee73c83eed280254e5c17d5175811c578ed7b3b526a844ba7a01ce1971"
+  },
+  {
+    "path": "lib/net/connector/netdisco/config_file.rb",
+    "sha256": "50a3edd4b69a2eef379ca509763ae2ef36cb045b3508c8d114c7f500ec97c593"
+  },
+  {
+    "path": "lib/net/connector/netdisco/device.rb",
+    "sha256": "ae938acb82f3b84afda3fbc4b1e270dac8aa480fff87991a26c54c48fd360f13"
+  },
+  {
+    "path": "lib/net/connector/netdisco/fleet.rb",
+    "sha256": "4210cf055576e3b82adf36a402ebf26374f369b5bb755b5439ab92273382a4ea"
+  },
+  {
+    "path": "lib/net/connector/netdisco/plan.rb",
+    "sha256": "f4502d5f5822c05f31020de4e88e66667c488696570b66594cbbab163fddce49"
+  },
+  {
+    "path": "lib/net/connector/netdisco/planner.rb",
+    "sha256": "6c0b30800d94c6f7bb2f81c53a5d247dbed8c53543d78cec74fb947db5363169"
+  },
+  {
+    "path": "lib/net/connector/netdisco/result_store.rb",
+    "sha256": "bc391927d61d27f008deb5feabde63dd56c6af2bba0d4ee62c7bcbb68412f00c"
+  },
+  {
+    "path": "lib/net/connector/netdisco/rules.rb",
+    "sha256": "c51ac7a6274eaa144df17b9f723c3efe88821d9421cf1889720e325839daa231"
+  },
+  {
+    "path": "lib/net/connector/netdisco/settings.rb",
+    "sha256": "e30a5c80288d40b1212dd11f0633a155783a72f6c50dc6f62d7352118d3ec8d2"
+  },
+  {
+    "path": "lib/net/connector/netdisco/worker.rb",
+    "sha256": "ffae9efcba169efb57bb80d205b40c56b4c959609e4cd1297efaf1d1e572bcd8"
+  },
+  {
+    "path": "lib/net/connector/operations.rb",
+    "sha256": "6c584c1d263049a36650e758e4cf471b9ee7ad316efcb80fe8919ad96b68d4b6"
+  },
+  {
+    "path": "lib/net/connector/operations/local_backup.rb",
+    "sha256": "cb3c9ae21ecdc13b56848c8b9bef999f27f8365ae90e86796986aeef7e31601d"
+  },
+  {
+    "path": "lib/net/connector/operations/parse_output.rb",
+    "sha256": "3fd457e8ac2d38c09a9b41a448c922a0138c4ed266501b2aee09751b2858b8d9"
+  },
+  {
+    "path": "lib/net/connector/operations/private_file.rb",
+    "sha256": "dd34a435dd67216bed77709dee53fa34650ac59f03880927b89d60d58ff864f6"
+  },
+  {
+    "path": "lib/net/connector/operations/running_config.rb",
+    "sha256": "2bdc958103f9d3af3a7eaff0696c41c401cee329bcbf7b13bb1a0344df2fdb66"
+  },
+  {
+    "path": "lib/net/connector/operations/running_config/cisco.rb",
+    "sha256": "c23f85cc202cd6a8e8c8823ac0f2b4c2ac0ade608655317c2637dab7d69b0e04"
+  },
+  {
+    "path": "lib/net/connector/operations/running_config/hillstone.rb",
+    "sha256": "a92613225f0b6dcba735ed34f311f4b3841ec228eff4666493f72ae1e672f805"
+  },
+  {
+    "path": "lib/net/connector/operations/running_config/palo_alto.rb",
+    "sha256": "f7aea0008454e1858eb0641556f505de7423ff40ab55471e4a6db32000c5125a"
+  },
+  {
+    "path": "lib/net/connector/operations/running_config/strategy.rb",
+    "sha256": "31a79ca02d6f17394c5789b53c18213bee64f7768bfcea853966d07dfed75fb6"
+  },
+  {
+    "path": "lib/net/connector/operations/saved_config.rb",
+    "sha256": "cb8f223adf913800351a2fb521a0bfd39bfd52d4f381c63705f636cbae3f7ddc"
+  },
+  {
+    "path": "lib/net/connector/operations/tftp/cisco_ios.rb",
+    "sha256": "b5bc993a2828d18131b1fba5e335153f2b7bc35a04c2a8a0726aac7ae4037cfc"
+  },
+  {
+    "path": "lib/net/connector/operations/tftp/cisco_nxos.rb",
+    "sha256": "9cb69b2e96ed876ebd4ed8c1718c72c0acb1b321108323ec932da211778c764d"
+  },
+  {
+    "path": "lib/net/connector/operations/tftp/file_upload.rb",
+    "sha256": "ff6e4f310b0b08f1482fc8fdedd5a03e85f239c31d70b59df646da5b22491c3f"
+  },
+  {
+    "path": "lib/net/connector/operations/tftp/h3c.rb",
+    "sha256": "d85f42771ed19fa9a5227bb057875db5a0dc4c96ee61ed53d4d341010a3d6a68"
+  },
+  {
+    "path": "lib/net/connector/operations/tftp/hillstone.rb",
+    "sha256": "339aaf53ee44b3d1873e8d5b68f964ab21ecbb3ea95cc36a06de9a06d1e28adf"
+  },
+  {
+    "path": "lib/net/connector/operations/tftp/huawei.rb",
+    "sha256": "f43e451bd842a32593536e9652c17f0db2f6abb4478aa4bc75d5d0553706548e"
+  },
+  {
+    "path": "lib/net/connector/operations/tftp/palo_alto.rb",
+    "sha256": "f547198d23faae92df76be2ae015351dc325544518358505745291bbdc114335"
+  },
+  {
+    "path": "lib/net/connector/operations/tftp/radware.rb",
+    "sha256": "d4cdb8ace73807a24fb3e3c44564f4612c67a2d659c1f43df125ff3daf5da055"
+  },
+  {
+    "path": "lib/net/connector/operations/tftp/strategy.rb",
+    "sha256": "4be57119a9fbb441244322c70a729a48bf471f5b0401bbefc84851b0059bf2f2"
+  },
+  {
+    "path": "lib/net/connector/operations/tftp_backup.rb",
+    "sha256": "61781392572770b2cf35827a2a3a7a7cdd16dc0084441837db9c31bc66400712"
+  },
+  {
+    "path": "lib/net/connector/operations/topology.rb",
+    "sha256": "fe3a4d19e5df7026f32eb78762456efb25883453f9d0b8fb3755d9ec3f184183"
+  },
+  {
+    "path": "lib/net/connector/operations/topology/cisco.rb",
+    "sha256": "4851c1a5c56c660bb9fd40c04fc704b33640360c751a443ee0f77e0d75380714"
+  },
+  {
+    "path": "lib/net/connector/operations/topology/h3c.rb",
+    "sha256": "776ca3958e23f3fffc41d953a9247bf87fac17963a6a45643fafa30c14eb26c6"
+  },
+  {
+    "path": "lib/net/connector/operations/topology/hillstone.rb",
+    "sha256": "f114229dbd4b279088dd54517b9d2197ccc1684bbec663c7ffa12d8afd4ecca0"
+  },
+  {
+    "path": "lib/net/connector/operations/topology/palo_alto.rb",
+    "sha256": "aa48bc426879fdde042753dadf9e2ebddb92dd726f28bd8045d7229ae1d28136"
+  },
+  {
+    "path": "lib/net/connector/operations/topology/radware.rb",
+    "sha256": "b9395879d697855c0218714cd3724a5f3ee8b0151d5fe75ba53202376024dedf"
+  },
+  {
+    "path": "lib/net/connector/operations/topology/strategy.rb",
+    "sha256": "a68f62cf995a3b34b02d1779dba24784fac5a4a801b2396f761072b1037db01d"
+  },
+  {
+    "path": "lib/net/connector/templates/cisco_cdp_neighbors_detail.textfsm",
+    "sha256": "c45cdab78fcf4247987c9e37a9c2ff523aac6c43cde96a795649049174612b3e"
+  },
+  {
+    "path": "lib/net/connector/templates/cisco_ios_running_config_interfaces.textfsm",
+    "sha256": "5584b009427874edb879c7e99988352e2f7392ca658a0c17764fb479c748cf08"
+  },
+  {
+    "path": "lib/net/connector/templates/cisco_ios_show_ip_interface_brief.textfsm",
+    "sha256": "ae9f850599b4f2d5c28ed1176e2121debac8fe90cf4bdb88d9c652b67702b4cd"
+  },
+  {
+    "path": "lib/net/connector/templates/h3c_interface_descriptions.textfsm",
+    "sha256": "1e7ecb6d0355c71956b2e4edc732a554899e3b6acdc1f0b15f2c63e7796f768d"
+  },
+  {
+    "path": "lib/net/connector/templates/h3c_lldp_local_first.textfsm",
+    "sha256": "409ce4393aee6d58b0971e4114096f81a986e7a467788ef0f8ecb4768506c660"
+  },
+  {
+    "path": "lib/net/connector/templates/h3c_lldp_name_first.textfsm",
+    "sha256": "88d6a00ef3a44f6fd6c080387052944d26c9ebccd56b5e87051e2494ba553055"
+  },
+  {
+    "path": "lib/net/connector/templates/hillstone_interface_descriptions.textfsm",
+    "sha256": "c7074cdad05f3193b135148d6b5d4ef7652b2b005b8a351d282afc9023267766"
+  },
+  {
+    "path": "lib/net/connector/templates/hillstone_lldp_neighbors.textfsm",
+    "sha256": "96e0f60add044bd3701c5b64aa7a3cb5b563dc046675ced0115afc269e17b97f"
+  },
+  {
+    "path": "lib/net/connector/templates/index",
+    "sha256": "4f7a3228d20bb378811a465a0bc1daa8ba86e0dc6ca757a3f671bb4852175443"
+  },
+  {
+    "path": "lib/net/connector/templates/palo_alto_interface_descriptions.textfsm",
+    "sha256": "d6a97dfd473354d78a4af767608b4eeca0b6ea9c24c258d09c3d20841ba69f8f"
+  },
+  {
+    "path": "lib/net/connector/templates/palo_alto_lldp_neighbors.textfsm",
+    "sha256": "39ce5e20281e41af06987044198c3d5aa5466a6fc1f8123eed987b03beaf8740"
+  },
+  {
+    "path": "lib/net/connector/templates/radware_port_names.textfsm",
+    "sha256": "65c7430b724f3796318f3dde59e0742f7eb74dfb6bc39983679ba8066c3fc9c5"
+  },
+  {
+    "path": "lib/net/connector/vendor/cisco_ios.rb",
+    "sha256": "302478cc6ff55ce2a5ca90707f2caad4a1d67735fe71e242194a65fc888d09fb"
+  },
+  {
+    "path": "lib/net/connector/vendor/cisco_ios/running_config.rb",
+    "sha256": "11d809feea41de17c823da3fe6bd107e3df2db444ec1eb285d0ae8d3434f7b9d"
+  },
+  {
+    "path": "lib/net/connector/vendor/cisco_ios/tftp_backup.rb",
+    "sha256": "e0a68f760915bb6f2531ed1a62894177b9a1f3a2dc75d978bd8bc6ffbf7f8a77"
+  },
+  {
+    "path": "lib/net/connector/vendor/cisco_ios/topology.rb",
+    "sha256": "602c5e954219fb5e8c9712fcd21161f31eda6bc98e0a33752c52867045083c05"
+  },
+  {
+    "path": "lib/net/connector/vendor/cisco_nxos.rb",
+    "sha256": "8ee07b00730437b736d5313473eb2e6765be9aa0f69d70584427c217548b4c3d"
+  },
+  {
+    "path": "lib/net/connector/vendor/cisco_nxos/running_config.rb",
+    "sha256": "259aae62625b8f37c65e7391486c4e994dc92187a1482152bfc4eb54968d2664"
+  },
+  {
+    "path": "lib/net/connector/vendor/cisco_nxos/tftp_backup.rb",
+    "sha256": "b416aa1dc8338517662dac4861b09194131782d63c50d6bb1dca49f32c37cdb8"
+  },
+  {
+    "path": "lib/net/connector/vendor/h3c.rb",
+    "sha256": "04a316922791ff44d2363fc307b3c03be3e6fd89cd12d1aec54ff8b9d70ec0c6"
+  },
+  {
+    "path": "lib/net/connector/vendor/h3c/tftp_backup.rb",
+    "sha256": "2b79a0095af7c99b70e0e49e434c82d44ab38f335445d32ccbeb54c4af5ec8be"
+  },
+  {
+    "path": "lib/net/connector/vendor/h3c/topology.rb",
+    "sha256": "968f883b123dad6ef0f4d1d5bc948bbf4d6ee643bd4f345ac28ad127f059d9fe"
+  },
+  {
+    "path": "lib/net/connector/vendor/h3c_wireless.rb",
+    "sha256": "b702b34128b8b6e8cdc6275392d5420d640319f7e001327c5229622bd582eef3"
+  },
+  {
+    "path": "lib/net/connector/vendor/hillstone.rb",
+    "sha256": "c921078be010469d762f1820420c08e03a2eaba917a4ab1c00d6a6c8da74bdc8"
+  },
+  {
+    "path": "lib/net/connector/vendor/hillstone/running_config.rb",
+    "sha256": "c84649f204dd00f08a2e9f4706995495fdd12fcd43179c9095a2f3177d10ec1e"
+  },
+  {
+    "path": "lib/net/connector/vendor/hillstone/tftp_backup.rb",
+    "sha256": "704508acfbc667063c156ba75b34acd47b929025ef7526b682b86f503f902c58"
+  },
+  {
+    "path": "lib/net/connector/vendor/hillstone/topology.rb",
+    "sha256": "e14f38f9a6fcb02ca949bb39e22bd772d16856fa422ab97e4c564a3c80e978ed"
+  },
+  {
+    "path": "lib/net/connector/vendor/huawei.rb",
+    "sha256": "eb6fa5b3ec88b9450f183757cfdcf065c3cfcb881427f2513039200f896dd323"
+  },
+  {
+    "path": "lib/net/connector/vendor/huawei/tftp_backup.rb",
+    "sha256": "125722c7f7d8b00a710bde978b7f4d61fb6ce5e3a0d98d830a209243ff0fabbb"
+  },
+  {
+    "path": "lib/net/connector/vendor/palo_alto.rb",
+    "sha256": "e057bf2c0dd5c2e3e4fddc8953304aeacb05e1970409838dce47f70ce11326c3"
+  },
+  {
+    "path": "lib/net/connector/vendor/palo_alto/running_config.rb",
+    "sha256": "99eb43be02913fbb73698fe79f88b23745deac8d0b4b6fd79b7e75b13ef0ac61"
+  },
+  {
+    "path": "lib/net/connector/vendor/palo_alto/tftp_backup.rb",
+    "sha256": "6c1819c84b41d599e1c7faa02011de8c628170b592cac560de2a88cd380c4dda"
+  },
+  {
+    "path": "lib/net/connector/vendor/palo_alto/topology.rb",
+    "sha256": "f3932b77fd52a65b50bed25860d92d303b1bbf397f8dfe2aec687af42c3ab455"
+  },
+  {
+    "path": "lib/net/connector/vendor/radware.rb",
+    "sha256": "97e640bba271ef68f816cbf4b6bd69bebbfee04d1587aba06afe6bf83df5ded4"
+  },
+  {
+    "path": "lib/net/connector/vendor/radware/tftp_backup.rb",
+    "sha256": "8ed4f6894f84ee3e7506a6a0177dc10ba292e3a7c5163cf4aefb97b98313ea92"
+  },
+  {
+    "path": "lib/net/connector/vendor/radware/topology.rb",
+    "sha256": "f8cf3eb983817a0b5df770bcfc18a3240723932c8d964b927220530ae32d1cad"
+  },
+  {
+    "path": "lib/net/connector/version.rb",
+    "sha256": "4622f92645299a7ab8d7d84a12aa10166eed8de2eac3c105847f3885a91eb570"
+  },
+  {
+    "path": "net-connector.gemspec",
+    "sha256": "deec95243c8024052264cc5554e9f6d413e3e529048ca22aba37aff011628518"
+  },
+  {
+    "path": "script/ci",
+    "sha256": "ae639aacc25d8eb5e3659afd80ce38fe28c7d5a23cbead69fb03cc9c79e29c06"
+  },
+  {
+    "path": "script/coverage.rb",
+    "sha256": "f8f4f916af5bab12ffd458f9291840598f2e214171032950938b9131991dede6"
+  },
+  {
+    "path": "script/package.rb",
+    "sha256": "76fd1b49a3a17fffad4aa41e303f360f0605c39c2940ee1dc4eb6976dcc5ff99"
+  },
+  {
+    "path": "script/release.rb",
+    "sha256": "916fa5309f2d4b071d071392881e31f24f2f6f7bcae42433b2dc278a54715f33"
+  },
+  {
+    "path": "script/security.rb",
+    "sha256": "f8631513f56fba7b48d99a2143c1fa932455ef7552f52db98bb9fa3b5f9c94c6"
+  },
+  {
+    "path": "script/smoke.rb",
+    "sha256": "f36de92cb07bdca8fb393728a541e7f48b1886044d10093146b52eebbb0a56d8"
+  },
+  {
+    "path": "script/tools.rb",
+    "sha256": "d0239c62d833b75b4c8b145ce14dda9b6a71d992b4fc73819a492b69f7e54ef7"
+  },
+  {
+    "path": "script/verify_install.rb",
+    "sha256": "c1b4e94b45e3c03f3e6f89dca6cb05de3b20c89ae1abb6e836ce5d42f8f8166f"
+  },
+  {
+    "path": "test/backup_identity_test.rb",
+    "sha256": "0e9f11c79b4c677a27ec7231029b337ff3d02dec6788dbea1f506cd6bbf7132b"
+  },
+  {
+    "path": "test/capabilities_test.rb",
+    "sha256": "3af1f4b4d478f60e5f11aead1ed15460b2ebf795c11d2af91d8cede47f35dea0"
+  },
+  {
+    "path": "test/collection_contract_test.rb",
+    "sha256": "3dba0982f3b89e30bae0e86b0554a93e23296683568a13809c1bd22b78f01344"
+  },
+  {
+    "path": "test/collection_prompt_test.rb",
+    "sha256": "402b8bae1c8c391f7fbe751f53159bf6786dae3cb72698e15b7bb7af86b60958"
+  },
+  {
+    "path": "test/connector_test.rb",
+    "sha256": "401e391f3f23661d8355ff52384559a711731445fd216b9b91b0fd51891644cc"
+  },
+  {
+    "path": "test/engine_reliability_test.rb",
+    "sha256": "013ab3281426861aae562ef05d79f669ee652904e4b8841fc6f00595768c0aa3"
+  },
+  {
+    "path": "test/examples_test.rb",
+    "sha256": "d062125dd453ae0d804c4bb03422ea078a36877c91dc3e92feccdf9164525c2a"
+  },
+  {
+    "path": "test/interface_description_test.rb",
+    "sha256": "98e621ccce1d5207b7200070601cb2f186e435f713be4013d95fae1b96537f34"
+  },
+  {
+    "path": "test/module_loading_test.rb",
+    "sha256": "41663bee9ccf99e9fab5a208e81f3ffc76bb375518c55ce32273e1471ae72ad7"
+  },
+  {
+    "path": "test/netdisco_plan_test.rb",
+    "sha256": "43358b76757f791842ec724cf3607bab024a825b13b2bf295f1de49e6123172a"
+  },
+  {
+    "path": "test/netdisco_reliability_test.rb",
+    "sha256": "a988df8539070fe014a3322a34b0e24ffdd2ae5a4d0ac966fea51f5408f1eeb6"
+  },
+  {
+    "path": "test/netdisco_test.rb",
+    "sha256": "f2d798c8655e36d16b1e04c7433f3a68ff7fb4dfd189375ccea5b40c49923367"
+  },
+  {
+    "path": "test/operations_reliability_test.rb",
+    "sha256": "9f435847f18b730a5199a8b21cac9e8ef9dd178463edab891291e5f2b4cd394c"
+  },
+  {
+    "path": "test/profile_contract_test.rb",
+    "sha256": "34eb96fedf1a778e1fd34730b821424a42c67f247e5d5ad7c46ae6aa3fb90e2b"
+  },
+  {
+    "path": "test/redaction_contract_test.rb",
+    "sha256": "ec15a4f6028f76a2286cd472bfdbb0e8b88f3793720706a5d11eef15431da51a"
+  },
+  {
+    "path": "test/release_test.rb",
+    "sha256": "09bf454911ca1d6e0e4baba27f2dfc684aac5bc57e2fd8567f5f6fdba82d02ec"
+  },
+  {
+    "path": "test/running_config_strategy_test.rb",
+    "sha256": "9c5d7b74e2f3a40c8082fdc807bfd6f26bd43148bee68de563cd403859b59b30"
+  },
+  {
+    "path": "test/security_test.rb",
+    "sha256": "c3255d5c7cf3f154c166c178a65088f62fd46b8bf7fb37ceb7be1267247762fd"
+  },
+  {
+    "path": "test/support/fake_transport.rb",
+    "sha256": "399740b562b969c8c8f97d196f5c11afff40041e9ee0c6cb8988d6b165c068af"
+  },
+  {
+    "path": "test/textfsm_test.rb",
+    "sha256": "d87897521104baa29c769ead810021dda28421c60e4bd4695d80090077205bf0"
+  },
+  {
+    "path": "test/tftp_evidence_test.rb",
+    "sha256": "1b9c2ab63981f0f610d0c1bf0a8d5d30f4b06bbd9aec767da319c594723b31bb"
+  },
+  {
+    "path": "test/topology_concurrency_test.rb",
+    "sha256": "f7902995a5534368157bf482a77fec8a9281809ba0bec6c712a4be3441f3eac8"
+  },
+  {
+    "path": "test/topology_strategy_test.rb",
+    "sha256": "0cfa683ee31a066419dc5af6dfd506667f18922663ec7254d1bde3d0f5cede30"
+  },
+  {
+    "path": "test/topology_test.rb",
+    "sha256": "87bcfa9aeb1a9b2d82ff9e821cd198a9d8fb7bba504d809a47cce2d36ae90d15"
+  },
+  {
+    "path": "test/transport_test.rb",
+    "sha256": "6ac4a89b1e0318e35d27f2984f7f4b60d6d181aaed4b6bc59896ec0187829c31"
+  }
+]

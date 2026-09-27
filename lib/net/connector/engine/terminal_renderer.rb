@@ -8,20 +8,21 @@ module Net
     # 把终端编辑控制符渲染成可读、兼容 UTF-8 和二进制的逐行日志。
     class TerminalRenderer
       # 将字节流完整渲染为字符串，供测试和一次性转换使用。
-      def self.render(input)
+      def self.render(input, strict_utf8: false)
         output = StringIO.new("".b)
-        renderer = new(output)
+        renderer = new(output, strict_utf8: strict_utf8)
         renderer.write(input)
         renderer.finish
         output.string
       end
 
       # 初始化当前行、光标和转义序列状态。
-      def initialize(target, max_line_bytes: 32 * 1024 * 1024)
+      def initialize(target, max_line_bytes: 32 * 1024 * 1024, strict_utf8: false)
         raise ArgumentError, "target must respond to write" unless target.respond_to?(:write)
         unless max_line_bytes.is_a?(Integer) && max_line_bytes.positive?
           raise ArgumentError, "max_line_bytes must be positive"
         end
+        raise ArgumentError, "strict_utf8 must be true or false" unless [true, false].include?(strict_utf8)
 
         @target = target
         @line = "".b
@@ -29,6 +30,7 @@ module Net
         @escape_state = nil
         @csi_parameters = "".b
         @max_line_bytes = max_line_bytes
+        @strict_utf8 = strict_utf8
       end
 
       # 逐字节消费终端输出，并返回输入字节数。
@@ -146,10 +148,11 @@ module Net
         @cursor = 0
       end
 
-      # 尽量保持有效 UTF-8；非法字节转义为可读的十六进制文本。
+      # 日志把非法字节转义；解析必须拒绝终端编辑产生的损坏字节，不能制造可写业务证据。
       def utf8_safe(line)
         text = line.dup.force_encoding(Encoding::UTF_8)
         return text.b if text.valid_encoding?
+        raise Encoding::InvalidByteSequenceError, "terminal editing produced invalid UTF-8" if @strict_utf8
 
         text.scrub { |invalid| invalid.bytes.map { |byte| format("\\x%02X", byte) }.join }.b
       end

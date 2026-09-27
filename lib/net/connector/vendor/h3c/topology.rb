@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require_relative "../../operations/topology/strategy"
+require_relative "../../operations/topology/immediate_strategy"
 
 module Net
   module Connector
     module H3c
-      class Topology < Operations::Topology::Strategy
+      class Topology < Operations::Topology::ImmediateStrategy
         TABLE_HEADER = /^\s*(?:System Name\s+Local Interface\b|(?:Local Interface|LocalIf)\s+)/i
         # H3C 提供 LLDP 邻居、配置描述读取和描述变更。
         def self.supports?(capability)
@@ -14,12 +14,17 @@ module Net
 
         # 读取设备的 LLDP 邻居列表。
         def neighbor_command = "display lldp neighbor-information list"
+
         # 从运行配置解析当前接口描述。
         def description_template = "h3c_interface_descriptions.textfsm"
+
         # 进入系统视图以修改接口描述。
         def enter_configuration = "system-view"
-        # 返回用户视图并执行保存命令。
-        def finish_commands = ["return"] + @device.profile.save_commands
+
+        # 返回用户视图读回；保存交给后续独立阶段。
+        def leave_configuration = ["return"]
+
+        def persistence_pattern = /\ASaved the current configuration to mainboard device successfully\.\z/i
 
         # H3C 不同版本的列顺序不同，按表头选对应模板。
         def neighbor_template(output)

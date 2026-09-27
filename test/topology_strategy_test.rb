@@ -8,13 +8,17 @@ class TopologyStrategyTest < Minitest::Test
   Topology = Net::Connector::Operations::Topology
 
   def test_strategy_capabilities_are_static_and_inherited
-    [Topology::Cisco, Topology::H3c, Topology::Hillstone, Topology::PaloAlto].each do |strategy|
+    [Topology::Cisco, Topology::H3c, Topology::Hillstone].each do |strategy|
       %i[neighbors interface_descriptions interface_description_changes].each do |capability|
         assert strategy.supports?(capability)
         assert Class.new(strategy).supports?(capability)
       end
       refute strategy.supports?(:unknown)
     end
+    assert Topology::PaloAlto.supports?(:neighbors)
+    assert Topology::PaloAlto.supports?(:interface_descriptions)
+    refute Topology::PaloAlto.supports?(:interface_description_changes)
+    refute Class.new(Topology::PaloAlto).supports?(:interface_description_changes)
     assert Topology::Radware.supports?(:interface_descriptions)
     refute Topology::Radware.supports?(:neighbors)
     refute Topology::Radware.supports?(:interface_description_changes)

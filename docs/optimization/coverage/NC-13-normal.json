@@ -1,0 +1,2632 @@
+{
+  "schema": 1,
+  "ruby": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]",
+  "platform": "arm64-darwin25",
+  "dependencies": {
+    "ast": "2.4.3",
+    "bundler": "4.0.20",
+    "date": "3.5.1",
+    "digest": "3.2.1",
+    "english": "0.8.1",
+    "expect-pty": "0.5.0",
+    "fileutils": "1.8.0",
+    "forwardable": "1.4.0",
+    "io-console": "0.9.4",
+    "io-wait": "0.4.0",
+    "ipaddr": "1.2.9",
+    "json": "2.21.2",
+    "language_server-protocol": "3.17.0.6",
+    "lint_roller": "1.1.0",
+    "logger": "1.7.0",
+    "minitest": "5.27.0",
+    "net-connector": "0.4.2",
+    "net-http": "0.9.1",
+    "open3": "0.2.1",
+    "openssl": "4.0.2",
+    "optparse": "0.8.1",
+    "parallel": "1.28.0",
+    "parser": "3.3.12.0",
+    "prism": "1.9.0",
+    "racc": "1.8.1",
+    "rainbow": "3.1.1",
+    "rake": "13.4.2",
+    "regexp_parser": "2.13.0",
+    "rubocop": "1.91.0",
+    "rubocop-ast": "1.50.0",
+    "ruby-progressbar": "1.13.0",
+    "securerandom": "0.4.1",
+    "shellwords": "0.2.2",
+    "stringio": "3.2.0",
+    "strscan": "3.1.8",
+    "tempfile": "0.3.1",
+    "textfsm": "0.2.0",
+    "time": "0.4.2",
+    "timeout": "0.6.1",
+    "tmpdir": "0.3.1",
+    "unicode-display_width": "3.3.0",
+    "unicode-emoji": "4.3.0",
+    "uri": "1.1.1",
+    "yaml": "0.4.0"
+  },
+  "loaded_files": 86,
+  "total_files": 99,
+  "unloaded_files": [
+    "net/connector/operations/running_config/cisco.rb",
+    "net/connector/operations/running_config/hillstone.rb",
+    "net/connector/operations/running_config/palo_alto.rb",
+    "net/connector/operations/running_config/strategy.rb",
+    "net/connector/operations/tftp/cisco_ios.rb",
+    "net/connector/operations/tftp/cisco_nxos.rb",
+    "net/connector/operations/tftp/h3c.rb",
+    "net/connector/operations/tftp/hillstone.rb",
+    "net/connector/operations/tftp/huawei.rb",
+    "net/connector/operations/tftp/palo_alto.rb",
+    "net/connector/operations/tftp/radware.rb",
+    "net/connector/version.rb",
+    "net-connector.rb"
+  ],
+  "coverage": {
+    "lines": {
+      "hit": 3788,
+      "total": 3916
+    },
+    "branches": {
+      "hit": 1260,
+      "total": 1498
+    }
+  },
+  "groups": {
+    "核心引擎": {
+      "lines": {
+        "hit": 980,
+        "total": 1023
+      },
+      "branches": {
+        "hit": 410,
+        "total": 462
+      }
+    },
+    "脱敏与错误（含 Redactor）": {
+      "lines": {
+        "hit": 89,
+        "total": 89
+      },
+      "branches": {
+        "hit": 16,
+        "total": 16
+      }
+    },
+    "批量并发": {
+      "lines": {
+        "hit": 47,
+        "total": 47
+      },
+      "branches": {
+        "hit": 7,
+        "total": 7
+      }
+    }
+  },
+  "ratchet": {
+    "status": "passed",
+    "regressions": []
+  },
+  "files": [
+    {
+      "path": "net/connector.rb",
+      "lines": {
+        "hit": 16,
+        "total": 18
+      },
+      "branches": {
+        "hit": 0,
+        "total": 2
+      },
+      "uncovered_lines": [
+        43,
+        45
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "else",
+          "line": 43,
+          "column": 6
+        },
+        {
+          "kind": "then",
+          "line": 43,
+          "column": 6
+        }
+      ]
+    },
+    {
+      "path": "net/connector/device/base.rb",
+      "lines": {
+        "hit": 156,
+        "total": 165
+      },
+      "branches": {
+        "hit": 40,
+        "total": 53
+      },
+      "uncovered_lines": [
+        69,
+        111,
+        211,
+        220,
+        221,
+        226,
+        234,
+        295,
+        303
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 29,
+          "column": 22
+        },
+        {
+          "kind": "else",
+          "line": 29,
+          "column": 22
+        },
+        {
+          "kind": "then",
+          "line": 52,
+          "column": 41
+        },
+        {
+          "kind": "then",
+          "line": 58,
+          "column": 8
+        },
+        {
+          "kind": "else",
+          "line": 69,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 69,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 77,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 78,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 211,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 232,
+          "column": 8
+        },
+        {
+          "kind": "else",
+          "line": 293,
+          "column": 8
+        },
+        {
+          "kind": "else",
+          "line": 301,
+          "column": 8
+        },
+        {
+          "kind": "else",
+          "line": 372,
+          "column": 56
+        }
+      ]
+    },
+    {
+      "path": "net/connector/device/interface_description.rb",
+      "lines": {
+        "hit": 20,
+        "total": 20
+      },
+      "branches": {
+        "hit": 10,
+        "total": 10
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/device/interface_name.rb",
+      "lines": {
+        "hit": 23,
+        "total": 23
+      },
+      "branches": {
+        "hit": 12,
+        "total": 12
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/device/profile.rb",
+      "lines": {
+        "hit": 91,
+        "total": 98
+      },
+      "branches": {
+        "hit": 27,
+        "total": 38
+      },
+      "uncovered_lines": [
+        76,
+        109,
+        129,
+        154,
+        163,
+        172,
+        187
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 33,
+          "column": 8
+        },
+        {
+          "kind": "then",
+          "line": 76,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 109,
+          "column": 36
+        },
+        {
+          "kind": "else",
+          "line": 109,
+          "column": 36
+        },
+        {
+          "kind": "then",
+          "line": 129,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 154,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 163,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 172,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 187,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 195,
+          "column": 8
+        },
+        {
+          "kind": "then",
+          "line": 203,
+          "column": 8
+        }
+      ]
+    },
+    {
+      "path": "net/connector/device/profile/builder.rb",
+      "lines": {
+        "hit": 106,
+        "total": 106
+      },
+      "branches": {
+        "hit": 5,
+        "total": 6
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 78,
+          "column": 50
+        }
+      ]
+    },
+    {
+      "path": "net/connector/device/running_config.rb",
+      "lines": {
+        "hit": 39,
+        "total": 40
+      },
+      "branches": {
+        "hit": 12,
+        "total": 14
+      },
+      "uncovered_lines": [
+        57
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 53,
+          "column": 8
+        },
+        {
+          "kind": "then",
+          "line": 57,
+          "column": 10
+        }
+      ]
+    },
+    {
+      "path": "net/connector/device/running_config/strategy.rb",
+      "lines": {
+        "hit": 13,
+        "total": 13
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/engine.rb",
+      "lines": {
+        "hit": 1,
+        "total": 1
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/engine/authentication.rb",
+      "lines": {
+        "hit": 30,
+        "total": 30
+      },
+      "branches": {
+        "hit": 2,
+        "total": 2
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/engine/base.rb",
+      "lines": {
+        "hit": 1,
+        "total": 1
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/engine/command.rb",
+      "lines": {
+        "hit": 52,
+        "total": 56
+      },
+      "branches": {
+        "hit": 20,
+        "total": 26
+      },
+      "uncovered_lines": [
+        21,
+        25,
+        84,
+        86
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 21,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 25,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 27,
+          "column": 8
+        },
+        {
+          "kind": "then",
+          "line": 71,
+          "column": 8
+        },
+        {
+          "kind": "then",
+          "line": 75,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 91,
+          "column": 8
+        }
+      ]
+    },
+    {
+      "path": "net/connector/engine/configuration.rb",
+      "lines": {
+        "hit": 70,
+        "total": 70
+      },
+      "branches": {
+        "hit": 38,
+        "total": 38
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/engine/core.rb",
+      "lines": {
+        "hit": 4,
+        "total": 4
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/engine/dialogue.rb",
+      "lines": {
+        "hit": 133,
+        "total": 141
+      },
+      "branches": {
+        "hit": 61,
+        "total": 74
+      },
+      "uncovered_lines": [
+        154,
+        197,
+        222,
+        223,
+        224,
+        225,
+        231,
+        237
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 69,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 152,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 197,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 201,
+          "column": 8
+        },
+        {
+          "kind": "then",
+          "line": 223,
+          "column": 33
+        },
+        {
+          "kind": "else",
+          "line": 223,
+          "column": 55
+        },
+        {
+          "kind": "then",
+          "line": 224,
+          "column": 33
+        },
+        {
+          "kind": "else",
+          "line": 224,
+          "column": 52
+        },
+        {
+          "kind": "else",
+          "line": 230,
+          "column": 11
+        },
+        {
+          "kind": "then",
+          "line": 231,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 234,
+          "column": 19
+        },
+        {
+          "kind": "then",
+          "line": 237,
+          "column": 18
+        },
+        {
+          "kind": "else",
+          "line": 243,
+          "column": 49
+        }
+      ]
+    },
+    {
+      "path": "net/connector/engine/errors.rb",
+      "lines": {
+        "hit": 89,
+        "total": 89
+      },
+      "branches": {
+        "hit": 16,
+        "total": 16
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/engine/execution.rb",
+      "lines": {
+        "hit": 52,
+        "total": 53
+      },
+      "branches": {
+        "hit": 18,
+        "total": 18
+      },
+      "uncovered_lines": [
+        76
+      ],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/engine/log.rb",
+      "lines": {
+        "hit": 111,
+        "total": 120
+      },
+      "branches": {
+        "hit": 50,
+        "total": 56
+      },
+      "uncovered_lines": [
+        72,
+        98,
+        100,
+        110,
+        112,
+        120,
+        122,
+        148,
+        223
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 105,
+          "column": 8
+        },
+        {
+          "kind": "else",
+          "line": 108,
+          "column": 8
+        },
+        {
+          "kind": "else",
+          "line": 117,
+          "column": 8
+        },
+        {
+          "kind": "else",
+          "line": 118,
+          "column": 8
+        },
+        {
+          "kind": "else",
+          "line": 128,
+          "column": 8
+        },
+        {
+          "kind": "else",
+          "line": 167,
+          "column": 8
+        }
+      ]
+    },
+    {
+      "path": "net/connector/engine/log_messages.rb",
+      "lines": {
+        "hit": 20,
+        "total": 22
+      },
+      "branches": {
+        "hit": 16,
+        "total": 18
+      },
+      "uncovered_lines": [
+        15,
+        39
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "when",
+          "line": 15,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 39,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/engine/profile.rb",
+      "lines": {
+        "hit": 1,
+        "total": 1
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/engine/recovery.rb",
+      "lines": {
+        "hit": 26,
+        "total": 26
+      },
+      "branches": {
+        "hit": 14,
+        "total": 14
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/engine/result.rb",
+      "lines": {
+        "hit": 31,
+        "total": 32
+      },
+      "branches": {
+        "hit": 13,
+        "total": 20
+      },
+      "uncovered_lines": [
+        34
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "else",
+          "line": 15,
+          "column": 18
+        },
+        {
+          "kind": "else",
+          "line": 15,
+          "column": 18
+        },
+        {
+          "kind": "then",
+          "line": 32,
+          "column": 8
+        },
+        {
+          "kind": "then",
+          "line": 34,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 36,
+          "column": 8
+        },
+        {
+          "kind": "then",
+          "line": 64,
+          "column": 84
+        },
+        {
+          "kind": "else",
+          "line": 64,
+          "column": 84
+        }
+      ]
+    },
+    {
+      "path": "net/connector/engine/session.rb",
+      "lines": {
+        "hit": 189,
+        "total": 201
+      },
+      "branches": {
+        "hit": 78,
+        "total": 85
+      },
+      "uncovered_lines": [
+        69,
+        105,
+        106,
+        134,
+        230,
+        235,
+        236,
+        238,
+        240,
+        278,
+        353,
+        361
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 69,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 134,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 240,
+          "column": 26
+        },
+        {
+          "kind": "else",
+          "line": 240,
+          "column": 53
+        },
+        {
+          "kind": "when",
+          "line": 278,
+          "column": 47
+        },
+        {
+          "kind": "then",
+          "line": 326,
+          "column": 44
+        },
+        {
+          "kind": "then",
+          "line": 328,
+          "column": 41
+        }
+      ]
+    },
+    {
+      "path": "net/connector/engine/terminal_renderer.rb",
+      "lines": {
+        "hit": 91,
+        "total": 91
+      },
+      "branches": {
+        "hit": 58,
+        "total": 61
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 25,
+          "column": 8
+        },
+        {
+          "kind": "else",
+          "line": 45,
+          "column": 8
+        },
+        {
+          "kind": "else",
+          "line": 72,
+          "column": 8
+        }
+      ]
+    },
+    {
+      "path": "net/connector/engine/transport.rb",
+      "lines": {
+        "hit": 80,
+        "total": 86
+      },
+      "branches": {
+        "hit": 26,
+        "total": 34
+      },
+      "uncovered_lines": [
+        41,
+        54,
+        58,
+        95,
+        96,
+        98
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 19,
+          "column": 68
+        },
+        {
+          "kind": "else",
+          "line": 19,
+          "column": 68
+        },
+        {
+          "kind": "then",
+          "line": 41,
+          "column": 23
+        },
+        {
+          "kind": "else",
+          "line": 74,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 96,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 96,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 98,
+          "column": 25
+        },
+        {
+          "kind": "else",
+          "line": 98,
+          "column": 36
+        }
+      ]
+    },
+    {
+      "path": "net/connector/netdisco.rb",
+      "lines": {
+        "hit": 12,
+        "total": 12
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/netdisco/batch.rb",
+      "lines": {
+        "hit": 38,
+        "total": 39
+      },
+      "branches": {
+        "hit": 28,
+        "total": 32
+      },
+      "uncovered_lines": [
+        18
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 18,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 20,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 29,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 50,
+          "column": 10
+        }
+      ]
+    },
+    {
+      "path": "net/connector/netdisco/cli.rb",
+      "lines": {
+        "hit": 111,
+        "total": 115
+      },
+      "branches": {
+        "hit": 54,
+        "total": 62
+      },
+      "uncovered_lines": [
+        13,
+        39,
+        63,
+        64
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 39,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 78,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 91,
+          "column": 34
+        },
+        {
+          "kind": "then",
+          "line": 149,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 160,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 161,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 162,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 176,
+          "column": 49
+        }
+      ]
+    },
+    {
+      "path": "net/connector/netdisco/client.rb",
+      "lines": {
+        "hit": 162,
+        "total": 171
+      },
+      "branches": {
+        "hit": 37,
+        "total": 51
+      },
+      "uncovered_lines": [
+        60,
+        67,
+        152,
+        153,
+        164,
+        211,
+        254,
+        269,
+        272
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 40,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 60,
+          "column": 12
+        },
+        {
+          "kind": "else",
+          "line": 128,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 129,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 149,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 152,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 152,
+          "column": 62
+        },
+        {
+          "kind": "else",
+          "line": 152,
+          "column": 78
+        },
+        {
+          "kind": "then",
+          "line": 155,
+          "column": 52
+        },
+        {
+          "kind": "else",
+          "line": 217,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 218,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 254,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 269,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 272,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/netdisco/config_file.rb",
+      "lines": {
+        "hit": 39,
+        "total": 41
+      },
+      "branches": {
+        "hit": 21,
+        "total": 33
+      },
+      "uncovered_lines": [
+        83,
+        93
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 44,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 47,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 50,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 54,
+          "column": 12
+        },
+        {
+          "kind": "else",
+          "line": 70,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 72,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 78,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 83,
+          "column": 14
+        },
+        {
+          "kind": "then",
+          "line": 88,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 93,
+          "column": 14
+        },
+        {
+          "kind": "then",
+          "line": 98,
+          "column": 48
+        },
+        {
+          "kind": "then",
+          "line": 99,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/netdisco/device.rb",
+      "lines": {
+        "hit": 36,
+        "total": 37
+      },
+      "branches": {
+        "hit": 18,
+        "total": 26
+      },
+      "uncovered_lines": [
+        32
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 13,
+          "column": 69
+        },
+        {
+          "kind": "else",
+          "line": 13,
+          "column": 88
+        },
+        {
+          "kind": "then",
+          "line": 22,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 28,
+          "column": 12
+        },
+        {
+          "kind": "else",
+          "line": 54,
+          "column": 18
+        },
+        {
+          "kind": "else",
+          "line": 55,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 63,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 64,
+          "column": 10
+        }
+      ]
+    },
+    {
+      "path": "net/connector/netdisco/diagnostic.rb",
+      "lines": {
+        "hit": 37,
+        "total": 38
+      },
+      "branches": {
+        "hit": 27,
+        "total": 28
+      },
+      "uncovered_lines": [
+        70
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "else",
+          "line": 78,
+          "column": 120
+        }
+      ]
+    },
+    {
+      "path": "net/connector/netdisco/fleet.rb",
+      "lines": {
+        "hit": 146,
+        "total": 148
+      },
+      "branches": {
+        "hit": 67,
+        "total": 74
+      },
+      "uncovered_lines": [
+        210,
+        224
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 23,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 24,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 50,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 80,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 101,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 140,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 210,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/netdisco/inventory_budget.rb",
+      "lines": {
+        "hit": 28,
+        "total": 28
+      },
+      "branches": {
+        "hit": 4,
+        "total": 4
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/netdisco/plan.rb",
+      "lines": {
+        "hit": 38,
+        "total": 41
+      },
+      "branches": {
+        "hit": 18,
+        "total": 24
+      },
+      "uncovered_lines": [
+        11,
+        25,
+        33
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 11,
+          "column": 12
+        },
+        {
+          "kind": "else",
+          "line": 14,
+          "column": 75
+        },
+        {
+          "kind": "then",
+          "line": 23,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 25,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 33,
+          "column": 14
+        },
+        {
+          "kind": "then",
+          "line": 65,
+          "column": 10
+        }
+      ]
+    },
+    {
+      "path": "net/connector/netdisco/planner.rb",
+      "lines": {
+        "hit": 37,
+        "total": 37
+      },
+      "branches": {
+        "hit": 12,
+        "total": 12
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/netdisco/report.rb",
+      "lines": {
+        "hit": 49,
+        "total": 51
+      },
+      "branches": {
+        "hit": 19,
+        "total": 22
+      },
+      "uncovered_lines": [
+        35,
+        38
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 33,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 35,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 38,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/netdisco/result_store.rb",
+      "lines": {
+        "hit": 22,
+        "total": 22
+      },
+      "branches": {
+        "hit": 2,
+        "total": 4
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 29,
+          "column": 12
+        },
+        {
+          "kind": "else",
+          "line": 37,
+          "column": 64
+        }
+      ]
+    },
+    {
+      "path": "net/connector/netdisco/rules.rb",
+      "lines": {
+        "hit": 78,
+        "total": 84
+      },
+      "branches": {
+        "hit": 39,
+        "total": 55
+      },
+      "uncovered_lines": [
+        31,
+        39,
+        43,
+        59,
+        82,
+        145
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 23,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 26,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 31,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 39,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 43,
+          "column": 14
+        },
+        {
+          "kind": "then",
+          "line": 47,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 55,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 59,
+          "column": 14
+        },
+        {
+          "kind": "then",
+          "line": 67,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 75,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 82,
+          "column": 14
+        },
+        {
+          "kind": "then",
+          "line": 85,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 128,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 137,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 140,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 141,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/netdisco/settings.rb",
+      "lines": {
+        "hit": 160,
+        "total": 164
+      },
+      "branches": {
+        "hit": 69,
+        "total": 81
+      },
+      "uncovered_lines": [
+        46,
+        71,
+        236,
+        258
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 46,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 66,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 71,
+          "column": 29
+        },
+        {
+          "kind": "then",
+          "line": 104,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 118,
+          "column": 20
+        },
+        {
+          "kind": "then",
+          "line": 137,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 170,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 176,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 210,
+          "column": 16
+        },
+        {
+          "kind": "then",
+          "line": 258,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 275,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 282,
+          "column": 10
+        }
+      ]
+    },
+    {
+      "path": "net/connector/netdisco/worker.rb",
+      "lines": {
+        "hit": 47,
+        "total": 47
+      },
+      "branches": {
+        "hit": 7,
+        "total": 7
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/operations.rb",
+      "lines": {
+        "hit": 18,
+        "total": 18
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/operations/backup_lock.rb",
+      "lines": {
+        "hit": 64,
+        "total": 66
+      },
+      "branches": {
+        "hit": 16,
+        "total": 20
+      },
+      "uncovered_lines": [
+        91,
+        94
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "else",
+          "line": 24,
+          "column": 123
+        },
+        {
+          "kind": "then",
+          "line": 31,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 65,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 91,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/operations/local_backup.rb",
+      "lines": {
+        "hit": 47,
+        "total": 49
+      },
+      "branches": {
+        "hit": 15,
+        "total": 20
+      },
+      "uncovered_lines": [
+        33,
+        35
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 33,
+          "column": 17
+        },
+        {
+          "kind": "then",
+          "line": 35,
+          "column": 17
+        },
+        {
+          "kind": "else",
+          "line": 50,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 81,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 83,
+          "column": 10
+        }
+      ]
+    },
+    {
+      "path": "net/connector/operations/parse_output.rb",
+      "lines": {
+        "hit": 36,
+        "total": 38
+      },
+      "branches": {
+        "hit": 11,
+        "total": 16
+      },
+      "uncovered_lines": [
+        58,
+        64
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 17,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 18,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 27,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 38,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 42,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/operations/private_file.rb",
+      "lines": {
+        "hit": 69,
+        "total": 70
+      },
+      "branches": {
+        "hit": 13,
+        "total": 18
+      },
+      "uncovered_lines": [
+        14
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 14,
+          "column": 14
+        },
+        {
+          "kind": "then",
+          "line": 27,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 99,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 72,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 90,
+          "column": 14
+        }
+      ]
+    },
+    {
+      "path": "net/connector/operations/running_config.rb",
+      "lines": {
+        "hit": 9,
+        "total": 9
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/operations/safe_file.rb",
+      "lines": {
+        "hit": 29,
+        "total": 31
+      },
+      "branches": {
+        "hit": 8,
+        "total": 9
+      },
+      "uncovered_lines": [
+        45,
+        55
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 51,
+          "column": 10
+        }
+      ]
+    },
+    {
+      "path": "net/connector/operations/saved_config.rb",
+      "lines": {
+        "hit": 56,
+        "total": 57
+      },
+      "branches": {
+        "hit": 25,
+        "total": 30
+      },
+      "uncovered_lines": [
+        20
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 25,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 26,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 57,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 79,
+          "column": 12
+        },
+        {
+          "kind": "else",
+          "line": 86,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/operations/saved_config/legacy_index.rb",
+      "lines": {
+        "hit": 60,
+        "total": 62
+      },
+      "branches": {
+        "hit": 11,
+        "total": 12
+      },
+      "uncovered_lines": [
+        53,
+        80
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "else",
+          "line": 51,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/operations/tftp/file_upload.rb",
+      "lines": {
+        "hit": 22,
+        "total": 22
+      },
+      "branches": {
+        "hit": 6,
+        "total": 6
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/operations/tftp/strategy.rb",
+      "lines": {
+        "hit": 37,
+        "total": 37
+      },
+      "branches": {
+        "hit": 2,
+        "total": 4
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 50,
+          "column": 12
+        },
+        {
+          "kind": "else",
+          "line": 54,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/operations/tftp_backup.rb",
+      "lines": {
+        "hit": 98,
+        "total": 98
+      },
+      "branches": {
+        "hit": 51,
+        "total": 52
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 159,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/operations/tftp_receipt.rb",
+      "lines": {
+        "hit": 35,
+        "total": 39
+      },
+      "branches": {
+        "hit": 34,
+        "total": 40
+      },
+      "uncovered_lines": [
+        19,
+        25,
+        28,
+        57
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 19,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 25,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 30,
+          "column": 8
+        },
+        {
+          "kind": "then",
+          "line": 33,
+          "column": 65
+        },
+        {
+          "kind": "then",
+          "line": 33,
+          "column": 65
+        },
+        {
+          "kind": "then",
+          "line": 57,
+          "column": 10
+        }
+      ]
+    },
+    {
+      "path": "net/connector/operations/topology.rb",
+      "lines": {
+        "hit": 135,
+        "total": 140
+      },
+      "branches": {
+        "hit": 54,
+        "total": 66
+      },
+      "uncovered_lines": [
+        117,
+        119,
+        155,
+        188,
+        199
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "else",
+          "line": 62,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 79,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 113,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 117,
+          "column": 12
+        },
+        {
+          "kind": "else",
+          "line": 117,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 117,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 149,
+          "column": 55
+        },
+        {
+          "kind": "then",
+          "line": 155,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 188,
+          "column": 14
+        },
+        {
+          "kind": "else",
+          "line": 196,
+          "column": 12
+        },
+        {
+          "kind": "then",
+          "line": 199,
+          "column": 12
+        },
+        {
+          "kind": "else",
+          "line": 229,
+          "column": 91
+        }
+      ]
+    },
+    {
+      "path": "net/connector/operations/topology/cisco.rb",
+      "lines": {
+        "hit": 5,
+        "total": 5
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/operations/topology/h3c.rb",
+      "lines": {
+        "hit": 5,
+        "total": 5
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/operations/topology/hillstone.rb",
+      "lines": {
+        "hit": 5,
+        "total": 5
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/operations/topology/immediate_strategy.rb",
+      "lines": {
+        "hit": 22,
+        "total": 22
+      },
+      "branches": {
+        "hit": 4,
+        "total": 4
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/operations/topology/palo_alto.rb",
+      "lines": {
+        "hit": 5,
+        "total": 5
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/operations/topology/radware.rb",
+      "lines": {
+        "hit": 5,
+        "total": 5
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/operations/topology/strategy.rb",
+      "lines": {
+        "hit": 37,
+        "total": 38
+      },
+      "branches": {
+        "hit": 1,
+        "total": 2
+      },
+      "uncovered_lines": [
+        80
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 78,
+          "column": 37
+        }
+      ]
+    },
+    {
+      "path": "net/connector/vendor/cisco_ios.rb",
+      "lines": {
+        "hit": 28,
+        "total": 28
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/cisco_ios/running_config.rb",
+      "lines": {
+        "hit": 11,
+        "total": 11
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/cisco_ios/tftp_backup.rb",
+      "lines": {
+        "hit": 15,
+        "total": 15
+      },
+      "branches": {
+        "hit": 4,
+        "total": 4
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/cisco_ios/topology.rb",
+      "lines": {
+        "hit": 19,
+        "total": 19
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/cisco_nxos.rb",
+      "lines": {
+        "hit": 27,
+        "total": 27
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/cisco_nxos/running_config.rb",
+      "lines": {
+        "hit": 10,
+        "total": 10
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/cisco_nxos/tftp_backup.rb",
+      "lines": {
+        "hit": 16,
+        "total": 16
+      },
+      "branches": {
+        "hit": 2,
+        "total": 2
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/h3c.rb",
+      "lines": {
+        "hit": 33,
+        "total": 40
+      },
+      "branches": {
+        "hit": 2,
+        "total": 8
+      },
+      "uncovered_lines": [
+        58,
+        59,
+        61,
+        68,
+        69,
+        70,
+        72
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "else",
+          "line": 56,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 59,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 59,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 66,
+          "column": 10
+        },
+        {
+          "kind": "else",
+          "line": 70,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 70,
+          "column": 10
+        }
+      ]
+    },
+    {
+      "path": "net/connector/vendor/h3c/tftp_backup.rb",
+      "lines": {
+        "hit": 15,
+        "total": 16
+      },
+      "branches": {
+        "hit": 5,
+        "total": 6
+      },
+      "uncovered_lines": [
+        23
+      ],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 23,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/vendor/h3c/topology.rb",
+      "lines": {
+        "hit": 31,
+        "total": 31
+      },
+      "branches": {
+        "hit": 9,
+        "total": 10
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": [
+        {
+          "kind": "else",
+          "line": 44,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/vendor/h3c_wireless.rb",
+      "lines": {
+        "hit": 6,
+        "total": 6
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/hillstone.rb",
+      "lines": {
+        "hit": 24,
+        "total": 24
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/hillstone/running_config.rb",
+      "lines": {
+        "hit": 6,
+        "total": 6
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/hillstone/tftp_backup.rb",
+      "lines": {
+        "hit": 25,
+        "total": 25
+      },
+      "branches": {
+        "hit": 10,
+        "total": 12
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": [
+        {
+          "kind": "else",
+          "line": 40,
+          "column": 21
+        },
+        {
+          "kind": "else",
+          "line": 40,
+          "column": 21
+        }
+      ]
+    },
+    {
+      "path": "net/connector/vendor/hillstone/topology.rb",
+      "lines": {
+        "hit": 26,
+        "total": 26
+      },
+      "branches": {
+        "hit": 4,
+        "total": 4
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/huawei.rb",
+      "lines": {
+        "hit": 32,
+        "total": 32
+      },
+      "branches": {
+        "hit": 2,
+        "total": 2
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/huawei/tftp_backup.rb",
+      "lines": {
+        "hit": 11,
+        "total": 11
+      },
+      "branches": {
+        "hit": 3,
+        "total": 4
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 17,
+          "column": 10
+        }
+      ]
+    },
+    {
+      "path": "net/connector/vendor/palo_alto.rb",
+      "lines": {
+        "hit": 23,
+        "total": 23
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/palo_alto/running_config.rb",
+      "lines": {
+        "hit": 36,
+        "total": 36
+      },
+      "branches": {
+        "hit": 13,
+        "total": 15
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 48,
+          "column": 10
+        },
+        {
+          "kind": "then",
+          "line": 52,
+          "column": 12
+        }
+      ]
+    },
+    {
+      "path": "net/connector/vendor/palo_alto/tftp_backup.rb",
+      "lines": {
+        "hit": 21,
+        "total": 21
+      },
+      "branches": {
+        "hit": 6,
+        "total": 6
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/palo_alto/topology.rb",
+      "lines": {
+        "hit": 32,
+        "total": 33
+      },
+      "branches": {
+        "hit": 6,
+        "total": 6
+      },
+      "uncovered_lines": [
+        68
+      ],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/radware.rb",
+      "lines": {
+        "hit": 34,
+        "total": 34
+      },
+      "branches": {
+        "hit": 1,
+        "total": 4
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": [
+        {
+          "kind": "then",
+          "line": 51,
+          "column": 36
+        },
+        {
+          "kind": "else",
+          "line": 51,
+          "column": 48
+        },
+        {
+          "kind": "then",
+          "line": 57,
+          "column": 22
+        }
+      ]
+    },
+    {
+      "path": "net/connector/vendor/radware/tftp_backup.rb",
+      "lines": {
+        "hit": 16,
+        "total": 16
+      },
+      "branches": {
+        "hit": 4,
+        "total": 4
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    },
+    {
+      "path": "net/connector/vendor/radware/topology.rb",
+      "lines": {
+        "hit": 7,
+        "total": 7
+      },
+      "branches": {
+        "hit": 0,
+        "total": 0
+      },
+      "uncovered_lines": [],
+      "uncovered_branches": []
+    }
+  ]
+}

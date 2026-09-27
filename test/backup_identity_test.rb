@@ -25,6 +25,12 @@ class BackupIdentityTest < Minitest::Test
     Struct.new(:devices).new([{ "ip" => host, "vendor" => "H3C", "name" => name }])
   end
 
+  # 新增的持久路径锁是文件协议的一部分；仅排除当前目标的这一项，其他多余文件仍会失败。
+  def backup_entries(directory, host: "192.0.2.1")
+    path = File.join(directory, SavedConfig.filename(host))
+    Dir.children(directory) - [File.basename(Net::Connector::Operations::BackupLock.lock_path(path))]
+  end
+
   def test_renaming_inventory_keeps_one_backup_and_its_change_baseline
     inventory = client(name: "old-name")
     collector = fleet(inventory)
@@ -40,7 +46,7 @@ class BackupIdentityTest < Minitest::Test
       assert_equal :unchanged, backup.change
       assert_equal first.outcomes.first.backup.sha256, backup.previous_sha256
       assert_equal File.join(directory, "192.0.2.1.txt"), backup.path
-      assert_equal ["192.0.2.1.txt"], Dir.children(directory)
+      assert_equal ["192.0.2.1.txt"], backup_entries(directory)
       assert_equal [:created], changes
       assert_equal "new-name", second.outcomes.first.device.name
       assert_equal backup.path, SavedConfig.new(directory: directory).find("192.0.2.1")
@@ -58,7 +64,7 @@ class BackupIdentityTest < Minitest::Test
       assert second.success?, second.outcomes.inspect
 
       assert_equal :unchanged, second.outcomes.first.backup.change
-      assert_equal ["2001_db8__1.txt"], Dir.children(directory)
+      assert_equal ["2001_db8__1.txt"], backup_entries(directory, host: "2001:db8::1")
       assert_equal first.outcomes.first.backup.path,
                    SavedConfig.new(directory: directory).find("2001:0db8:0:0:0:0:0:1")
     end
@@ -106,7 +112,7 @@ class BackupIdentityTest < Minitest::Test
       %w[first second].each { |name| File.binwrite(File.join(directory, "#{name}-192.0.2.1.txt"), name) }
       calls = []
       collector = fleet(client, credentials: ->(_) { calls << :credentials; { username: "backup" } },
-                               connector_factory: ->(*) { calls << :connector; raise "unexpected I/O" })
+                        connector_factory: ->(*) { calls << :connector; raise "unexpected I/O" })
       batch = collector.backup_all(directory: directory)
 
       refute batch.success?
@@ -114,7 +120,7 @@ class BackupIdentityTest < Minitest::Test
       assert_equal "ArgumentError", batch.outcomes.first.error_type
       assert_nil batch.outcomes.first.backup
       assert_empty calls
-      assert_equal %w[first-192.0.2.1.txt second-192.0.2.1.txt], Dir.children(directory).sort
+      assert_equal %w[first-192.0.2.1.txt second-192.0.2.1.txt], backup_entries(directory).sort
       %w[first second].each { |name| assert_equal name, File.binread(File.join(directory, "#{name}-192.0.2.1.txt")) }
       error = assert_raises(ArgumentError) { SavedConfig.new(directory: directory).find("192.0.2.1") }
       assert_match(/multiple saved configurations/, error.message)
@@ -194,7 +200,7 @@ class BackupIdentityTest < Minitest::Test
       refute batch.success?
       assert_equal :failed, batch.outcomes.first.status
       assert_equal "old configuration", File.binread(legacy)
-      assert_equal ["old-name-192.0.2.1.txt"], Dir.children(directory)
+      assert_equal ["old-name-192.0.2.1.txt"], backup_entries(directory)
     end
   end
 

@@ -1,0 +1,231 @@
+{
+  "schema": 1,
+  "tasks": [
+    "NC-11"
+  ],
+  "measured_at": "2026-09-27T07:38:17.127169+00:00",
+  "status": "local_ci_verified_with_published_expect_0_5_0; remaining_plan_audit_in_progress",
+  "base_commit": "3192377190fa8b28334e1f39007789ef2ae5cc6e",
+  "runtime": {
+    "ruby": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]",
+    "platform": "arm64-darwin25",
+    "bundler": "4.0.20"
+  },
+  "commands": [
+    {
+      "command": "bundle exec rake ci",
+      "log": "tmp/nc-optimization/nc11-ci.log",
+      "log_sha256": "9ef19e5c3464df945c62f632fd5956615e7b3d8fa411d12fd24ab679bdaaff8c",
+      "exit_code": 0,
+      "tests": {
+        "runs": 437,
+        "assertions": 4731,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "ruby_lint_files": 159,
+      "benchmark_smoke_samples": 9,
+      "package_files": 120,
+      "installed_smokes": [
+        "plain",
+        "bundler"
+      ]
+    },
+    {
+      "command": "bundle exec rake package:verify",
+      "log": "tmp/nc-optimization/nc11-package-final.log",
+      "log_sha256": "47c1327f281ce5a33f6e2e2ed6a52d9b9867642311370172fb01a6a94450525b",
+      "exit_code": 0,
+      "reason": "rebuild and verify after documentation heading fix"
+    }
+  ],
+  "focused_tests": {
+    "log": "tmp/nc-optimization/nc11-focused.log",
+    "runs": 117,
+    "assertions": 1667,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0
+  },
+  "coverage": {
+    "loaded_files": 86,
+    "total_files": 99,
+    "lines_hit": 3788,
+    "lines_total": 3916,
+    "branches_hit": 1259,
+    "branches_total": 1498,
+    "unloaded_files": [
+      "net/connector/operations/running_config/cisco.rb",
+      "net/connector/operations/running_config/hillstone.rb",
+      "net/connector/operations/running_config/palo_alto.rb",
+      "net/connector/operations/running_config/strategy.rb",
+      "net/connector/operations/tftp/cisco_ios.rb",
+      "net/connector/operations/tftp/cisco_nxos.rb",
+      "net/connector/operations/tftp/h3c.rb",
+      "net/connector/operations/tftp/hillstone.rb",
+      "net/connector/operations/tftp/huawei.rb",
+      "net/connector/operations/tftp/palo_alto.rb",
+      "net/connector/operations/tftp/radware.rb",
+      "net/connector/version.rb",
+      "net-connector.rb"
+    ]
+  },
+  "dependencies": {
+    "ast": "2.4.3",
+    "bundler": "4.0.20",
+    "date": "3.5.1",
+    "digest": "3.2.1",
+    "english": "0.8.1",
+    "expect-pty": "0.5.0",
+    "fileutils": "1.8.0",
+    "forwardable": "1.4.0",
+    "io-console": "0.9.4",
+    "io-wait": "0.4.0",
+    "ipaddr": "1.2.9",
+    "json": "2.21.2",
+    "language_server-protocol": "3.17.0.6",
+    "lint_roller": "1.1.0",
+    "logger": "1.7.0",
+    "minitest": "5.27.0",
+    "net-connector": "0.4.2",
+    "net-http": "0.9.1",
+    "open3": "0.2.1",
+    "openssl": "4.0.2",
+    "optparse": "0.8.1",
+    "parallel": "1.28.0",
+    "parser": "3.3.12.0",
+    "prism": "1.9.0",
+    "racc": "1.8.1",
+    "rainbow": "3.1.1",
+    "rake": "13.4.2",
+    "regexp_parser": "2.13.0",
+    "rubocop": "1.91.0",
+    "rubocop-ast": "1.50.0",
+    "ruby-progressbar": "1.13.0",
+    "securerandom": "0.4.1",
+    "shellwords": "0.2.2",
+    "stringio": "3.2.0",
+    "strscan": "3.1.8",
+    "tempfile": "0.3.1",
+    "textfsm": "0.2.0",
+    "time": "0.4.2",
+    "timeout": "0.6.1",
+    "tmpdir": "0.3.1",
+    "unicode-display_width": "3.3.0",
+    "unicode-emoji": "4.3.0",
+    "uri": "1.1.1",
+    "yaml": "0.4.0"
+  },
+  "actual_expect": {
+    "version": "0.5.0",
+    "loaded_from": "/opt/homebrew/lib/ruby/gems/4.0.0/gems/expect-pty-0.5.0",
+    "cache_sha256": "3f132008607c12122650b80cb3562c14ae52b55c22bbd074d25dbf14c63f80cf"
+  },
+  "benchmarks": {
+    "directory": "docs/optimization/benchmarks/NC-11",
+    "baseline_samples": 23,
+    "budget_samples": 2,
+    "baseline_precedes_budget_implementation": true,
+    "provenance_format": "archived source_sha256 maps normalized to explicit path/sha256 objects; measurements unchanged; raw source reports remain in tmp",
+    "raw_reports_sha256": {
+      "tmp/nc-optimization/nc11-benchmark-baseline/results.json": "16930247f2d4f5f8e06f29a6585630d2368c2a329224692d2df19738fbfd8089",
+      "tmp/nc-optimization/nc11-benchmark-budget-fake-final/results.json": "5bfecf82a8ae9beb5f7737020f770763179a7e888170d4dc41c2b08331d66df2",
+      "tmp/nc-optimization/nc11-benchmark-budget-pty/results.json": "36bdb2d3e1a5e6030353ae802fe5b2228783bf1c885d4071fd140c48d96cb902"
+    },
+    "not_comparable_workloads": "budget stops at 8 / 2 commands while default completes 100 / 10; no percentage performance claim"
+  },
+  "reproductions": [
+    {
+      "log": "tmp/nc-optimization/nc11-budget-before.log",
+      "runs": 10,
+      "errors": 10,
+      "reason": "missing optional budget API"
+    },
+    {
+      "log": "tmp/nc-optimization/nc11-prompt-budget-before.log",
+      "runs": 1,
+      "assertions": 1,
+      "failures": 1,
+      "reason": "prompt callback consumed budget before main command; fixed recheck immediately before exchange"
+    }
+  ],
+  "artifacts": {
+    "net_connector": {
+      "path": "tmp/nc-optimization/net-connector-nc11.gem",
+      "sha256": "5fde110d6b65be8d6b2579d43f5e64fb3b08e11245d7c63776f78276485a7f16"
+    }
+  },
+  "source_sha256": {
+    "docs/optimization/README.md": "4fe3f2b0314fa011f0894c5a86bf888ed389ccdb49162bedd12a275d9e0d66bd",
+    "lib/net/connector/netdisco/diagnostic.rb": "3f8201690609bac4c183f9a45d06ea9ff01d0ba8a6e3dfeb2620a25fb2c4ae3e",
+    "test/netdisco_settings_test.rb": "a3d99cd8d85dff6fbcbd7124e884060b6fa1c3280cd36b8c5211ebdf8785780c",
+    "test/output_sensitive_test.rb": "2ecdd9d1e5e97d8400b4fdd410eaa371df769e2289f0e4422eb2675e78de1453",
+    "CHANGELOG.md": "2350c92e2a8325931d792173a3a8ed90e42f9d8955f4af96cdc48a993aaae828",
+    "README.md": "832ed3b026ee854afb04fdf16b3dd512a3318345520e6f5830998ba5e79f45c5",
+    "Rakefile": "d3f6215fc6dcc34372168612308a736bc4c24eeef699c86dd61b5952981bcf79",
+    "docs/VERIFICATION.md": "a25fa951354940ba64c2e22072825733c7e5256ef234b17177c5d615878fbf59",
+    "docs/architecture.md": "9ca2f8732d0fd4a5750ce68ac0655581b9abe13cd779d8ad61e9081be381f9dc",
+    "lib/net/connector/engine/configuration.rb": "f61f9d3aa180da349ab0efbf1206e1b5b441dad380202c8a35b2e6f632973cac",
+    "lib/net/connector/engine/errors.rb": "b70c02aa8c14d2b3176dce1dcfe5d72eb6277f0968d2a7a0860a0458707638a9",
+    "lib/net/connector/engine/execution.rb": "1ef5af43950e1ca8e91b0f51472304476002247398b7c5ea02dc38e95e8c623b",
+    "lib/net/connector/netdisco/cli.rb": "371b8fcb445eb001305af4a6b70f8c9df85c0f2042acb2ed31f82a33974bdd5f",
+    "lib/net/connector/netdisco/config_file.rb": "6f0403f6daa6c75d34c04afeae3e7bf3de7fbb8e6665aa40a42fda94a1cec622",
+    "lib/net/connector/netdisco/settings.rb": "492e343aa9c55ca28ef0f05695fb59cbb49aa8548a8876f2dcfbbd36f7cfe549",
+    "script/smoke.rb": "fe8ad0c8da45f593e8f18853829f2fd80f1459e1adee16c6d7c03bdfdf378e3a",
+    "test/transport_test.rb": "1b9f8075233c3ac9964a7bc732772e82bedee5729cca631e71a186930c7cd912",
+    "script/benchmark_memory.rb": "17d2074126b3b3a509bd99d228dce4ba58aa7c7417b4187c52bbc001c8cf7f0f",
+    "script/benchmarks/memory_fixture.rb": "d9eb274d3e68db8e738aa14663a235b627d3fd048fe68dbe82aa123acc07bd45",
+    "script/benchmarks/memory_workload.rb": "9ac4d45179f4228eff9aebac93d87340c4495bfc325700a22df7a6e32f8288d5",
+    "test/benchmark_memory_test.rb": "1f0afa6ea97daa92c29bd7e2ddc7d39aec07ffe0450a697b8f5af09f02b4dcc3",
+    "test/script_output_budget_test.rb": "e6d92c76c95a1a158d98dace0367be3887d72ec9a581d3a1429f6b405052ccc8"
+  },
+  "benchmark_sha256": {
+    "docs/optimization/benchmarks/NC-11/baseline-source-sha256.json": "f85ca15a0619fac7cd9d6637e4e344475eaa3b8a36c0201b6bbc9542cfb38a62",
+    "docs/optimization/benchmarks/NC-11/budget-pty/00-time.txt": "07783c4e49e21014d807083a6472dbfce18c6ef5583364d341d574b589ae9500",
+    "docs/optimization/benchmarks/NC-11/budget-pty/results.json": "f5316b99d74b0361386eaeadb9476b4e7d3d1fa204acfd7b04ac8bc41fce7012",
+    "docs/optimization/benchmarks/NC-11/baseline/17-time.txt": "0bd5397c7a18a2dbfe12277da481cdc3cc0f89fc8554f7b8ad1447e4d333c95c",
+    "docs/optimization/benchmarks/NC-11/baseline/16-time.txt": "a8e80350ee6cc82b4e92be8d073734ebf5cdd4a8de9ce11162b1607337e86fc0",
+    "docs/optimization/benchmarks/NC-11/baseline/22-time.txt": "1b7393700d8147bae2b199ca740f28d370e808a5f2ef0bad3618a5723247d2e4",
+    "docs/optimization/benchmarks/NC-11/baseline/00-time.txt": "0acf13dc7323738d9847be66ef67736dd84c55827b5d40c2047f6fc9e7556098",
+    "docs/optimization/benchmarks/NC-11/baseline/01-time.txt": "eba3805a656a2d47b9ad7e47218bafca2f5d80eff349f5eaf122df0bf57b1a5e",
+    "docs/optimization/benchmarks/NC-11/baseline/07-time.txt": "cedc2c9613a60a4959e16b23caf73c6e24c9c31791a26aa43a6117ac6cb1f4b6",
+    "docs/optimization/benchmarks/NC-11/baseline/06-time.txt": "713015a190d07e1c093e330dc15bac4e605c275da8465ef0abb9043bf51b5735",
+    "docs/optimization/benchmarks/NC-11/baseline/results.json": "16930247f2d4f5f8e06f29a6585630d2368c2a329224692d2df19738fbfd8089",
+    "docs/optimization/benchmarks/NC-11/baseline/10-time.txt": "89a20e5759fef254fcf4e77d02f742f96f0d3487d0bb6f27310351e9d46c1faa",
+    "docs/optimization/benchmarks/NC-11/baseline/11-time.txt": "6b756cf7b20b71afea7b164eae275cbf34067446d14e09c3dfd02b0b6a728cf9",
+    "docs/optimization/benchmarks/NC-11/baseline/09-time.txt": "e36818c910b45b9e0544282490d8b4486b0c2caed83351c704f862e6d50136c5",
+    "docs/optimization/benchmarks/NC-11/baseline/08-time.txt": "aa94b2a1451ef0f2ce3b54dd71e85edc4c27e4a1c8cf0fae2c55146fbda37e6b",
+    "docs/optimization/benchmarks/NC-11/baseline/03-time.txt": "372645b07691075234f2e0430bc9b2339d4f92d61b2aa4b735e62e34e4d05dba",
+    "docs/optimization/benchmarks/NC-11/baseline/02-time.txt": "1f4da4953db7bac422966572f5209652abf266778969ba5bb897b9dc32d365cb",
+    "docs/optimization/benchmarks/NC-11/baseline/20-time.txt": "e4bd37e5e73ee26feeafd3f926ffb01734b4a15090d56645af31ceba5c51a9f2",
+    "docs/optimization/benchmarks/NC-11/baseline/21-time.txt": "3cb273c9086ce38fb4b8303fc0066fc3f733fbe0aac1a2260d1cbb9fef97b782",
+    "docs/optimization/benchmarks/NC-11/baseline/14-time.txt": "4478b9fb6d85fd3250b43b82dce966ef3d853b1576bd4ab389793bdf120aca44",
+    "docs/optimization/benchmarks/NC-11/baseline/15-time.txt": "0c551d1acc458578299f84230cc6acf3985c8267e6ba06e4dbfc6c68f57500e2",
+    "docs/optimization/benchmarks/NC-11/baseline/19-time.txt": "9bb3c106dac4edbaa26ff02bfe01c81bdc0d023d5d6fe6ab05bd856f0e49a8ff",
+    "docs/optimization/benchmarks/NC-11/baseline/18-time.txt": "add6a97b3497dc51a6567e6d5ddb6a9d3c3123c9a9cb94f6f7958b381c3b6d14",
+    "docs/optimization/benchmarks/NC-11/baseline/13-time.txt": "cc19c95be138a072295bfbc225ff6a350b181f2f283ec2c8ed24145881014f3c",
+    "docs/optimization/benchmarks/NC-11/baseline/12-time.txt": "1270fb778ee7badd67c917cc609eaac076354e8c878afdfcac53abdd3d7a01ae",
+    "docs/optimization/benchmarks/NC-11/baseline/04-time.txt": "a32a547fcd1b5fb6fac18766ac2dc3284a9b574b94779efb4a03ceacbbb8be1d",
+    "docs/optimization/benchmarks/NC-11/baseline/05-time.txt": "7bb7fc4c44e3308bc1d25d5a7e8a418ca65734138d84dfe3422748aafb170d11",
+    "docs/optimization/benchmarks/NC-11/baseline-runner/benchmark_memory.rb": "4b47237f93a02d93f61f09b863f633aeecbfd679fafccd515105b9c321b583c2",
+    "docs/optimization/benchmarks/NC-11/baseline-runner/memory_fixture.rb": "d9eb274d3e68db8e738aa14663a235b627d3fd048fe68dbe82aa123acc07bd45",
+    "docs/optimization/benchmarks/NC-11/baseline-runner/memory_workload.rb": "8778fefe546e62138b2597a0089b9a5cfd58c0c80c87ba42a7592430d0872a0d",
+    "docs/optimization/benchmarks/NC-11/baseline-runner/source-sha256.json": "1ae7db807c7b1ea631b70a057cc96a728c4760a0677195ba56f2dca5bd38c8c7",
+    "docs/optimization/benchmarks/NC-11/budget-fake/00-time.txt": "692b9909ea016a65ebc20e6023a995f07243a524fb5285193719042dbea5c7e1",
+    "docs/optimization/benchmarks/NC-11/budget-fake/results.json": "94c045c9af39dae07c5e619ed25c351196f5d8fe59c29066e54e8adc40c75146"
+  },
+  "worktree_preservation": {
+    "other_existing_files_unchanged": 179,
+    "expect_repository_edits_by_this_batch": 0,
+    "expect_concurrent_changes_detected": true,
+    "expect_note": "Other work added stty and redactor changes since 0.5.0 snapshot. Kept untouched; installed published gem remains the tested dependency.",
+    "historical_artifacts_verified": 11
+  },
+  "limits": [
+    "macOS arm64 Ruby 4.0.6 only; no remote matrix or actual devices",
+    "optional nil default; budget per Execution, not hard RSS or in-flight response limit",
+    "no Result cache or retained-step changes; no retries",
+    "no VERSION changes, commits, pushes or publication"
+  ]
+}

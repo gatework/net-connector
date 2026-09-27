@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require_relative "../../operations/topology/strategy"
+require_relative "../../operations/topology/immediate_strategy"
 
 module Net
   module Connector
     module Hillstone
-      class Topology < Operations::Topology::Strategy
+      class Topology < Operations::Topology::ImmediateStrategy
         # 山石提供 LLDP 邻居、配置描述读取和描述变更。
         def self.supports?(capability)
           %i[neighbors interface_descriptions interface_description_changes].include?(capability)
@@ -13,12 +13,17 @@ module Net
 
         # 读取 LLDP 邻居信息。
         def neighbor_command = "show lldp neighbor-information"
+
         # 从运行配置解析接口描述。
         def description_template = "hillstone_interface_descriptions.textfsm"
+
         # 进入配置视图。
         def enter_configuration = "configure"
-        # 退出配置视图并保存设备配置。
-        def finish_commands = ["exit"] + @device.profile.save_commands
+
+        # 退出配置视图后先读回，保存动作随后单独执行。
+        def leave_configuration = ["exit"]
+
+        def persistence_pattern = /\ASaving configuration is finished\.?\z/i
 
         # 用数据行和设备报告的总数交叉核对，避免遗漏邻居。
         def expected_neighbor_count(output, _template)

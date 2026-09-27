@@ -89,7 +89,7 @@ module Net
 
       # 应用注入的日志器没有终端写入器，改由日志器记录完整回显。
       def response_output(bytes)
-        return unless detailed? && !@writer
+        return unless detailed? && !@writer && !@redactor.output_sensitive?
 
         @redactor.call(TerminalRenderer.render(@redactor.call(bytes))).each_line do |line|
           @logger.debug("#{@tag}  #{line.chomp}") if ::Logger::DEBUG >= @event_level
@@ -169,18 +169,17 @@ module Net
 
       # 文件写入边界保留短尾部，避免分片或终端控制符拼出明文凭据。
       class RedactingWriter
-        # 保存目标流、脱敏器和等待下一分片的尾部。
+        # 保存目标与作用域；每个日志目标独占 expect-pty 的过滤流。
         def initialize(target, redactor)
           @target = target
           @redactor = redactor
-          @pending = "".b
+          @filter = redactor.stream
         end
 
         # 写入已确认安全的前缀，暂存可能与下一分片组成秘密的尾部。
         def write(bytes)
-          @pending << bytes.b
-          safe, @pending = @redactor.stream_chunk(@pending)
-          @target.write(safe)
+          @filter.patterns = @redactor.patterns
+          @target.write(@filter.append(bytes.b))
           bytes.bytesize
         end
 
@@ -189,11 +188,13 @@ module Net
 
         # 在日志结束时脱敏并写出剩余尾部。
         def finish
-          safe, @pending = @redactor.stream_chunk(@pending, final: true)
-          @target.write(safe)
+          @filter.patterns = @redactor.patterns
+          # 保留旧日志的完整词匹配契约；配置正文由 Session 的敏感范围直接隔离。
+          @target.write(@filter.finish(partial: false))
           flush
         end
       end
+
       private_constant :RedactingWriter
 
       # 以私有权限打开设备日志文件。
@@ -224,7 +225,8 @@ module Net
 
       # 将日志异常包装成统一错误并保留脱敏原因。
       def failure(message, error)
-        LogError.new(message, phase: :logging, underlying: UnderlyingError.new(error, @redactor))
+        LogError.new(message, phase: :logging,
+                     underlying: UnderlyingError.new(error, @redactor, sensitive: @redactor.sensitive?))
       end
     end
   end

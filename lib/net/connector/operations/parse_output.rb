@@ -21,11 +21,19 @@ module Net
           @index = index
         end
 
-        # 显式模板按路径读取；未指定时按厂商和命令从索引选择模板。
-        def call(text, template: nil, vendor: nil, command: nil, host: nil)
+        # 解析按 UTF-8 字节处理副本，先验证原文，避免回车或转义序列隐藏非法字节。
+        # 拓扑选模板和计数也使用这份副本，但仍保留未经终端渲染的完整证据。
+        def utf8(text, host: nil)
           raise ArgumentError, "text must be a String" unless text.is_a?(String)
 
-          text = TerminalRenderer.render(text).force_encoding(Encoding::UTF_8)
+          text = text.b.force_encoding(Encoding::UTF_8)
+          invalid_encoding!(host) unless text.valid_encoding?
+          text
+        end
+
+        # 显式模板按路径读取；未指定时按厂商和命令从索引选择模板。
+        def call(text, template: nil, vendor: nil, command: nil, host: nil)
+          text = TerminalRenderer.render(utf8(text, host: host), strict_utf8: true).force_encoding(Encoding::UTF_8)
           if template
             raise ArgumentError, "template must be a nonempty String" unless template.is_a?(String) && !template.empty?
 
@@ -41,6 +49,8 @@ module Net
             end
             table.parse(text, attributes: attributes).to_hashes
           end
+        rescue Encoding::InvalidByteSequenceError
+          invalid_encoding!(host)
         rescue TextFSM::IndexError
           raise ParsingError.new("TextFSM template index is invalid",
                                  code: :template_invalid, host: host, phase: :parse), cause: nil
@@ -53,6 +63,13 @@ module Net
         rescue IOError, SystemCallError
           raise ParsingError.new("unable to read TextFSM template",
                                  code: :template_unreadable, host: host, phase: :parse), cause: nil
+        end
+
+        private
+
+        def invalid_encoding!(host)
+          raise ParsingError.new("device output is not valid UTF-8", code: :invalid_output_encoding,
+                                 host: host, phase: :parse), cause: nil
         end
       end
     end

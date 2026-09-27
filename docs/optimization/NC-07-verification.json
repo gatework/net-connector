@@ -1,0 +1,211 @@
+{
+  "schema": 1,
+  "tasks": [
+    "NC-07A",
+    "NC-07B",
+    "NC-08: typed completion errors",
+    "NC-14: TFTP fixtures"
+  ],
+  "measured_at": "2026-09-27T06:11:36Z",
+  "status": "local_ci_verified; released_expect_public_API_not_available; full_plan_active",
+  "base_commit": "3192377190fa8b28334e1f39007789ef2ae5cc6e",
+  "runtime": {
+    "ruby": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]",
+    "platform": "arm64-darwin25",
+    "bundler": "4.0.20"
+  },
+  "commands": [
+    {
+      "command": "ruby tmp/nc-optimization/with_local_expect.rb exec rake ci",
+      "cwd": "/Users/crate/Works/ruby/net-connector",
+      "exit_code": 0,
+      "log": "tmp/nc-optimization/nc07-ci.log",
+      "log_sha256": "78a159c648f67c220c8285b255550c25486cf05aab7853b9630b405715532c95",
+      "tests": {
+        "runs": 390,
+        "assertions": 4211,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "ruby_lint_files": 148,
+      "source_scan": "passed",
+      "history_scan": "passed",
+      "package_scan": "passed",
+      "workflow_lint": "passed",
+      "installed_smokes": [
+        "plain",
+        "bundler"
+      ]
+    },
+    {
+      "command": "git diff --check (both repositories)",
+      "exit_code": 0
+    }
+  ],
+  "reproductions": [
+    {
+      "log": "tmp/nc-optimization/nc07-before.log",
+      "exit_code": 1,
+      "runs": 7,
+      "assertions": 6,
+      "failures": 5,
+      "errors": 2,
+      "skips": 0
+    }
+  ],
+  "focused": {
+    "log": "tmp/nc-optimization/nc07-focused.log",
+    "exit_code": 0,
+    "runs": 97,
+    "assertions": 825,
+    "command": "ruby tmp/nc-optimization/with_local_expect.rb exec ruby -Ilib:test -e 'ARGV.each { |file| require_relative file }' test/tftp_boundary_test.rb test/tftp_evidence_test.rb test/connector_test.rb test/capabilities_test.rb test/netdisco_reliability_test.rb test/netdisco_plan_test.rb"
+  },
+  "coverage": {
+    "loaded_files": 83,
+    "total_files": 96,
+    "lines_hit": 3559,
+    "lines_total": 3688,
+    "branches_hit": 1148,
+    "branches_total": 1380,
+    "unloaded_files": [
+      "net/connector/operations/running_config/cisco.rb",
+      "net/connector/operations/running_config/hillstone.rb",
+      "net/connector/operations/running_config/palo_alto.rb",
+      "net/connector/operations/running_config/strategy.rb",
+      "net/connector/operations/tftp/cisco_ios.rb",
+      "net/connector/operations/tftp/cisco_nxos.rb",
+      "net/connector/operations/tftp/h3c.rb",
+      "net/connector/operations/tftp/hillstone.rb",
+      "net/connector/operations/tftp/huawei.rb",
+      "net/connector/operations/tftp/palo_alto.rb",
+      "net/connector/operations/tftp/radware.rb",
+      "net/connector/version.rb",
+      "net-connector.rb"
+    ]
+  },
+  "dependencies": {
+    "ast": "2.4.3",
+    "bundler": "4.0.20",
+    "date": "3.5.1",
+    "digest": "3.2.1",
+    "english": "0.8.1",
+    "etc": "1.4.6",
+    "expect-pty": "0.4.0",
+    "fileutils": "1.8.0",
+    "forwardable": "1.4.0",
+    "io-console": "0.9.4",
+    "io-wait": "0.4.0",
+    "ipaddr": "1.2.9",
+    "json": "2.21.2",
+    "language_server-protocol": "3.17.0.6",
+    "lint_roller": "1.1.0",
+    "logger": "1.7.0",
+    "minitest": "5.27.0",
+    "net-connector": "0.4.2",
+    "net-http": "0.9.1",
+    "open3": "0.2.1",
+    "openssl": "4.0.2",
+    "optparse": "0.8.1",
+    "parallel": "1.28.0",
+    "parser": "3.3.12.0",
+    "prism": "1.9.0",
+    "racc": "1.8.1",
+    "rainbow": "3.1.1",
+    "rake": "13.4.2",
+    "regexp_parser": "2.13.0",
+    "rubocop": "1.91.0",
+    "rubocop-ast": "1.50.0",
+    "ruby-progressbar": "1.13.0",
+    "securerandom": "0.4.1",
+    "shellwords": "0.2.2",
+    "stringio": "3.2.0",
+    "strscan": "3.1.8",
+    "tempfile": "0.3.1",
+    "textfsm": "0.2.0",
+    "time": "0.4.2",
+    "timeout": "0.6.1",
+    "tmpdir": "0.3.1",
+    "unicode-display_width": "3.3.0",
+    "unicode-emoji": "4.3.0",
+    "uri": "1.1.1",
+    "yaml": "0.4.0"
+  },
+  "artifacts": {
+    "net_connector": {
+      "path": "tmp/nc-optimization/net-connector-nc07ab.gem",
+      "sha256": "9fd19a6611625b0a054f1f4f1c4dfdbcff8681fb72f8f3dd7375d25afac0de47"
+    },
+    "expect_local_patch": {
+      "path": "tmp/nc-optimization/expect-pty-0.4.0-local.gem",
+      "sha256": "e9f4eb7447bb467b508f374eb6e97c87a4945158bd88e5cfc84e657ad330831f"
+    },
+    "expect_published": {
+      "path": "tmp/nc-optimization/expect-pty-0.4.0-published.gem",
+      "sha256": "dd2788f7608c49c0e5c2e6311990febf6a6f7888cdab80db2587d3909fe554e9"
+    }
+  },
+  "expect_public_API": {
+    "source_commit": "5a219f737c988ec262669171475d42e6ee6c97ef",
+    "loaded_from": "/Users/crate/Works/ruby/net-connector/tmp/nc-dependency-gems/gems/expect-pty-0.4.0",
+    "source_sha256": "ebb4b0b701962bb999155eb34617b9bbaa673e8c66be28459d27d7549ea7cc92",
+    "local_public_api": true,
+    "official_version_check": {
+      "version": "0.4.0",
+      "download": "https://rubygems.org/downloads/expect-pty-0.4.0.gem",
+      "published_at": "2026-09-27T03:58:35.418Z",
+      "public_redactor_api": false,
+      "direct_package_probe": "LoadError before constructing a connector redaction scope, as expected",
+      "release_gate": "publish upstream public API, select its actual minimum version, rerun against official package"
+    },
+    "current_rubygems_metadata": {
+      "version": "0.4.0",
+      "sha": "dd2788f7608c49c0e5c2e6311990febf6a6f7888cdab80db2587d3909fe554e9",
+      "version_created_at": "2026-09-27T03:58:35.418Z",
+      "gem_uri": "https://rubygems.org/gems/expect-pty-0.4.0.gem"
+    },
+    "current_check": "official downloaded gem SHA matches current metadata; isolated source probe public_constant: false"
+  },
+  "source_sha256": {
+    "lib/net/connector/operations.rb": "a9496f3d32933b8ac25bcb8b2a7a204e31c76f3ff6fba1248fd903f585526ad0",
+    "lib/net/connector/device/base.rb": "233511257a312997ed2380e0273e8cf6d24b596261398955e623abc34530518e",
+    "lib/net/connector/netdisco/fleet.rb": "188bb3f1f2f0ecb5ed153f93008eb332777ed05c4aa36ba8ac304e767084c657",
+    "lib/net/connector/operations/tftp_backup.rb": "61781392572770b2cf35827a2a3a7a7cdd16dc0084441837db9c31bc66400712",
+    "lib/net/connector/operations/tftp_receipt.rb": "4029592e701fec177442649aad14d91ff29a579a5487599d35aa84d22d5ca2fe",
+    "lib/net/connector/operations/tftp/file_upload.rb": "ff6e4f310b0b08f1482fc8fdedd5a03e85f239c31d70b59df646da5b22491c3f",
+    "lib/net/connector/vendor/cisco_ios/tftp_backup.rb": "e0a68f760915bb6f2531ed1a62894177b9a1f3a2dc75d978bd8bc6ffbf7f8a77",
+    "lib/net/connector/vendor/cisco_nxos/tftp_backup.rb": "b416aa1dc8338517662dac4861b09194131782d63c50d6bb1dca49f32c37cdb8",
+    "lib/net/connector/vendor/h3c/tftp_backup.rb": "2b79a0095af7c99b70e0e49e434c82d44ab38f335445d32ccbeb54c4af5ec8be",
+    "lib/net/connector/vendor/huawei/tftp_backup.rb": "125722c7f7d8b00a710bde978b7f4d61fb6ce5e3a0d98d830a209243ff0fabbb",
+    "lib/net/connector/vendor/hillstone/tftp_backup.rb": "704508acfbc667063c156ba75b34acd47b929025ef7526b682b86f503f902c58",
+    "lib/net/connector/vendor/radware/tftp_backup.rb": "8ed4f6894f84ee3e7506a6a0177dc10ba292e3a7c5163cf4aefb97b98313ea92",
+    "lib/net/connector/vendor/palo_alto/tftp_backup.rb": "6c1819c84b41d599e1c7faa02011de8c628170b592cac560de2a88cd380c4dda",
+    "test/tftp_boundary_test.rb": "e2df4d482e00c0d4ff43ba857f4f9334dc3b484060786366c3d38cfb0ba5c822",
+    "test/tftp_evidence_test.rb": "1b9c2ab63981f0f610d0c1bf0a8d5d30f4b06bbd9aec767da319c594723b31bb",
+    "test/support/tftp_fixture.rb": "efbecd4e0aafb4d7e0e91e4ea45080bce451f8f09962353b2db960edaf3591bd",
+    "test/fixtures/tftp/README.md": "58f21572c42d3811bf5928db96644f593b012c5d1f63d3610a579c7f48323a18",
+    "script/smoke.rb": "041f96f0b151fcf652d81cc1d06c13a1872153dc4ccfb6c26761b459da797fe4",
+    "README.md": "7159c741710aef85a86961a8aa61fdc4aabd787e3f24c50b7aeab6c52fd56494",
+    "CHANGELOG.md": "5d7fb6cd9f026d9eb6933bc740dd7bfd01f7d391c4a3a36fa9909abc91eb70c2",
+    "docs/architecture.md": "985aeb6e9db5d0841fd2024680204d8e2edc90407df0c2e519fe0e553c777012",
+    "docs/VERIFICATION.md": "96558e50e77f0d51fcfebf8f03c9c3483baa79657d56c19e9d0a645b833ff6cd"
+  },
+  "source_preservation": {
+    "untouched_net_connector_initial_tracked_patches": 16,
+    "expect_initial_tracked_patches": 8
+  },
+  "limits": [
+    "macOS arm64 / Ruby 4.0.6 only; no remote CI matrix",
+    "synthetic conversations and local PTY only; no device network access or real TFTP uploads",
+    "model, firmware, original collection date and external provenance unknown; inherited evidence documented in test/fixtures/tftp/README.md",
+    "device_reported only; no server file, SHA-256 or time/version association verified; NC-07C adapter outstanding",
+    "session lease does not isolate other device sessions, TFTP clients or cross-batch fixed targets",
+    "PAN-OS same-batch filename collision checks unchanged; serial overwrite not enabled",
+    "legacy custom script overrides remain compatible; new vendor preflight and metadata hooks must be explicitly implemented for their scripts",
+    "unknown actual path remains nil in typed partial-completion errors; requested target is not substituted for it",
+    "TftpBackup, Outcome and Batch Data members, legacy report schema and strict success semantics unchanged",
+    "official latest expect-pty 0.4.0 exists but its Redactor is private; shared public API remains a local patch",
+    "no push, PR, tag, gem publication or source VERSION edits",
+    "NC-08 policy/schema/monotonic time and NC-09 through NC-15 outstanding except documented prior/supporting changes"
+  ]
+}

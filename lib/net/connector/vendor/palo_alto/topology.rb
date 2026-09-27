@@ -6,17 +6,22 @@ module Net
   module Connector
     module PaloAlto
       class Topology < Operations::Topology::Strategy
-        # PAN-OS 提供 LLDP 邻居、接口备注读取和备注变更。
+        # 候选配置缺少经固件实验确认的所有权/commit 协议，暂只提供读取能力。
         def self.supports?(capability)
-          %i[neighbors interface_descriptions interface_description_changes].include?(capability)
+          %i[neighbors interface_descriptions].include?(capability)
         end
+
+        def change_error_code = :candidate_isolation_unavailable
 
         # 读取各本机接口的 LLDP 邻居详情。
         def neighbor_command = "show lldp neighbors all"
+
         # 从 set 格式配置解析接口备注。
         def description_template = "palo_alto_interface_descriptions.textfsm"
+
         # 进入候选配置视图。
         def enter_configuration = "configure"
+
         # 提交候选配置后退出配置视图。
         def finish_commands = ["commit", "exit"]
 

@@ -1,0 +1,189 @@
+{
+  "schema": 1,
+  "task": "NC-00",
+  "date": "2026-09-27",
+  "scope": "initial dirty worktree, before NC-01 edits",
+  "plan": {
+    "filename": "net-connector-v0.4.1-codex-optimization.md",
+    "sha256": "438c84234caba3ffda2e192feb355363956efb9b75fbdc37c3d077c9e6651477"
+  },
+  "environment": {
+    "ruby -v": {
+      "exit_code": 0,
+      "output": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]"
+    },
+    "bundle --version": {
+      "exit_code": 0,
+      "output": "4.0.20"
+    },
+    "uname -a": {
+      "exit_code": 0,
+      "output": "Darwin Macbook-Home.local 25.6.0 Darwin Kernel Version 25.6.0: Fri Jul 31 19:16:20 PDT 2026; root:xnu-12377.161.14~5/RELEASE_ARM64_T8142 arm64"
+    },
+    "git rev-parse HEAD": {
+      "exit_code": 0,
+      "output": "3192377190fa8b28334e1f39007789ef2ae5cc6e"
+    },
+    "git rev-parse v0.4.1^{commit}": {
+      "exit_code": 0,
+      "output": "3192377190fa8b28334e1f39007789ef2ae5cc6e"
+    },
+    "git rev-parse --is-shallow-repository": {
+      "exit_code": 0,
+      "output": "false"
+    }
+  },
+  "existing_worktree_status": [
+    " M .rubocop.yml",
+    " M CHANGELOG.md",
+    " M README.md",
+    " M docs/VERIFICATION.md",
+    " M docs/architecture.md",
+    " M lib/net/connector/engine/dialogue.rb",
+    " M lib/net/connector/engine/log.rb",
+    " M lib/net/connector/engine/session.rb",
+    " M lib/net/connector/netdisco/cli.rb",
+    " M lib/net/connector/netdisco/fleet.rb",
+    " M lib/net/connector/netdisco/rules.rb",
+    " M lib/net/connector/netdisco/worker.rb",
+    " M lib/net/connector/operations/tftp_backup.rb",
+    " M lib/net/connector/operations/topology.rb",
+    " M lib/net/connector/operations/topology/strategy.rb",
+    " M lib/net/connector/vendor/cisco_ios/topology.rb",
+    " M lib/net/connector/vendor/h3c/topology.rb",
+    " M lib/net/connector/vendor/hillstone/topology.rb",
+    " M lib/net/connector/vendor/palo_alto/topology.rb",
+    " M lib/net/connector/vendor/radware/topology.rb",
+    " M lib/net/connector/version.rb",
+    " M net-connector.gemspec",
+    " M script/coverage.rb",
+    " M script/package.rb",
+    " M script/release.rb",
+    " M test/backup_identity_test.rb",
+    " M test/capabilities_test.rb",
+    " M test/collection_contract_test.rb",
+    " M test/module_loading_test.rb",
+    " M test/netdisco_plan_test.rb",
+    " M test/netdisco_reliability_test.rb",
+    " M test/running_config_strategy_test.rb",
+    " M test/security_test.rb",
+    " M test/textfsm_test.rb",
+    " M test/topology_test.rb",
+    "?? CONTRIBUTING.md",
+    "?? SECURITY.md",
+    "?? script/coverage_report.rb",
+    "?? test/coverage_test.rb",
+    "?? test/engine_boundary_test.rb"
+  ],
+  "existing_worktree_version": "0.4.2",
+  "version_changed_by_this_batch": false,
+  "dependencies": {
+    "ast": "2.4.3",
+    "bundler": "4.0.20",
+    "date": "3.5.1",
+    "digest": "3.2.1",
+    "english": "0.8.1",
+    "expect-pty": "0.3.1",
+    "fileutils": "1.8.0",
+    "forwardable": "1.4.0",
+    "io-console": "0.9.4",
+    "io-wait": "0.4.0",
+    "ipaddr": "1.2.9",
+    "json": "2.21.2",
+    "language_server-protocol": "3.17.0.6",
+    "lint_roller": "1.1.0",
+    "logger": "1.7.0",
+    "minitest": "5.27.0",
+    "net-connector": "0.4.2",
+    "net-http": "0.9.1",
+    "open3": "0.2.1",
+    "openssl": "4.0.2",
+    "optparse": "0.8.1",
+    "parallel": "1.28.0",
+    "parser": "3.3.12.0",
+    "prism": "1.9.0",
+    "racc": "1.8.1",
+    "rainbow": "3.1.1",
+    "rake": "13.4.2",
+    "regexp_parser": "2.13.0",
+    "rubocop": "1.91.0",
+    "rubocop-ast": "1.50.0",
+    "ruby-progressbar": "1.13.0",
+    "securerandom": "0.4.1",
+    "shellwords": "0.2.2",
+    "stringio": "3.2.0",
+    "strscan": "3.1.8",
+    "tempfile": "0.3.1",
+    "textfsm": "0.2.0",
+    "time": "0.4.2",
+    "timeout": "0.6.1",
+    "tmpdir": "0.3.1",
+    "unicode-display_width": "3.3.0",
+    "unicode-emoji": "4.3.0",
+    "uri": "1.1.1",
+    "yaml": "0.4.0"
+  },
+  "test": {
+    "runs": 288,
+    "assertions": 2267,
+    "failures": 0,
+    "errors": 0,
+    "skips": 0,
+    "command": "bundle exec rake test",
+    "exit_code": 0
+  },
+  "coverage": {
+    "loaded_files": 78,
+    "total_files": 91,
+    "lines_hit": 2969,
+    "lines_total": 3091,
+    "branches_hit": 890,
+    "branches_total": 1103,
+    "unloaded_files": [
+      "net/connector/operations/running_config/cisco.rb",
+      "net/connector/operations/running_config/hillstone.rb",
+      "net/connector/operations/running_config/palo_alto.rb",
+      "net/connector/operations/running_config/strategy.rb",
+      "net/connector/operations/tftp/cisco_ios.rb",
+      "net/connector/operations/tftp/cisco_nxos.rb",
+      "net/connector/operations/tftp/h3c.rb",
+      "net/connector/operations/tftp/hillstone.rb",
+      "net/connector/operations/tftp/huawei.rb",
+      "net/connector/operations/tftp/palo_alto.rb",
+      "net/connector/operations/tftp/radware.rb",
+      "net/connector/version.rb",
+      "net-connector.rb"
+    ],
+    "groups": {
+      "engine": {
+        "lines_hit": 944,
+        "lines_total": 999,
+        "branches_hit": 376,
+        "branches_total": 440
+      },
+      "errors": {
+        "lines_hit": 102,
+        "lines_total": 102,
+        "branches_hit": 19,
+        "branches_total": 20
+      },
+      "worker": {
+        "lines_hit": 45,
+        "lines_total": 45,
+        "branches_hit": 7,
+        "branches_total": 7
+      }
+    }
+  },
+  "commands_run": {
+    "bundle install": 0,
+    "bundle list": 0,
+    "bundle exec rake test": 0,
+    "bundle exec rake ci": 0
+  },
+  "logs": [
+    "tmp/nc-optimization/baseline-test.log",
+    "tmp/nc-optimization/baseline-ci.log"
+  ],
+  "verification_limit": "Local macOS and Ruby 4.0.6 only; no remote CI matrix, live devices or archive byte verification"
+}

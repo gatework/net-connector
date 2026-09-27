@@ -31,25 +31,10 @@ module Net
                 Thread.current.report_on_exception = false
                 while (task = queue.pop)
                   index, device = task
-                  started_at = Time.now.utc
-                  begin
-                    on_start&.call(device)
-                  rescue StandardError => error
-                    callback_errors << { host: device.host, error_type: error.class.name }.freeze
-                  end
-                  result = begin
-                             yield device
-                           rescue StandardError => error
-                             on_error.call(device, error)
-                           end
-                  result = result.with(started_at: started_at, finished_at: Time.now.utc)
+                  result = run_task(device, on_error, on_start, callback_errors) { yield device }
                   outcomes[index] = result
                   Array(on_result).each do |callback|
-                    begin
-                      callback.call(result)
-                    rescue StandardError => error
-                      callback_errors << { host: device.host, error_type: error.class.name }.freeze
-                    end
+                    notify(callback, result, host: device.host, errors: callback_errors)
                   end
                 end
               ensure
@@ -75,6 +60,30 @@ module Net
             end
           end
           Array.new(callback_errors.size) { callback_errors.pop }.freeze
+        end
+
+        private
+
+        # 普通设备故障转换为结果，中断仍交给批次统一停止其余线程。
+        def run_task(device, on_error, on_start, callback_errors)
+          started_at = Time.now.utc
+          started = monotonic
+          notify(on_start, device, host: device.host, errors: callback_errors) unless on_start.nil?
+          result = begin
+                     yield
+                   rescue StandardError => error
+                     on_error.call(device, error)
+                   end
+          result.with(started_at: started_at, finished_at: Time.now.utc, duration_ms: ((monotonic - started) * 1000).round)
+        end
+
+        def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
+        # 回调故障不覆盖设备结果，也不把异常消息中的凭据写入报告。
+        def notify(callback, value, host:, errors:)
+          callback.call(value)
+        rescue StandardError => error
+          errors << { host: host, error_type: error.class.name }.freeze
         end
       end
     end

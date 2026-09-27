@@ -2,7 +2,7 @@
 
 require "minitest/autorun"
 require_relative "../lib/net/connector"
-require_relative "support/fake_transport"
+require_relative "support/topology_fixture"
 
 class OperationsReliabilityTest < Minitest::Test
   class Device
@@ -30,30 +30,27 @@ class OperationsReliabilityTest < Minitest::Test
                else
                  "interface Ethernet1/1\n  description #{description}\n  switchport\n"
                end
-      Net::Connector::Result.new(config: config)
+      steps = config_commands.map { |text| completed(Net::Connector::Command.new(text, output_sensitive: true), config) }
+      Net::Connector::Result.new(config: config, steps: steps)
     end
 
     def with_operation(_name) = yield
 
-    def profile = Struct.new(:save_commands, :topology_strategy).new([], Net::Connector.vendor_class(vendor).profile.topology_strategy)
+    def profile = Net::Connector.vendor_class(vendor).profile
+    def config_commands = profile.config_commands
 
     def execute_script(script)
       @script = script
-      configuration_mode = false
-      candidate = nil
-      script.each do |command|
-        case command.text
-        when "configure" then configuration_mode = true
-        when "exit" then configuration_mode = false
-        when /\Aset .* comment "(.*)"\z/ then candidate = Regexp.last_match(1)
-        when "commit"
-          raise "commit requires configuration mode" unless configuration_mode
-
-          self.description = candidate
-        when /\Adescription (.*)\z/ then self.description = Regexp.last_match(1)
-        end
+      steps = script.map do |command|
+        self.description = command.text.delete_prefix("description ") if command.text.start_with?("description ")
+        output = profile.save_commands.include?(command.text) ? TopologyFixture::SAMPLES.fetch(vendor).fetch(:saved) : ""
+        completed(command, output)
       end
-      Net::Connector::Result.new
+      Net::Connector::Result.new(steps: steps)
+    end
+
+    def completed(command, output)
+      Net::Connector::CommandResult.new(command: command, output: output, prompt: "switch#", duration: 0)
     end
   end
 
@@ -67,16 +64,13 @@ class OperationsReliabilityTest < Minitest::Test
     assert_equal "To peer Eth1/2", device.description
   end
 
-  def test_panos_commits_in_configuration_mode_before_returning_to_operational_mode
+  def test_panos_requires_verified_candidate_ownership_instead_of_unconditionally_committing
     device = Device.new(:palo_alto)
     topology = Net::Connector::Operations::Topology.new(device)
-    result = topology.apply(topology.plan_descriptions, confirmed: true)
-
-    assert result.success?
-    assert_equal "To peer Eth1/2", device.description
-    commit = device.script.find { |command| command.text == "commit" }
-    assert_equal 300, commit.timeout
-    assert_equal "exit", device.script.to_a.last.text
+    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.plan_descriptions }
+    assert_equal :candidate_isolation_unavailable, error.code
+    assert_equal "existing uplink", device.description
+    assert_nil device.script
   end
 
   def test_tftp_failure_words_in_filenames_are_not_transfer_failures

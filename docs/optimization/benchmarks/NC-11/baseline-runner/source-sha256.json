@@ -1,0 +1,5 @@
+{
+  "script/benchmark_memory.rb": "4b47237f93a02d93f61f09b863f633aeecbfd679fafccd515105b9c321b583c2",
+  "script/benchmarks/memory_fixture.rb": "d9eb274d3e68db8e738aa14663a235b627d3fd048fe68dbe82aa123acc07bd45",
+  "script/benchmarks/memory_workload.rb": "8778fefe546e62138b2597a0089b9a5cfd58c0c80c87ba42a7592430d0872a0d"
+}

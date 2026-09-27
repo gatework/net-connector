@@ -1,0 +1,200 @@
+{
+  "schema": 1,
+  "tasks": [
+    "NC-08",
+    "NC-15: reporting and success policy contracts"
+  ],
+  "measured_at": "2026-09-27T06:34:46Z",
+  "status": "local_ci_verified; released_expect_public_API_not_available; full_plan_active",
+  "base_commit": "3192377190fa8b28334e1f39007789ef2ae5cc6e",
+  "runtime": {
+    "ruby": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]",
+    "platform": "arm64-darwin25",
+    "bundler": "4.0.20"
+  },
+  "commands": [
+    {
+      "command": "ruby tmp/nc-optimization/with_local_expect.rb exec rake ci",
+      "cwd": "/Users/crate/Works/ruby/net-connector",
+      "exit_code": 0,
+      "log": "tmp/nc-optimization/nc08-ci.log",
+      "log_sha256": "f0be03ecd18811aa1d2717d72c39e97f500db0a537c8bbed96c1f9eb66238b6a",
+      "tests": {
+        "runs": 404,
+        "assertions": 4390,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "ruby_lint_files": 151,
+      "source_scan": "passed",
+      "history_scan": "passed",
+      "package_scan": "passed",
+      "workflow_lint": "passed",
+      "installed_smokes": [
+        "plain",
+        "bundler"
+      ]
+    },
+    {
+      "command": "git diff --check (both repositories)",
+      "exit_code": 0
+    }
+  ],
+  "reproductions": [
+    {
+      "log": "tmp/nc-optimization/nc08-before.log",
+      "exit_code": 1,
+      "runs": 8,
+      "assertions": 23,
+      "failures": 1,
+      "errors": 6,
+      "skips": 0
+    }
+  ],
+  "focused": {
+    "log": "tmp/nc-optimization/nc08-focused.log",
+    "exit_code": 0,
+    "runs": 98,
+    "assertions": 1041,
+    "command": "ruby tmp/nc-optimization/with_local_expect.rb exec ruby -Ilib:test -e 'ARGV.each { |file| require_relative file }' test/netdisco_reporting_test.rb test/netdisco_test.rb test/netdisco_settings_test.rb test/netdisco_reliability_test.rb test/netdisco_plan_test.rb test/file_persistence_test.rb test/tftp_boundary_test.rb"
+  },
+  "coverage": {
+    "loaded_files": 85,
+    "total_files": 98,
+    "lines_hit": 3675,
+    "lines_total": 3808,
+    "branches_hit": 1212,
+    "branches_total": 1452,
+    "unloaded_files": [
+      "net/connector/operations/running_config/cisco.rb",
+      "net/connector/operations/running_config/hillstone.rb",
+      "net/connector/operations/running_config/palo_alto.rb",
+      "net/connector/operations/running_config/strategy.rb",
+      "net/connector/operations/tftp/cisco_ios.rb",
+      "net/connector/operations/tftp/cisco_nxos.rb",
+      "net/connector/operations/tftp/h3c.rb",
+      "net/connector/operations/tftp/hillstone.rb",
+      "net/connector/operations/tftp/huawei.rb",
+      "net/connector/operations/tftp/palo_alto.rb",
+      "net/connector/operations/tftp/radware.rb",
+      "net/connector/version.rb",
+      "net-connector.rb"
+    ]
+  },
+  "dependencies": {
+    "ast": "2.4.3",
+    "bundler": "4.0.20",
+    "date": "3.5.1",
+    "digest": "3.2.1",
+    "english": "0.8.1",
+    "etc": "1.4.6",
+    "expect-pty": "0.4.0",
+    "fileutils": "1.8.0",
+    "forwardable": "1.4.0",
+    "io-console": "0.9.4",
+    "io-wait": "0.4.0",
+    "ipaddr": "1.2.9",
+    "json": "2.21.2",
+    "language_server-protocol": "3.17.0.6",
+    "lint_roller": "1.1.0",
+    "logger": "1.7.0",
+    "minitest": "5.27.0",
+    "net-connector": "0.4.2",
+    "net-http": "0.9.1",
+    "open3": "0.2.1",
+    "openssl": "4.0.2",
+    "optparse": "0.8.1",
+    "parallel": "1.28.0",
+    "parser": "3.3.12.0",
+    "prism": "1.9.0",
+    "racc": "1.8.1",
+    "rainbow": "3.1.1",
+    "rake": "13.4.2",
+    "regexp_parser": "2.13.0",
+    "rubocop": "1.91.0",
+    "rubocop-ast": "1.50.0",
+    "ruby-progressbar": "1.13.0",
+    "securerandom": "0.4.1",
+    "shellwords": "0.2.2",
+    "stringio": "3.2.0",
+    "strscan": "3.1.8",
+    "tempfile": "0.3.1",
+    "textfsm": "0.2.0",
+    "time": "0.4.2",
+    "timeout": "0.6.1",
+    "tmpdir": "0.3.1",
+    "unicode-display_width": "3.3.0",
+    "unicode-emoji": "4.3.0",
+    "uri": "1.1.1",
+    "yaml": "0.4.0"
+  },
+  "artifacts": {
+    "net_connector": {
+      "path": "tmp/nc-optimization/net-connector-nc08.gem",
+      "sha256": "2748f286f5b36e612cf93104ee64bf5613224a5305fa87803364a94fdebfd831"
+    },
+    "expect_local_patch": {
+      "path": "tmp/nc-optimization/expect-pty-0.4.0-local.gem",
+      "sha256": "e9f4eb7447bb467b508f374eb6e97c87a4945158bd88e5cfc84e657ad330831f"
+    },
+    "expect_published": {
+      "path": "tmp/nc-optimization/expect-pty-0.4.0-published.gem",
+      "sha256": "dd2788f7608c49c0e5c2e6311990febf6a6f7888cdab80db2587d3909fe554e9"
+    }
+  },
+  "expect_public_API": {
+    "source_commit": "b7cd25e736acbfcb43e412ec4d233f9b2602cb03",
+    "loaded_from": "/Users/crate/Works/ruby/net-connector/tmp/nc-dependency-gems/gems/expect-pty-0.4.0",
+    "source_sha256": "ebb4b0b701962bb999155eb34617b9bbaa673e8c66be28459d27d7549ea7cc92",
+    "local_public_api": true,
+    "official_version_check": {
+      "version": "0.4.0",
+      "download": "https://rubygems.org/downloads/expect-pty-0.4.0.gem",
+      "published_at": "2026-09-27T03:58:35.418Z",
+      "public_redactor_api": false,
+      "direct_package_probe": "LoadError before constructing a connector redaction scope, as expected",
+      "release_gate": "publish upstream public API, select its actual minimum version, rerun against official package"
+    },
+    "current_rubygems_metadata": {
+      "version": "0.4.0",
+      "sha": "dd2788f7608c49c0e5c2e6311990febf6a6f7888cdab80db2587d3909fe554e9",
+      "version_created_at": "2026-09-27T03:58:35.418Z",
+      "gem_uri": "https://rubygems.org/gems/expect-pty-0.4.0.gem"
+    },
+    "current_check": "official downloaded gem SHA matches current metadata; isolated source probe public_constant: false"
+  },
+  "source_sha256": {
+    "lib/net/connector/netdisco/diagnostic.rb": "a60c80a40a1444d21e5be4e87f5b43b6e868d69a5c1b33ada43db874c83430e5",
+    "lib/net/connector/netdisco/report.rb": "67b400dbe748f79f8ca6f7c28ac7376802b41bce053ce6931882cf0f817dfe2c",
+    "lib/net/connector/netdisco/batch.rb": "9827ce0321d8a09215aa25f430e7b5698c45db3a7e23991be9700e489282362a",
+    "lib/net/connector/netdisco/worker.rb": "ffae9efcba169efb57bb80d205b40c56b4c959609e4cd1297efaf1d1e572bcd8",
+    "lib/net/connector/netdisco/fleet.rb": "629e57959a582da40d8ca8eeede9cd3b97884e75835dc9939e52d5cff917051a",
+    "lib/net/connector/netdisco/cli.rb": "fface129a9917db38db8b8a67383316dee3c933d0c521446bb13f8ee63e5c60f",
+    "test/netdisco_reporting_test.rb": "9658cc121e59696332fdc70c74a41af04c0f9461361330db9ddbe37c9919147a",
+    "script/smoke.rb": "c897bd74fbd44c136cc7fdb7e7cd712a7f90c793917b73a01e6d2edd4eb01e13",
+    "README.md": "9c89a36d082b290482564bcc888bd4a20db1a761bffc849772e79927f61960cd",
+    "CHANGELOG.md": "cc3f2aab315011a7e54834a5a50de6b951c7f5a2b2819e57f8a64939aa067e5b",
+    "docs/architecture.md": "0ebe263c2de918676046dd510ac2d69531356eca30b000eca14371169d235321",
+    "docs/VERIFICATION.md": "f933dbd43743a515499039530700e84de0c4e28496b1466462e941d8841a6e23"
+  },
+  "source_preservation": {
+    "untouched_net_connector_initial_tracked_patches": 15,
+    "expect_initial_tracked_patches": 8
+  },
+  "limits": [
+    "macOS arm64 / Ruby 4.0.6 only; no remote CI matrix",
+    "synthetic inventory/connectors and local PTY only; no device or inventory network access",
+    "default strict success, schema 1 keys, Batch/Outcome Data members and old ResultStore write keywords unchanged",
+    "selected explicitly opts into Report/schema 2; only filtered/sample_limit are ignorable and empty selection is never successful",
+    "coverage reports attempted tasks, not successful backups; TFTP success still means device_reported only",
+    "v2 diagnostics drop unknown codes/phases, normalize unknown types, and omit message/output/backtrace/command/source/line",
+    "schema 1 retains the existing custom diagnostic values; it does not gain the v2 whitelist contract",
+    "library task durations use monotonic clocks; manually constructed old outcomes fall back to clamped wall-clock differences",
+    "v2 total duration stops before report persistence; file reports are pre-write snapshots and final report errors exist in returned results and CLI",
+    "re-wrapping old Batch values does not reconstruct unmeasured total duration or report-write diagnostic stages",
+    "official expect-pty 0.4.0 bytes still match the last private-Redactor probe; public API remains a local patch",
+    "no push, PR, tag, gem publication or source VERSION edits",
+    "NC-07C optional verifier and NC-09 through NC-15 outstanding except documented prior/supporting changes"
+  ]
+}

@@ -10,6 +10,8 @@ module Net
   module Connector
     # 连接状态、传输层和日志的唯一所有者；同一时刻只允许一个操作占用会话。
     class Session
+      MAX_ERROR_OUTPUT_BYTES = 4096
+
       attr_reader :configuration, :transport, :reader, :redactor, :state, :prompt
 
       # 创建认证、响应读取、脱敏和日志对象，并把会话置于关闭状态。
@@ -73,6 +75,13 @@ module Net
           @operation_owner = nil
           @lock.unlock
         end
+      end
+
+      # 文件业务必须先取得路径锁，再调用会话；不能持有会话租约去等待另一个备份者。
+      def assert_path_lock_order!(phase)
+        return unless @lock.locked?
+
+        raise error(SessionBusy, "backup path ownership must be acquired before a session operation", phase: phase), cause: nil
       end
 
       # 一次操作从连接到结果处理始终持锁；异常或 throw 中断都关闭未完成会话。
@@ -140,6 +149,19 @@ module Net
         end
       end
 
+      # 批次准备和最终清理也可能读取配置；在作用域退出前归一化其异常，
+      # 防止清理钩子的消息或回溯将已完成步骤中的正文带回诊断通道。
+      def output_scope(enabled)
+        return yield unless enabled
+
+        redactor.scope do
+          redactor.output_sensitive!
+          yield
+        rescue => error
+          raise normalize_error(error, phase: :script), cause: nil
+        end
+      end
+
       # 复用完整命令的脱敏范围；厂商后续查询产生的秘密保留到外层回调结束。
       def exchange(command, timeout:, prompt: nil)
         redactor.scope(reuse: true) do
@@ -147,9 +169,10 @@ module Net
           started = Expect.monotonic
           @log.event("command_start", text: command.sensitive? ? "[REDACTED]" : command.text)
           sensitive_dialogue = [*command.interactions, *@dialogue.command_interactions].any?(&:sensitive?)
-          @log.event("device_output", level: :debug) if @log.detailed? && !command.sensitive? && !sensitive_dialogue
+          private_output = command.sensitive? || redactor.output_sensitive? || sensitive_dialogue
+          @log.event("device_output", level: :debug) if @log.detailed? && !private_output
           response = exchange_command(command, timeout: timeout, prompt: prompt)
-          @log.response_output(response.raw) unless command.sensitive? || sensitive_dialogue
+          @log.response_output(response.raw) unless private_output
           @log.event("command_complete", status: "response_received")
           @log.event("command_detail", level: :debug,
                      duration_ms: ((Expect.monotonic - started) * 1000).round,
@@ -165,6 +188,7 @@ module Net
 
       # 在用户钩子运行前标记敏感上下文，动态交互尚未返回时也能保护其异常。
       def protect_command(command)
+        redactor.output_sensitive! if command.output_sensitive?
         if command.sensitive? || [*command.interactions, *@dialogue.command_interactions].any?(&:sensitive?)
           redactor.sensitive!
         end
@@ -189,7 +213,7 @@ module Net
 
           response
         end
-        if command.sensitive? || interactions.any?(&:sensitive?)
+        if command.sensitive? || redactor.output_sensitive? || interactions.any?(&:sensitive?)
           @log.pause(&operation)
         else
           operation.call
@@ -220,20 +244,20 @@ module Net
 
       # 创建带脱敏上下文、阶段、命令和输出尾部的领域错误。
       def error(klass, message, phase:, command: nil, output: "".b, underlying: nil, **context)
-        sensitive = redactor.sensitive? || command&.sensitive?
+        sensitive = redactor.sensitive? || command&.sensitive? || command&.output_sensitive?
         message = safe_error_text(message, sensitive: sensitive)
         output = safe_error_text(output, sensitive: sensitive)
         klass.new(message, host: configuration.host, phase: phase,
                   command: command && (command.sensitive? ? "[REDACTED]" : redactor.call(command.text)),
                   source: command&.source, line: command&.line,
-                  output: output.byteslice(-4096, 4096) || output,
+                  output: truncate_output(output),
                   underlying: underlying && UnderlyingError.new(underlying, redactor, sensitive: sensitive), **context)
       end
 
       # 将底层异常映射为连接、传输、超时或内部错误，并保留安全上下文。
       def normalize_error(exception, phase:, command: nil)
         if exception.is_a?(Error)
-          sensitive = redactor.sensitive? || command&.sensitive?
+          sensitive = redactor.sensitive? || command&.sensitive? || command&.output_sensitive?
           failed_command = exception.command || command&.text
           if command&.sensitive? || (sensitive && exception.command && exception.command != command&.text)
             failed_command = "[REDACTED]"
@@ -245,7 +269,7 @@ module Net
             host: exception.host || configuration.host, phase: exception.phase || phase,
             command: failed_command && redactor.call(failed_command),
             source: exception.source || command&.source, line: exception.line || command&.line,
-            output: output.byteslice(-4096, 4096) || output,
+            output: truncate_output(output),
             underlying: exception.underlying && UnderlyingError.new(exception.underlying, redactor, sensitive: sensitive)
           )
         end
@@ -264,6 +288,13 @@ module Net
       end
 
       private :safe_error_text
+
+      # 必须先脱敏再截取尾部，避免截断凭据后逃过完整词匹配。
+      def truncate_output(text)
+        text.byteslice(-MAX_ERROR_OUTPUT_BYTES, MAX_ERROR_OUTPUT_BYTES) || text
+      end
+
+      private :truncate_output
 
       # 返回不包含凭据的会话状态摘要。
       def inspect = "#<#{self.class} state=#{state} host=#{configuration.host.inspect}>"

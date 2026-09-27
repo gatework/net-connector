@@ -10,6 +10,7 @@ class RunningConfigStrategyTest < Minitest::Test
   def test_custom_collection_strategy_controls_selection_and_cleaning_inside_the_session
     strategy = Class.new(Net::Connector::Operations::RunningConfig::Strategy) do
       def result_step(result) = result.steps.first
+
       def clean(text) = text.sub(/\nswitch#\z/, "").upcase
 
       def check_response(_command, _response, _execution)

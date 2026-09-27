@@ -1,0 +1,236 @@
+{
+  "schema": 1,
+  "tasks": [
+    "NC-03",
+    "NC-04"
+  ],
+  "measured_at": "2026-09-27T05:23:58Z",
+  "status": "local_ci_verified; released_expect_public_API_not_available; full_plan_active",
+  "base_commit": "3192377190fa8b28334e1f39007789ef2ae5cc6e",
+  "runtime": {
+    "ruby": "ruby 4.0.6 (2026-07-14 revision 03b6d3f889) +PRISM [arm64-darwin25]",
+    "platform": "arm64-darwin25",
+    "bundler": "4.0.20"
+  },
+  "commands": [
+    {
+      "command": "ruby tmp/nc-optimization/with_local_expect.rb exec rake ci",
+      "cwd": "/Users/crate/Works/ruby/net-connector",
+      "exit_code": 0,
+      "log": "tmp/nc-optimization/nc03-nc04-ci.log",
+      "log_sha256": "f7c91ccd4808076faaaf351808b45cb49d82a3e694bfbec6ed4551eae78a2d1e",
+      "tests": {
+        "runs": 368,
+        "assertions": 3556,
+        "failures": 0,
+        "errors": 0,
+        "skips": 0
+      },
+      "ruby_lint_files": 142,
+      "source_scan": "passed",
+      "history_scan": "passed",
+      "package_scan": "passed",
+      "workflow_lint": "passed",
+      "installed_smokes": [
+        "plain",
+        "bundler"
+      ]
+    },
+    {
+      "command": "git diff --check (both repositories)",
+      "exit_code": 0
+    }
+  ],
+  "reproductions": [
+    {
+      "log": "tmp/nc-optimization/nc03-before.log",
+      "exit_code": 1,
+      "runs": 11,
+      "assertions": 23,
+      "failures": 6,
+      "errors": 3,
+      "skips": 0
+    },
+    {
+      "log": "tmp/nc-optimization/nc04-before.log",
+      "exit_code": 1,
+      "runs": 11,
+      "assertions": 15,
+      "failures": 9,
+      "errors": 1,
+      "skips": 0
+    },
+    {
+      "log": "tmp/nc-optimization/nc03-alias-before.log",
+      "exit_code": 1,
+      "runs": 15,
+      "assertions": 76,
+      "failures": 1,
+      "errors": 0,
+      "skips": 0
+    },
+    {
+      "log": "tmp/nc-optimization/nc03-reentry-before.log",
+      "exit_code": 1,
+      "runs": 1,
+      "assertions": 1,
+      "failures": 1,
+      "errors": 0,
+      "skips": 0
+    },
+    {
+      "log": "tmp/nc-optimization/nc04-receipt-type-before.log",
+      "exit_code": 1,
+      "runs": 1,
+      "assertions": 1,
+      "failures": 1,
+      "errors": 0,
+      "skips": 0
+    }
+  ],
+  "installed_smoke_first_failure": {
+    "log": "tmp/nc-optimization/nc03-nc04-install-before.log",
+    "exit_code": 1,
+    "reason": "plain and Bundler modes shared one smoke directory; corrected and full CI rerun"
+  },
+  "coverage": {
+    "loaded_files": 81,
+    "total_files": 94,
+    "lines_hit": 3390,
+    "lines_total": 3511,
+    "branches_hit": 1047,
+    "branches_total": 1278,
+    "unloaded_files": [
+      "net/connector/operations/running_config/cisco.rb",
+      "net/connector/operations/running_config/hillstone.rb",
+      "net/connector/operations/running_config/palo_alto.rb",
+      "net/connector/operations/running_config/strategy.rb",
+      "net/connector/operations/tftp/cisco_ios.rb",
+      "net/connector/operations/tftp/cisco_nxos.rb",
+      "net/connector/operations/tftp/h3c.rb",
+      "net/connector/operations/tftp/hillstone.rb",
+      "net/connector/operations/tftp/huawei.rb",
+      "net/connector/operations/tftp/palo_alto.rb",
+      "net/connector/operations/tftp/radware.rb",
+      "net/connector/version.rb",
+      "net-connector.rb"
+    ]
+  },
+  "dependencies": {
+    "ast": "2.4.3",
+    "bundler": "4.0.20",
+    "date": "3.5.1",
+    "digest": "3.2.1",
+    "english": "0.8.1",
+    "etc": "1.4.6",
+    "expect-pty": "0.4.0",
+    "fileutils": "1.8.0",
+    "forwardable": "1.4.0",
+    "io-console": "0.9.4",
+    "io-wait": "0.4.0",
+    "ipaddr": "1.2.9",
+    "json": "2.21.2",
+    "language_server-protocol": "3.17.0.6",
+    "lint_roller": "1.1.0",
+    "logger": "1.7.0",
+    "minitest": "5.27.0",
+    "net-connector": "0.4.2",
+    "net-http": "0.9.1",
+    "open3": "0.2.1",
+    "openssl": "4.0.2",
+    "optparse": "0.8.1",
+    "parallel": "1.28.0",
+    "parser": "3.3.12.0",
+    "prism": "1.9.0",
+    "racc": "1.8.1",
+    "rainbow": "3.1.1",
+    "rake": "13.4.2",
+    "regexp_parser": "2.13.0",
+    "rubocop": "1.91.0",
+    "rubocop-ast": "1.50.0",
+    "ruby-progressbar": "1.13.0",
+    "securerandom": "0.4.1",
+    "shellwords": "0.2.2",
+    "stringio": "3.2.0",
+    "strscan": "3.1.8",
+    "tempfile": "0.3.1",
+    "textfsm": "0.2.0",
+    "time": "0.4.2",
+    "timeout": "0.6.1",
+    "tmpdir": "0.3.1",
+    "unicode-display_width": "3.3.0",
+    "unicode-emoji": "4.3.0",
+    "uri": "1.1.1",
+    "yaml": "0.4.0"
+  },
+  "artifacts": {
+    "net_connector": {
+      "path": "tmp/nc-optimization/net-connector-nc03-nc04.gem",
+      "sha256": "ed6a75e93063a404b025fe5791034dfd027e0648900cd56901062885952fa7b1"
+    },
+    "expect_local_patch": {
+      "path": "tmp/nc-optimization/expect-pty-0.4.0-local.gem",
+      "sha256": "e9f4eb7447bb467b508f374eb6e97c87a4945158bd88e5cfc84e657ad330831f"
+    },
+    "expect_published": {
+      "path": "tmp/nc-optimization/expect-pty-0.4.0-published.gem",
+      "sha256": "dd2788f7608c49c0e5c2e6311990febf6a6f7888cdab80db2587d3909fe554e9"
+    }
+  },
+  "expect_public_API": {
+    "source_commit": "5a219f737c988ec262669171475d42e6ee6c97ef",
+    "loaded_from": "/Users/crate/Works/ruby/net-connector/tmp/nc-dependency-gems/gems/expect-pty-0.4.0",
+    "source_sha256": "ebb4b0b701962bb999155eb34617b9bbaa673e8c66be28459d27d7549ea7cc92",
+    "local_public_api": true,
+    "official_version_check": {
+      "version": "0.4.0",
+      "download": "https://rubygems.org/downloads/expect-pty-0.4.0.gem",
+      "published_at": "2026-09-27T03:58:35.418Z",
+      "public_redactor_api": false,
+      "direct_package_probe": "LoadError before constructing a connector redaction scope, as expected",
+      "release_gate": "publish upstream public API, select its actual minimum version, rerun against official package"
+    },
+    "current_rubygems_metadata": {
+      "version": "0.4.0",
+      "sha": "dd2788f7608c49c0e5c2e6311990febf6a6f7888cdab80db2587d3909fe554e9",
+      "version_created_at": "2026-09-27T03:58:35.418Z",
+      "gem_uri": "https://rubygems.org/gems/expect-pty-0.4.0.gem"
+    },
+    "current_check": "official downloaded gem SHA matches current metadata; isolated source probe public_constant: false"
+  },
+  "source_sha256": {
+    "lib/net/connector/device/base.rb": "9a4e8ae8ff547e5bb8b8ce2d2a2deeb2b3a2b793226d0d78c0801ac444aed40f",
+    "lib/net/connector/engine/session.rb": "0c603e741424f540a85c3a91a39280e200b02e881e403e6ce555b7421e3c4da8",
+    "lib/net/connector/operations.rb": "642eb54f74abc58d9261ca37054f820e6a1814c70e7d849b6d70f0e2101130fb",
+    "lib/net/connector/operations/backup_lock.rb": "c6a50f192ae18da6315998c9f1131d0caae4f65a15cffb086055aa4130ac7d8c",
+    "lib/net/connector/operations/safe_file.rb": "55ecbaaf7e16e8e1ed782cc9179f5aaf12a19b7c4456fd2d326017b1caff7de3",
+    "lib/net/connector/operations/private_file.rb": "dd34a435dd67216bed77709dee53fa34650ac59f03880927b89d60d58ff864f6",
+    "lib/net/connector/operations/local_backup.rb": "cb3c9ae21ecdc13b56848c8b9bef999f27f8365ae90e86796986aeef7e31601d",
+    "lib/net/connector/operations/saved_config.rb": "9d599463873e55f61013113ddd97c15675bb255b4e5b56786c180681afad19fa",
+    "lib/net/connector/netdisco/fleet.rb": "3e58f6e2f46c918fd98a440bbc250fc6855e271f6921bdd68c6451d8b367a5ec",
+    "lib/net/connector/netdisco/cli.rb": "ca1a96972caad1c2d5eda95f190f39b4fb26344e7c19c0f5fcb3e214301307dd",
+    "test/backup_lock_test.rb": "7f4b8c325960ea2af51d363e16714b7a8c53e563cacf7e7852cac77a129a983e",
+    "test/file_persistence_test.rb": "12635c824bf0b1d8a3cba912bc81046dbe3f503d3f660e6422a0c795bc30df61",
+    "test/backup_identity_test.rb": "0e9f11c79b4c677a27ec7231029b337ff3d02dec6788dbea1f506cd6bbf7132b",
+    "script/smoke.rb": "be2cd745891fca9a575547170a4c2f5ac4e3b88186d9adbffafbff298f34b096",
+    "README.md": "01a589564c694e754384349aaea68f5e7984471fda38fa8ecf411e04205750d5",
+    "CHANGELOG.md": "e871bc90c529b4b85add109cca8cff9d339104aecdeac47ab8c60400815342a4",
+    "docs/architecture.md": "60306af0cfeb49b437973ceefe0b46f2ff0356d2f8e01c7c99f6d6df80103a58",
+    "docs/VERIFICATION.md": "a790c10995edc93e1700574bd99f72cd74d65ed0b4d5b05e2695779c925176bd"
+  },
+  "source_preservation": {
+    "untouched_net_connector_initial_tracked_patches": 25,
+    "expect_initial_tracked_patches": 8
+  },
+  "limits": [
+    "macOS arm64 / Ruby 4.0.6 only; no remote CI matrix",
+    "temporary files, synthetic collectors, local PTY and separate Ruby processes only; no production device access",
+    "protected parent directories and cooperating flock writers required; no all-ancestor or noncooperating-writer guarantee",
+    "case and Unicode equivalent names deliberately share a lock even on case-sensitive filesystems",
+    "directory sync confirmed only on local macOS filesystem; no Linux, network filesystem or real power-loss test",
+    "unchanged content preserves mtime and does not reconfirm durability of an earlier write",
+    "shared Redactor still needs an official upstream public API release and minimum dependency update",
+    "no push, PR, tag, gem publication or source VERSION edits",
+    "NC-06 through NC-15 remain outstanding except documented prior/supporting changes"
+  ]
+}

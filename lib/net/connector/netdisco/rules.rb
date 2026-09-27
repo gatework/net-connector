@@ -12,20 +12,33 @@ module Net
                        host_overrides: {}, mappings: [])
           @include_hosts = string_list(include_hosts)
           @exclude_hosts = string_list(exclude_hosts)
+          @include_vendors = vendor_list(include_vendors)
+          @vendor_overrides = vendor_mapping(vendor_overrides)
+          @host_overrides = host_mapping(host_overrides)
+          @mappings = device_mappings(mappings)
+        end
+
+        # 校验允许使用的厂商列表。
+        def vendor_list(include_vendors)
           raise ArgumentError, "include_vendors must be an Array" unless include_vendors.is_a?(Array)
 
-          @include_vendors = include_vendors.map do |vendor|
+          vendors = include_vendors.map do |vendor|
             raise ArgumentError, "include_vendors contains an invalid value" unless vendor.is_a?(String) || vendor.is_a?(Symbol)
 
             vendor.to_sym
           end.freeze
-          unless @include_vendors.all? { |vendor| Net::Connector.vendors.include?(vendor) }
+          unless vendors.all? { |vendor| Net::Connector.vendors.include?(vendor) }
             raise ArgumentError, "include_vendors contains an unsupported connector"
           end
+          vendors
+        end
+
+        # 将清单厂商标签映射为受支持的连接器。
+        def vendor_mapping(vendor_overrides)
           unless vendor_overrides.is_a?(Hash)
             raise ArgumentError, "vendor_overrides must be a Hash"
           end
-          @vendor_overrides = vendor_overrides.to_h do |label, vendor|
+          vendor_overrides.to_h do |label, vendor|
             unless label.is_a?(String) && vendor.is_a?(String) && !label.empty?
               raise ArgumentError, "vendor_overrides must map labels to connector names"
             end
@@ -35,9 +48,13 @@ module Net
 
             [key, value]
           end.freeze
+        end
+
+        # 按规范化管理地址覆盖厂商，拒绝网段和无效地址。
+        def host_mapping(host_overrides)
           raise ArgumentError, "host_overrides must be a Hash" unless host_overrides.is_a?(Hash)
 
-          @host_overrides = host_overrides.to_h do |host, vendor|
+          host_overrides.to_h do |host, vendor|
             unless host.is_a?(String) && !host.include?("/") && vendor.is_a?(String)
               raise ArgumentError, "host_overrides must map IP addresses to connector names"
             end
@@ -51,9 +68,13 @@ module Net
 
             [address, connector]
           end.freeze
+        end
+
+        # 型号映射仅接受已声明字段，并冻结每条规则。
+        def device_mappings(mappings)
           raise ArgumentError, "mappings must be an Array" unless mappings.is_a?(Array)
 
-          @mappings = mappings.map do |rule|
+          mappings.map do |rule|
             unless rule.is_a?(Hash) && rule["vendor"].is_a?(String) && !rule["vendor"].empty? &&
                    rule["connector"].is_a?(String) &&
                    (rule.keys - %w[vendor os model_prefix connector]).empty? &&
@@ -67,6 +88,8 @@ module Net
               model_prefix: rule["model_prefix"] && normalize(rule["model_prefix"]), connector: connector }.freeze
           end.freeze
         end
+
+        private :vendor_list, :vendor_mapping, :host_mapping, :device_mappings
 
         # 根据地址、显式规则和厂商信息识别连接器。
         def resolve(row)

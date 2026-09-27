@@ -95,7 +95,8 @@ class SecurityTest < Minitest::Test
 
   def test_missing_scanner_report_fails_closed
     with_source do |directory|
-      status = Struct.new(:exitstatus) { def success? = true }.new(0)
+      status = Struct.new(:exitstatus) {
+        def success? = true }.new(0)
       Open3.stub(:capture3, ["", "", status]) do
         error = assert_raises(RuntimeError) { SecretScan.directory(directory, report_root: directory) }
         assert_includes error.message, "did not produce a report"

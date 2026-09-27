@@ -9,12 +9,21 @@ module Net
         # 山石原生导出的配置文件使用 dat 扩展名。
         def self.file_extension = "dat"
 
-        # 构造当前厂商的 TFTP 导出交互脚本。
-        def script(target, source_file:, vrf: nil)
-          raise ArgumentError, "Hillstone TFTP export does not use source_file" if source_file
+        # 在连接前拒绝源文件及远端目录；未指定文件名时仍由设备生成。
+        def validate_options!(target, source_file:, **)
+          raise ArgumentError, "Hillstone TFTP export does not use source_file" unless source_file.nil?
           if target.explicit_path? && target.path.include?("/")
             raise ArgumentError, "Hillstone TFTP filename cannot contain a directory"
           end
+        end
+
+        def receipt_metadata(target, **)
+          { configuration_kind: :startup, format: :dat, requested_path: target.explicit_path? ? target.path : nil }
+        end
+
+        # 构造当前厂商的 TFTP 导出交互脚本。
+        def script(target, source_file:, vrf: nil)
+          validate_options!(target, source_file: source_file, vrf: vrf)
 
           command = "export configuration startup to tftp server #{target.host} vrouter #{vrf || "mgt-vr"}"
           command += " #{target.path}" if target.explicit_path?

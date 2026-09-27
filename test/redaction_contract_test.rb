@@ -10,6 +10,19 @@ class RedactionContractTest < Minitest::Test
   MARKER = "[REDACTED]"
   SECRET = "callback-secret-8492"
 
+  def test_repeated_or_absent_secret_registration_keeps_pending_stream_private
+    redactor = Net::Connector::Redactor.new(SECRET)
+    stream = redactor.stream
+    output = stream.append(SECRET[0, 12])
+    [nil, "", SECRET.dup].each { |secret| redactor.remember(secret) }
+    stream.patterns = redactor.patterns
+    output += stream.append(SECRET[12..]) + stream.finish(partial: false)
+
+    assert_equal MARKER, output
+    refute_includes output, SECRET[0, 12]
+    assert_equal "ordinary output", redactor.call("ordinary output")
+  end
+
   def test_sensitive_command_remains_redacted_in_callback_errors
     device, = build("fw#")
     result = device.execute("set password #{SECRET}", sensitive: true) { raise "callback rejected #{SECRET}" }
@@ -261,6 +274,31 @@ class RedactionContractTest < Minitest::Test
     assert_equal expected, redact_chunks(Net::Connector::Redactor.new(*secrets), input.bytes.map(&:chr))
   end
 
+  def test_byte_filter_is_supplied_by_expect_while_scopes_remain_connector_owned
+    redactor = Net::Connector::Redactor.new("permanent")
+    assert_instance_of Expect::Redactor, redactor.stream
+    assert redactor.patterns.frozen?
+    redactor.scope do
+      redactor.remember("temporary")
+      assert_equal "#{MARKER} #{MARKER}", redactor.call("permanent temporary")
+      assert_equal "#{MARKER} #{MARKER}", redact_chunks(redactor, ["perma", "nent tempo", "rary"])
+    end
+    assert_equal "#{MARKER} temporary", redactor.call("permanent temporary")
+    assert_equal "#{MARKER} temporary", redact_chunks(redactor, ["perma", "nent temporary"])
+  end
+
+  def test_missing_public_dependency_api_is_rejected_before_a_filter_is_constructed
+    Expect.stub(:constants, []) do
+      error = assert_raises(LoadError) { Net::Connector::Redactor.new }
+      assert_includes error.message, "public Expect::Redactor API"
+    end
+    Expect::Redactor.stub(:respond_to?, false) do
+      error = assert_raises(LoadError) { Net::Connector::Redactor.new }
+      assert_includes error.message, "public Expect::Redactor API"
+    end
+    assert_instance_of Expect::Redactor, Net::Connector::Redactor.new.stream
+  end
+
   private
 
   def build(*events)
@@ -282,13 +320,7 @@ class RedactionContractTest < Minitest::Test
   end
 
   def redact_chunks(redactor, chunks)
-    pending = "".b
-    output = "".b
-    chunks.each do |chunk|
-      safe, pending = redactor.stream_chunk(pending + chunk)
-      output << safe
-    end
-    safe, = redactor.stream_chunk(pending, final: true)
-    output + safe
+    stream = redactor.stream
+    chunks.map { |chunk| stream.append(chunk) }.join + stream.finish(partial: false)
   end
 end

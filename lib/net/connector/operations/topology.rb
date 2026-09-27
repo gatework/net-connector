@@ -28,7 +28,7 @@ module Net
                                            code: :neighbor_discovery_unsupported, host: @device.host, phase: :discover)
           end
 
-          output = @device.execute(command).value!
+          output = @parser.utf8(@device.execute(command).value!, host: @device.host)
           template = @strategy.neighbor_template(output)
           rows = @parser.call(output, template: template, vendor: @device.vendor, command: command, host: @device.host)
           if rows.size != @strategy.expected_neighbor_count(output, template) || (rows.empty? && !@strategy.empty_neighbor_output?(output))
@@ -46,14 +46,21 @@ module Net
         end
 
         # 从运行配置读取已设置的接口描述或端口名称。
-        def descriptions
+        def descriptions = read_descriptions
+
+        # 内部读取先交付执行步骤，再处理解析；解析失败也不能抹去已经完成的采集命令。
+        def read_descriptions
           template = @strategy.description_template
           unless @strategy.supports?(:interface_descriptions) && template
             raise UnsupportedOperation.new("interface descriptions are unsupported for this vendor",
                                            code: :description_unsupported, host: @device.host, phase: :discover)
           end
-          config = @device.running_config.value!
-          @parser.call(config, template: template, host: @device.host).each_with_object({}) do |row, found|
+          result = @device.running_config
+          yield result if block_given?
+          config = result.value!
+          rows = @parser.call(config, template: template, host: @device.host)
+          @strategy.validate_descriptions!(config, rows) if @strategy.respond_to?(:validate_descriptions!)
+          rows.each_with_object({}) do |row, found|
             interface = @strategy.interface_key(row.fetch("INTERFACE"))
             description = @strategy.decode_description(row.fetch("DESCRIPTION", ""))
             previous = found[interface]
@@ -64,6 +71,8 @@ module Net
             found[interface] = description unless description.empty? && previous
           end
         end
+
+        private :read_descriptions
 
         # 比对邻居和现有描述，生成包含确切命令的只读变更计划。
         def plan_descriptions(abbreviate: true, lowercase: false, &formatter)
@@ -88,7 +97,7 @@ module Net
           commands = if changes.empty?
                        []
                      else
-                       [@strategy.enter_configuration] + changes.flat_map { |change| change_commands(change) } + @strategy.finish_commands
+                       stage_scripts(changes).values.flat_map { |script| script.map(&:text) }
                      end
           commands.each(&:freeze)
           Plan.new(host: @device.host.dup.freeze, vendor: @device.vendor, evidence: evidence,
@@ -102,18 +111,65 @@ module Net
                                            host: @device.host, phase: :apply)
           end
           raise ArgumentError, "plan must be a topology plan for this device" unless plan.is_a?(Plan) &&
-                                                                           plan.host == @device.host &&
-                                                                           plan.vendor == @device.vendor
-          return Result.new if plan.changes.empty?
+                                                                                     plan.host == @device.host &&
+                                                                                     plan.vendor == @device.vendor
+          if plan.changes.empty?
+            raise ArgumentError, "empty topology plan cannot contain commands" unless plan.commands.empty?
 
-          check_change_support!(:apply) if @strategy.supports?(:neighbors)
+            return Result.new
+          end
+
+          @strategy.supports?(:neighbors) ? check_change_support!(:apply) : neighbors
           @device.with_operation(:apply) { apply_plan(plan) }
         end
 
         private
 
-        # 现场复核、修改和回读属于同一次独占操作。
+        # 同一租约覆盖重验、修改、读回与保存；有完成步骤后发生的错误必须带回这些步骤。
         def apply_plan(plan)
+          stages = stage_scripts(plan.changes)
+          unless stages.values.flat_map { |script| script.map(&:text) } == plan.commands
+            raise ArgumentError, "plan commands were modified or use an older execution sequence; regenerate the plan"
+          end
+          revalidate_plan!(plan)
+          steps = []
+          result = execute_stage(stages.fetch(:change), steps)
+          return Result.new(steps: steps, error: result.error) if result.failure?
+
+          verify_descriptions!(plan.changes, stages.fetch(:verify), steps)
+          persisting = true
+          result = execute_stage(stages.fetch(:persist), steps)
+          if result.failure? || !@strategy.persistence_confirmed?(result)
+            return Result.new(steps: steps, error: persistence_error(result.error))
+          end
+          Result.new(steps: steps)
+        rescue Error => error
+          raise unless steps
+
+          Result.new(steps: steps, error: persisting ? persistence_error(error) : error)
+        end
+
+        # 读回命令与审批一致，并且每个目标描述均得到确认，才允许进入保存阶段。
+        def verify_descriptions!(changes, script, steps)
+          unless Script.new(@device.config_commands).map(&:text) == script.map(&:text)
+            raise DeviceError.new("configuration readback commands changed after approval",
+                                  code: :verification_plan_changed, host: @device.host, phase: :verify)
+          end
+          updated = read_descriptions do |readback|
+            steps.concat(readback.steps)
+            if readback.success? && readback.steps.map { |step| step.command.text } != script.map(&:text)
+              raise DeviceError.new("configuration readback did not execute the approved commands",
+                                    code: :verification_plan_changed, host: @device.host, phase: :verify)
+            end
+          end
+          unless changes.all? { |change| updated[@strategy.interface_key(change.interface)] == change.new_description }
+            raise DeviceError.new("interface descriptions were not confirmed by readback",
+                                  code: :description_unconfirmed, host: @device.host, phase: :verify)
+          end
+        end
+
+        # 重验失败仍在写入前直接抛异常，保持 stale_plan 的既有契约。
+        def revalidate_plan!(plan)
           discovered = neighbors
           evidence = evidence_for(discovered, descriptions)
           current_neighbors = discovered.to_h { |neighbor| [@strategy.interface_key(neighbor.local_interface), neighbor] }
@@ -132,42 +188,54 @@ module Net
               raise ArgumentError, "plan changes do not match its discovery evidence"
             end
           end
-          commands = [@strategy.enter_configuration] + plan.changes.flat_map { |change| change_commands(change) } + @strategy.finish_commands
-          raise ArgumentError, "plan commands were modified" unless commands == plan.commands
+        end
 
-          script = commands.map do |command|
-            @strategy.script_command(command)
+        # 审批列表保留真正执行的读回命令，使旧版“先保存后读回”计划无法静默复用。
+        def stage_scripts(changes)
+          phases = %i[leave_configuration verification_commands persistence_commands].map do |method|
+            @strategy.public_send(method) if @strategy.respond_to?(method)
           end
-          result = @device.execute_script(Script.new(script, name: "interface descriptions"))
-          return result if result.failure?
-
-          updated = descriptions
-          return result if plan.changes.all? do |change|
-            updated.fetch(@strategy.interface_key(change.interface), "") == change.new_description
+          unless phases.all? { |commands| commands.is_a?(Array) && !commands.empty? }
+            raise UnsupportedOperation.new("topology strategy must declare separate readback and persistence stages",
+                                           code: :description_stages_unsupported, host: @device.host, phase: :plan)
           end
+          leave, verify, persist = phases
+          sequences = {
+            change: [@strategy.enter_configuration] + changes.flat_map { |change| change_commands(change) } + leave,
+            verify: verify, persist: persist
+          }
+          sequences.transform_values do |commands|
+            Script.new(commands.map { |command| @strategy.script_command(command) }, name: "interface descriptions")
+          end
+        end
 
-          Result.new(steps: result.steps,
-                     error: DeviceError.new("interface descriptions were not confirmed by readback",
-                                            code: :description_unconfirmed, host: @device.host, phase: :verify))
-        rescue Error => error
-          raise unless result&.success?
+        def execute_stage(script, steps)
+          result = @device.execute_script(script)
+          steps.concat(result.steps)
+          result
+        end
 
-          Result.new(steps: result.steps, error: error)
+        # 保存可能已执行，超时、失败或缺少完成行均不自动重放；诊断不附带回显正文。
+        def persistence_error(error = nil)
+          underlying = UnderlyingError.new(error, nil, sensitive: true) if error
+          DeviceError.new("interface descriptions were verified; persistence was not confirmed",
+                          code: :persistence_unconfirmed, host: @device.host, phase: :persist, underlying: underlying)
         end
 
         # 下发描述前确认厂商提供配置能力，避免把只读发现当成可写能力。
         def check_change_support!(phase)
           return if @strategy.supports?(:interface_description_changes)
 
-          raise UnsupportedOperation.new("interface description changes are unsupported for this vendor",
-                                         code: :description_unsupported, host: @device.host, phase: phase)
+          code = @strategy.respond_to?(:change_error_code) ? @strategy.change_error_code : :description_unsupported
+          raise UnsupportedOperation.new("automatic interface description changes are unavailable; use a verified manual workflow",
+                                         code: code, host: @device.host, phase: phase)
         end
 
         # 汇总邻居身份和当前描述，并要求每个目标接口都有配置证据。
         def evidence_for(discovered, current)
           interfaces = discovered.group_by { |neighbor| @strategy.interface_key(neighbor.local_interface) }
           if interfaces.any? { |_interface, peers| peers.size != 1 || peers.first.neighbor_name.empty? ||
-                                 peers.first.neighbor_interface.empty? }
+            peers.first.neighbor_interface.empty? }
             raise ParsingError.new("neighbor identity is incomplete or ambiguous", code: :ambiguous_neighbor,
                                    host: @device.host, phase: :plan)
           end

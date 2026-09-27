@@ -2,6 +2,8 @@
 
 require "minitest/autorun"
 require "rbconfig"
+require "securerandom"
+require "tmpdir"
 require_relative "../lib/net/connector"
 
 class ConnectorTransportTest < Minitest::Test
@@ -61,6 +63,30 @@ class ConnectorTransportTest < Minitest::Test
     assert_empty result.steps
     assert transport.closed?
     refute device.connected?
+  ensure
+    device&.close
+  end
+
+  def test_cumulative_output_limit_keeps_finished_steps_and_reaps_the_local_pty
+    device, transport = local_device(<<~'RUBY', max_script_output_bytes: 20)
+      STDOUT.sync = true
+      STDOUT.write("router#")
+      abort unless STDIN.gets == "first\n"
+      STDOUT.write("small\nrouter#")
+      abort unless STDIN.gets == "second\n"
+      STDOUT.write("larger-output\nrouter#")
+      STDIN.read
+    RUBY
+    device.connect
+    channel = transport.channel
+    pid = channel.pid
+    result = device.execute_script(["first", "second", "never"])
+    assert_instance_of Connector::ScriptOutputLimitExceeded, result.error
+    assert_equal "second", result.error.command
+    assert_equal ["small\nrouter#", "larger-output\nrouter#"], result.steps.map(&:output)
+    assert channel.closed?
+    refute channel.alive?
+    assert_raises(Errno::ECHILD) { Process.waitpid(pid, Process::WNOHANG) }
   ensure
     device&.close
   end
@@ -192,6 +218,81 @@ class ConnectorTransportTest < Minitest::Test
     assert_equal "size=40,100\nrouter#", result.output
   ensure
     device&.close
+  end
+
+  def test_real_pty_configuration_output_is_private_and_logging_resumes_after_collection
+    %i[raw text].each do |format|
+      Dir.mktmpdir do |directory|
+        secret = SecureRandom.hex(24)
+        path = File.join(directory, "session.log")
+        device, transport = local_device(<<~RUBY, log_file: path, log_format: format, log_level: :debug)
+          $stdout.sync = true
+          secret = #{secret.inspect}
+          print "router#"
+          abort unless $stdin.gets == "terminal length 0\\n"
+          print "router#"
+          abort unless $stdin.gets == "show running-config\\n"
+          print "service opaque ", secret[0, 12]
+          print "\\e[31m", secret[12..], "\\e[0m\\nrouter#"
+          abort unless $stdin.gets == "show status\\n"
+          print "ordinary output\\nrouter#"
+          $stdin.read
+        RUBY
+        result = device.running_config
+        assert result.success?, result.error.inspect
+        assert_equal "service opaque #{secret}\nrouter#", result.config
+        assert result.steps.last.command.output_sensitive?
+        assert device.execute("show status").success?
+        channel = transport.channel
+        pid = channel.pid
+        device.close
+        contents = File.binread(path)
+        [secret, secret[0, 12], secret[12..]].each { |part| refute_includes contents, part }
+        assert_includes contents, "ordinary output"
+        assert channel.closed?
+        refute channel.alive?
+        assert_raises(Errno::ECHILD) { Process.waitpid(pid, Process::WNOHANG) }
+      ensure
+        device&.close
+      end
+    end
+  end
+
+  def test_real_pty_configuration_timeout_hides_pending_output_and_reaps_child
+    %i[raw text].each do |format|
+      Dir.mktmpdir do |directory|
+        secret = SecureRandom.hex(24)
+        path = File.join(directory, "session.log")
+        device, transport = local_device(<<~RUBY, log_file: path, log_format: format, log_level: :debug)
+          $stdout.sync = true
+          print "router#"
+          abort unless $stdin.gets == "terminal length 0\\n"
+          print "router#"
+          abort unless $stdin.gets == "show running-config\\n"
+          print #{secret.inspect}
+          $stdin.read
+        RUBY
+        device.define_singleton_method(:config_commands) do
+          [Connector::Command.new("terminal length 0"), Connector::Command.new("show running-config", timeout: 0.1)]
+        end
+        device.connect
+        channel = transport.channel
+        pid = channel.pid
+        result = device.running_config
+        assert_instance_of Connector::CommandTimeout, result.error
+        assert_equal "show running-config", result.error.command
+        assert_equal 1, result.steps.size
+        [result.error.message, result.error.output, result.error.full_message, File.binread(path)].each do |text|
+          refute_includes text, secret
+        end
+        assert_nil result.error.cause
+        assert channel.closed?
+        refute channel.alive?
+        assert_raises(Errno::ECHILD) { Process.waitpid(pid, Process::WNOHANG) }
+      ensure
+        device&.close
+      end
+    end
   end
 
   private

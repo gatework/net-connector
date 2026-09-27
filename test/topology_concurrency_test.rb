@@ -16,6 +16,8 @@ class TopologyConcurrencyTest < Minitest::Test
                "Device ID: peer\r\nInterface: GigabitEthernet1/0/1, Port ID (outgoing port): GigabitEthernet1/0/2\r\n"
              when "show running-config"
                "interface GigabitEthernet1/0/1\r\n description #{@description}\r\n!\r\nend\r\n"
+             when "copy running-config startup-config"
+               "Building configuration...\r\n[OK]\r\n"
              else
                @description = command.delete_prefix("description ") if command.start_with?("description ")
                ""

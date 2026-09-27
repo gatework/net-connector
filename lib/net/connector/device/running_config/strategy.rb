@@ -21,7 +21,7 @@ module Net
         end
 
         # 公共策略不增加逐命令响应检查。
-        def check_response(_command, _response, _execution) end
+        def validate_response!(_command, _response, _execution) end
       end
 
       # 使用终端行编辑规则渲染 H3C、Huawei 和 Radware 配置。

@@ -16,18 +16,13 @@ module Net
       hillstone: "Hillstone"
     }.freeze
 
-    ALIASES = {
-      "cisco_n9k" => :cisco_nxos,
-      "paloalto" => :palo_alto
-    }.freeze
-
     # 返回当前支持的厂商标识集合。
     def self.vendors = VENDORS.keys
 
     # 根据厂商标识查找连接器类。
     def self.vendor_class(vendor)
       key = vendor.to_s.downcase.tr(" -", "__")
-      key = ALIASES.fetch(key, key.to_sym)
+      key = key.to_sym
       name = VENDORS.fetch(key) { raise ArgumentError, "unsupported vendor: #{vendor.inspect}" }
       require_relative "connector/vendor/#{key}"
       const_get(name, false).const_get(:Connector, false)

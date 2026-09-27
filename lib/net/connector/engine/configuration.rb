@@ -37,7 +37,7 @@ module Net
         @log_file = absolute_path(log_file)
         if logger && (!logger.respond_to?(:debug) || !logger.respond_to?(:info) ||
           !logger.respond_to?(:warn) || !logger.respond_to?(:error) ||
-          !logger.respond_to?(:formatter) || !logger.respond_to?(:level))
+          !logger.respond_to?(:level))
           raise ArgumentError, "logger must be Logger-compatible"
         end
         raise ArgumentError, "logger and log_file cannot be combined" if logger && @log_file

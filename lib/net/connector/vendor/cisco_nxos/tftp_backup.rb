@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require_relative "../../operations/tftp/strategy"
+require_relative "../../device/tftp/strategy"
 
 module Net
   module Connector
     module CiscoNxos
-      class TftpBackup < Operations::Tftp::Strategy
+      class TftpBackup < Tftp::Strategy
         # 在连接前拒绝当前厂商不支持的参数组合。
         def validate_options!(_target, source_file:, **)
           raise ArgumentError, "Cisco NX-OS does not use source_file" unless source_file.nil?
@@ -27,7 +27,7 @@ module Net
         end
 
         # 检查设备回显是否确认 TFTP 传输完成。
-        def complete?(result)
+        def device_reported_complete?(result)
           completion_lines(result).any? do |line|
             line.match?(/\A
               (?:transfer|copy)(?:\s+operation)?\s+

@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require_relative "../../operations/topology/immediate_strategy"
+require_relative "../../device/topology/immediate_strategy"
 
 module Net
   module Connector
     module Hillstone
-      class Topology < Operations::Topology::ImmediateStrategy
+      class Topology < Topology::ImmediateStrategy
         # 山石提供 LLDP 邻居、配置描述读取和描述变更。
         def self.supports?(capability)
           %i[neighbors interface_descriptions interface_description_changes].include?(capability)
@@ -18,10 +18,10 @@ module Net
         def description_template = "hillstone_interface_descriptions.textfsm"
 
         # 进入配置视图。
-        def enter_configuration = "configure"
+        def enter_configuration_command = "configure"
 
         # 退出配置视图后先读回，保存动作随后单独执行。
-        def leave_configuration = ["exit"]
+        def leave_configuration_commands = ["exit"]
 
         def persistence_pattern = /\ASaving configuration is finished\.?\z/i
 
@@ -43,7 +43,7 @@ module Net
 
         # 复用公共接口描述命令。
         def change_commands(change)
-          InterfaceDescription.commands(interface: change.interface, description: change.new_description)
+          Net::Connector::Topology::InterfaceDescription.commands(interface: change.interface, description: change.new_description)
         end
 
         private

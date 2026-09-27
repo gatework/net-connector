@@ -20,12 +20,16 @@ module Net
         @steps = []
         @output_bytes = 0
         @output_limit = session.configuration.max_script_output_bytes
+        @sensitive = false
       end
 
+      # 汇总实际执行的命令及交互，包括批次准备和厂商追加查询。
+      def sensitive? = @sensitive
+
       # 依次准备、执行和记录脚本命令；失败时保留已完成步骤并统一抛错。
-      def execute(script)
+      def execute_script(script)
         script.each do |original|
-          @session.command_scope(original) do
+          @session.with_command_redaction(original) do
             @current_command = original
             command = @prepare_command.call(original, self)
             next unless command
@@ -33,7 +37,7 @@ module Net
             @current_command = command
             started = Expect.monotonic
             step = nil
-            response = query(command) do |received|
+            response = execute_command(command) do |received|
               step = CommandResult.new(command: command, output: received.output, prompt: received.prompt,
                                        duration: Expect.monotonic - started)
               steps << step
@@ -51,13 +55,16 @@ module Net
       end
 
       # 厂商后续查询复用同一信道和错误处理，不开启新的批处理。
-      def query(command)
+      def execute_command(command)
         command = Command.new(command) unless command.is_a?(Command)
         check_output_budget!(command, completed: false)
         prompt = @prompt&.call(command)
         # 提示符回调也可能追加查询，实际发送前重新检查它消耗的预算。
         check_output_budget!(command, completed: false) if @prompt
-        response = @session.exchange(command, timeout: @command_timeout, prompt: prompt)
+        response = @session.execute_command(command, timeout: @command_timeout, prompt: prompt) do
+          # 必须在 Session 恢复命令词表前读取；最终处理只能继承敏感性，不长期保留秘密。
+          @sensitive ||= @session.redactor.sensitive?
+        end
         @last_query_command = command
         @output_bytes += response.raw.bytesize
         # 主命令先记录完整步骤，再检查超额；追加查询同样计入预算，但不改变原 steps 结构。
@@ -72,8 +79,8 @@ module Net
       end
 
       # 根据当前命令建立脚本阶段错误。
-      def failure(message)
-        @session.error(ScriptError, message, phase: :script, command: @current_command)
+      def build_error(message)
+        @session.build_error(ScriptError, message, phase: :script, command: @current_command)
       end
 
       private
@@ -82,7 +89,7 @@ module Net
       def check_output_budget!(command, completed:)
         return unless @output_limit && (completed ? @output_bytes > @output_limit : @output_bytes >= @output_limit)
 
-        raise @session.error(ScriptOutputLimitExceeded,
+        raise @session.build_error(ScriptOutputLimitExceeded,
                              "script output reached max_script_output_bytes; commands already sent may have executed",
                              phase: :script, command: command), cause: nil
       end

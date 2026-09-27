@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require_relative "../../operations/tftp/strategy"
+require_relative "../../device/tftp/strategy"
 
 module Net
   module Connector
     module PaloAlto
-      class TftpBackup < Operations::Tftp::Strategy
+      class TftpBackup < Tftp::Strategy
         FILENAME = "running-config.xml"
 
         # 返回 PAN-OS 固定使用的运行配置文件名。
@@ -33,7 +33,7 @@ module Net
         end
 
         # 检查设备回显是否确认 TFTP 传输完成。
-        def complete?(result)
+        def device_reported_complete?(result)
           completion_lines(result).any? do |line|
             line.match?(/\ASent\s+[1-9]\d*\s+bytes(?:\s+in\s+[\d.]+\s+(?:secs?|seconds?))?[.!]?\z/i)
           end

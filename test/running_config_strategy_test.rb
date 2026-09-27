@@ -8,13 +8,13 @@ class RunningConfigStrategyTest < Minitest::Test
   def teardown = @device&.close
 
   def test_custom_collection_strategy_controls_selection_and_cleaning_inside_the_session
-    strategy = Class.new(Net::Connector::Operations::RunningConfig::Strategy) do
+    strategy = Class.new(Net::Connector::RunningConfig::Strategy) do
       def result_step(result) = result.steps.first
 
       def clean(text) = text.sub(/\nswitch#\z/, "").upcase
 
-      def check_response(_command, _response, _execution)
-        result = @device.execute("interleaved")
+      def validate_response!(_command, _response, _execution)
+        result = @device.execute_command("interleaved")
         raise "collection response hook was outside the session lock" unless result.error.is_a?(Net::Connector::SessionBusy)
       end
     end
@@ -39,7 +39,7 @@ class RunningConfigStrategyTest < Minitest::Test
   def test_panos_diff_guard_is_scoped_to_collection
     transport = ConnectorFake.new("admin@fw>", "show config diff\n+ changed value\nadmin@fw>")
     @device = Net::Connector.build(:palo_alto, host: "192.0.2.1", username: "audit", transport: transport)
-    result = @device.execute("show config diff")
+    result = @device.execute_command("show config diff")
     assert result.success?, result.error.inspect
     assert_includes result.output, "+ changed value"
   end
@@ -73,7 +73,7 @@ class RunningConfigStrategyTest < Minitest::Test
     @device = Class.new(klass).new(host: "192.0.2.1", username: "audit", transport: transport)
 
     first = @device.running_config
-    second = @device.collect_config
+    second = @device.running_config
     assert first.success?, first.error.inspect
     assert second.success?, second.error.inspect
     assert_equal "wrapped:3:first", first.config
@@ -154,7 +154,7 @@ class RunningConfigStrategyTest < Minitest::Test
   private
 
   def stateful_strategy(instances)
-    Class.new(Net::Connector::Operations::RunningConfig::Strategy) do
+    Class.new(Net::Connector::RunningConfig::Strategy) do
       attr_reader :responses
 
       define_method(:initialize) do |device|
@@ -163,7 +163,7 @@ class RunningConfigStrategyTest < Minitest::Test
         instances << self
       end
 
-      def check_response(command, response, _execution)
+      def validate_response!(command, response, _execution)
         @responses += 1
         @selected = response.output[/select (\w+)/, 1] if command.text == "verify"
       end

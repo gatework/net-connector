@@ -5,14 +5,23 @@ require "forwardable"
 require_relative "../engine/core"
 require_relative "profile"
 require_relative "running_config"
-require_relative "interface_description"
-require_relative "../operations"
+require_relative "save_config"
+require_relative "local_backup"
+require_relative "tftp"
+require_relative "topology"
+require_relative "../textfsm"
 
 module Net
   module Connector
     # 设备连接门面；厂商子类提供语法和钩子，组合对象负责实际执行。
     class Base
       extend Forwardable
+      include RunningConfig::Capability
+      include SaveConfig
+      include LocalBackup::Capability
+      include Tftp::Capability
+      include Topology::Capability
+      include TextFSM::Capability
 
       attr_reader :configuration, :command_timeout
 
@@ -121,7 +130,7 @@ module Net
       def close = @session.close
 
       # 将一条文本命令包装成脚本并执行。
-      def execute(text, **, &)
+      def execute_command(text, **, &)
         execute_script(Script.new([Command.new(text, **)]), &)
       end
 
@@ -131,65 +140,8 @@ module Net
         perform_script(script, &)
       end
 
-      # 使用简短名称执行脚本。
-      alias run execute_script
-
-      # 读取运行配置并返回清理后的配置结果。
-      def running_config
-        RunningConfig.new(self).call
-      end
-
-      # 执行命令并按厂商、命令或显式 TextFSM 模板返回结构化记录。
-      def parse_command(command, template: nil, template_dir: nil)
-        parser = Operations::ParseOutput.new(template_dir: template_dir)
-        parser.call(execute(command).value!, template: template, vendor: vendor, command: command, host: host)
-      end
-
-      # 采集运行配置并使用指定 TextFSM 模板提取结构化记录。
-      def parse_config(template:, template_dir: nil)
-        parser = Operations::ParseOutput.new(template_dir: template_dir)
-        parser.call(running_config.value!, template: template, host: host)
-      end
-
-      # 执行 CDP 或 LLDP 查询并返回统一的链路邻居记录。
-      def neighbors = Operations::Topology.new(self).neighbors
-
-      # 读取运行配置中的接口描述或端口名称。
-      def interface_descriptions = Operations::Topology.new(self).descriptions
-
-      # 以邻居和现有配置为证据，生成待确认的接口描述变更计划。
-      def plan_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
-        Operations::Topology.new(self).plan_descriptions(abbreviate: abbreviate, lowercase: lowercase, &formatter)
-      end
-
-      # 明确确认且现场证据未变化时执行接口描述计划。
-      def apply_interface_descriptions(plan, confirmed: false)
-        Operations::Topology.new(self).apply(plan, confirmed: confirmed)
-      end
-
       # 多步骤业务操作独占当前会话，内部脚本仍禁止回调重入。
       def with_operation(name, &block) = @session.with_operation(name, &block)
-
-      # 采集配置并以原子方式保存为私有文件。
-      # 采集失败时保留已有备份文件。
-      def backup(path:, lock_timeout: 0)
-        @session.assert_path_lock_order!(:backup)
-        Operations::LocalBackup.new(self).call(path: path, lock_timeout: lock_timeout)
-      end
-
-      # 要求设备直接向 TFTP 服务器导出原生配置。
-      # 完成仅表示设备报告传输成功，未读取服务器端文件。
-      def tftp_backup(host:, path: nil, source_file: nil, vrf: nil)
-        Operations::TftpBackup.new(self).call(host: host, path: path, source_file: source_file, vrf: vrf)
-      end
-
-      # 明确请求来源、格式及设备报告等级；旧入口继续返回原有三字段对象。
-      def tftp_backup_receipt(host:, path: nil, source_file: nil, vrf: nil)
-        Operations::TftpBackup.new(self).call_receipt(host: host, path: path, source_file: source_file, vrf: vrf)
-      end
-
-      # 配置采集是设备的基础能力，两个公共入口共享同一流程。
-      def collect_config = RunningConfig.new(self).call
 
       # 业务层可扩展脚本准备、响应校验和最终结果，所有钩子均在会话锁内执行。
       def execute_operation(script, name:, prompt: nil, after_command: nil, privilege: true, &finalize)
@@ -201,18 +153,8 @@ module Net
       def current_prompt = @session.prompt
 
       # 将业务事件写入当前设备会话日志。
-      def record_event(name, **details)
+      def log_event(name, **details)
         @session.log_event(name, **details)
-      end
-
-      # 执行厂商保存配置命令；不支持时返回显式失败结果。
-      def save_config
-        if save_commands.empty?
-          return Result.new(error: @session.error(UnsupportedOperation, "saving configuration is not supported",
-                                                  phase: :save))
-        end
-
-        execute_script(save_commands)
       end
 
       # 进入特权模式，并把当前提示符记录到会话。
@@ -226,27 +168,10 @@ module Net
         @session.interact(input: input, output: output, escape: escape, timeout: timeout)
       end
 
-      # 返回读取运行配置所需的设备命令；厂商必须实现。
-      def config_commands
-        commands = profile.config_commands
-        return commands if commands
-
-        raise NotImplementedError, "#{self.class} must define running configuration commands"
-      end
-
-      # 返回保存配置命令；空数组表示设备不支持保存。
-      def save_commands = profile.save_commands
-
-      # 清理运行配置文本；厂商可移除设备回显噪声。
-      def clean_config(text) = config_strategy.clean(text)
-
       # 返回不包含凭据的连接状态摘要。
       def inspect = "#<#{self.class} host=#{host.inspect} state=#{state}>"
 
       protected
-
-      # 默认取最后一个已完成步骤；厂商可选择配置所在的业务步骤。
-      def config_result_step(result) = config_strategy.result_step(result)
 
       # 匹配设备分页提示，供对话层自动发送翻页响应。
       def pager_pattern = profile.pager_pattern
@@ -321,22 +246,6 @@ module Net
 
       private
 
-      # 采集器仅在持有会话锁的结果处理阶段绑定策略，让旧方法钩子的 super
-      # 复用响应校验状态。其他 Fiber 的离线清理仍使用自己的临时策略。
-      def with_config_strategy(strategy)
-        previous = @config_strategy_scope
-        @config_strategy_scope = [Fiber.current, strategy]
-        yield
-      ensure
-        @config_strategy_scope = previous
-      end
-
-      # 只允许当前 Fiber 复用采集中的策略；离线调用创建独立策略。
-      def config_strategy
-        scope = @config_strategy_scope
-        scope && scope.first.equal?(Fiber.current) ? scope.last : RunningConfig.strategy(self)
-      end
-
       # 将厂商提示、失败模式和对话钩子组装成不可变对话语法。
       def build_dialogue
         Dialogue.new(
@@ -364,9 +273,20 @@ module Net
         execution.context[:privilege] = privilege
         output_sensitive = script.any?(&:output_sensitive?)
         @session.perform(:script) do
-          @session.output_scope(output_sensitive) { before_batch(execution) }
-          result = execution.execute(script, &on_step)
-          @session.output_scope(output_sensitive) { finalize ? finalize.call(result) : result }
+          @session.log_script(operation: operation, steps: execution.steps) do
+            @session.with_sensitive_output(output_sensitive) { before_batch(execution) }
+            result = execution.execute_script(script, &on_step)
+            private_result = output_sensitive || script.any?(&:sensitive?) || execution.sensitive?
+            @session.with_sensitive_output(private_result) do
+              result = finalize ? finalize.call(result) : result
+              # 回调也可直接返回失败；与抛错共用脱敏边界，保留已完成步骤及业务配置。
+              if result.is_a?(Result) && result.failure?
+                result = Result.new(steps: result.steps, config: result.config,
+                                    error: @session.normalize_error(result.error, phase: :script))
+              end
+              result
+            end
+          end
         end
       rescue Error => error
         Result.new(steps: execution ? execution.steps : [], error: error)

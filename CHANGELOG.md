@@ -1,6 +1,22 @@
 # 更新记录
 
-## Unreleased
+## 0.5.0 - 2026-09-27
+
+本版包含不兼容的接口调整，不保留旧路径或方法别名；升级时请按[当前接口说明](https://github.com/gatework/net-connector/blob/v0.5.0/docs/architecture.md#当前命名与接口调整)更新调用方。
+
+- 统一设备能力的入口与实现：配置采集/保存、本地备份、TFTP 和拓扑归入 `device/`，`Base` 通过能力模块组合；接口名称与描述规则归入 `Topology`，文件锁、私有读写及离线配置归入 `Storage`，厂商差异只保留在 `vendor/`。
+- 移除 `Operations` 命名空间及目录、厂商转发别名，以及 `engine`、`engine/base`、`engine/profile` 旧设备入口，不保留兼容转发。这是开发阶段的接口整理；调用方直接采用当前路径与接口。
+- TextFSM 适配统一为 `Net::Connector::TextFSM`（`textfsm.rb`），实际解析时才加载外部依赖；UTF-8 字节校验及严格终端渲染抽到 `TerminalText`，供解析和拓扑证据检查共用，不转码或修改原始配置。
+- 日志拆分为事件、formatter 和流组件，继续使用标准库 `Logger` 与 expect-pty 脱敏。增加会话/命令标识、操作、阶段、耗时、字节数和错误码；逐行回显带相同上下文，脚本后处理失败另有完成事件，应用 formatter 可读取冻结的安全字段。
+- 实时遵守注入 logger 的级别，保留 formatter/progname/资源所有权；自定义事件保留安全字段，敏感范围隐藏任意载荷。统一公开日志入口为 `log_event`，移除 `record_event`；不再重复发送 `command_detail`，耗时和字节数直接放在 `command_complete`。
+- 失败日志与批次报告共用错误类型、错误码和阶段词表，避免自定义钩子将未登记的配置正文通过错误元数据写入日志；TFTP 回执严格区分未知路径 nil 与无效路径，手工构造及 `with` 更新执行相同校验。
+- 敏感命令、交互和追加查询的保护覆盖最终处理，直接返回失败结果也会脱敏；错误归一化保留业务回执，租约结束时日志故障保留已完成步骤，避免丢失设备已执行的证据。
+
+- 统一动作命名：单命令入口为 `execute_command`，脚本为 `execute_script`；日志用 `log_event`，抛错校验用 `validate_*!`，错误构造用 `build_*_error`，作用域用明确的 `with_*`。删除 `run`、`collect_config` 和厂商标识别名，调用方、示例及测试同步更新。
+- 删除 `LegacyIndex` 与旧备份命名查找，只以规范管理地址文件作为本地备份、比较和导出入口；保留路径锁、同 FD 文件校验及原子持久化保护。
+- TFTP 统一通过 `tftp_backup` 返回直接包含来源、格式和实际路径的 `TftpReceipt`，完成后错误只提供 `receipt`。移除双入口、原三字段结果和动态策略兜底，策略接口在 Profile 构造时完整校验。
+- Fleet 始终返回 `Netdisco::Report`，统一 schema 2 和受控诊断，移除 `report_schema` 与 CLI 版本选项。Outcome 的耗时和诊断直接成为 Data 成员；未测量的耗时为 nil，不用墙钟推算。
+- `Storage::PrivateFile.write` 统一返回持久化回执，移除 `write_receipt` 双入口；业务导出和报告存储从回执读取目标路径。
 
 ## 0.4.2 - 2026-09-27
 

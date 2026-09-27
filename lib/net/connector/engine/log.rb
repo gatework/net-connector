@@ -2,9 +2,13 @@
 
 require "fileutils"
 require "logger"
+require "securerandom"
 require_relative "terminal_renderer"
-require_relative "log_messages"
+require_relative "log/event"
+require_relative "log/formatter"
+require_relative "log/stream"
 require_relative "errors"
+require_relative "error_metadata"
 
 module Net
   module Connector
@@ -12,39 +16,56 @@ module Net
     class Log
       LEVELS = { debug: ::Logger::DEBUG, info: ::Logger::INFO,
                  warn: ::Logger::WARN, error: ::Logger::ERROR }.freeze
+      CONTEXT_FIELDS = %w[host session_id operation command_id text source line].freeze
+      private_constant :CONTEXT_FIELDS
 
       # 保存日志配置和敏感信息脱敏器。
       def initialize(configuration, redactor:)
         @configuration = configuration
         @redactor = redactor
+        @context = {}.freeze
       end
 
       # 为会话打开日志文件或应用日志器。
       def open(transport)
         @transport = transport
+        @session_id = SecureRandom.hex(8).freeze
+        @command_sequence = 0
         @io = open_file(@configuration.log_file) if @configuration.log_file
-        @output = RedactingWriter.new(@io, @redactor) if @io
         if @configuration.log_format == :raw
-          @writer = @output
+          @writer = @output = RedactingWriter.new(@io, @redactor) if @io
         elsif @io || @configuration.logger
-          base = @configuration.logger || ::Logger.new(@io)
-          unless @configuration.logger
-            base.formatter = proc do |severity, time, _program, message|
-              "[#{time.getlocal.strftime("%Y-%m-%d %H:%M:%S %:z")}] #{severity} #{message}\n"
-            end
-          end
-          # 前缀直接写入消息，不克隆或修改调用方注入的日志器。
-          @logger = base
-          @event_level = [base.level, LEVELS.fetch(@configuration.log_level)].max
-          @tag = "[host=#{@configuration.host}] "
-          if @io && @configuration.log_level == :debug
-            @writer = TerminalRenderer.new(@output, max_line_bytes: @configuration.max_output_bytes)
-          end
+          @logger = @configuration.logger || ::Logger.new(@io, formatter: Formatter.new)
+          open_transcript if @io && @configuration.log_level == :debug
         end
-        @line_open = false
       rescue => error
         close_preserving_error
-        raise failure("unable to open session log", error), cause: nil
+        raise build_error("unable to open session log", error), cause: nil
+      end
+
+      # 上下文只在持有会话锁期间使用；收尾必须先于恢复父上下文。
+      def with_context(**fields)
+        previous = @context
+        finish_output
+        @context = @context.merge(fields).freeze
+        yield
+      ensure
+        begin
+          finish_output
+        ensure
+          @context = previous
+        end
+      end
+
+      def with_operation_context(name, &block)
+        with_context(operation: name || @context[:operation] || :script, &block)
+      end
+
+      def with_command_context(command, &block)
+        @command_sequence += 1
+        with_context(command_id: @command_sequence, phase: :command,
+                     text: command.sensitive? ? "[REDACTED]" : command.text,
+                     source: command.source, line: command.line, &block)
       end
 
       # 将终端回显接入当前会话日志。
@@ -56,60 +77,75 @@ module Net
       end
 
       # 判断当前日志级别是否需要完整设备回显。
-      def detailed? = @configuration.log_level == :debug && !!(@writer || @logger)
+      def debug? = @configuration.log_level == :debug && (!!@writer || enabled?(:debug))
 
       # 按日志级别写入已脱敏的业务事件。
-      def event(name, level: :info, **fields)
+      def log_event(name, level: :info, **fields)
         return unless @logger
 
-        values = fields.transform_values do |value|
-          value.is_a?(String) ? @redactor.call(value).scrub.gsub(/[[:cntrl:]]+/, " ").strip : value
-        end
-        safe_name = @redactor.call(name.to_s).scrub.gsub(/[[:cntrl:]]+/, " ").strip
-        finish_line
-        @logger.public_send(level, "#{@tag}#{LogMessages.format(safe_name, values)}") if LEVELS.fetch(level) >= @event_level
+        finish_output
+        write_event(name, level: level, **fields)
       rescue Error
         raise
       rescue => error
-        raise failure("unable to write session event", error), cause: nil
+        raise build_error("unable to write session event", error), cause: nil
+      end
+
+      # 异常正文由会话先脱敏；类型、错误码和阶段只允许共享词表中的值进入日志。
+      def log_failure(name, failure, phase: nil, **fields)
+        log_event(name, level: :error, **fields,
+                  error: ErrorMetadata.type(failure.class.name) || "StandardError",
+                  code: ErrorMetadata.code(failure.code),
+                  phase: ErrorMetadata.phase(failure.phase) || ErrorMetadata.phase(phase),
+                  message: failure.message)
+      end
+
+      # 用户钩子可能把未登记的配置片段放进事件名、字段名或值；敏感范围统一隐藏。
+      def log_custom_event(name, level: :info, **fields)
+        if @redactor.sensitive?
+          log_event("custom", level: level, details: "[REDACTED]")
+        else
+          log_event(name, level: level, **fields)
+        end
       end
 
       # 登录完成并收集动态口令后，再记录已脱敏的认证回显。
-      def authentication_output(bytes)
-        return unless detailed?
+      def log_authentication_output(bytes)
+        return unless debug?
 
-        event("login_output", level: :debug)
-        if @writer
-          write(@redactor.call(bytes))
-          flush
-        else
-          response_output(bytes)
+        with_context(phase: :login) do
+          log_event("login_output", level: :debug)
+          if @writer
+            write(@redactor.call(bytes))
+            flush
+          else
+            log_response_output(bytes)
+          end
         end
       end
 
-      # 应用注入的日志器没有终端写入器，改由日志器记录完整回显。
-      def response_output(bytes)
-        return unless detailed? && !@writer && !@redactor.output_sensitive?
+      # 注入日志器与文件回显共用事件格式；两次脱敏覆盖终端控制符拼接。
+      def log_response_output(bytes)
+        return unless debug? && !@writer && !@redactor.output_sensitive?
 
         @redactor.call(TerminalRenderer.render(@redactor.call(bytes))).each_line do |line|
-          @logger.debug("#{@tag}  #{line.chomp}") if ::Logger::DEBUG >= @event_level
+          write_event("device_output", level: :debug, output: line.chomp)
         end
       rescue Error
         raise
       rescue => error
-        raise failure("unable to write device output", error), cause: nil
+        raise build_error("unable to write device output", error), cause: nil
       end
 
       # 向终端日志写入已处理的回显字节。
       def write(bytes)
-        return unless @writer
+        return unless @writer && !@redactor.output_sensitive?
 
         @writer.write(bytes)
-        @line_open = !bytes.end_with?("\n") unless bytes.empty?
       rescue Error
         raise
       rescue => error
-        raise failure("unable to write session log", error), cause: nil
+        raise build_error("unable to write session log", error), cause: nil
       end
 
       # 刷新日志缓冲区。
@@ -119,7 +155,7 @@ module Net
       rescue Error
         raise
       rescue => error
-        raise failure("unable to flush session log", error), cause: nil
+        raise build_error("unable to flush session log", error), cause: nil
       end
 
       # 执行代码块期间暂停自动记录传输回显。
@@ -140,62 +176,47 @@ module Net
           begin
             @io&.close
           ensure
-            @writer = @output = @logger = @io = @transport = @tag = @event_level = nil
+            @writer = @output = @transcript = @logger = @io = @transport = @session_id = nil
             @attached = false
           end
         end
       rescue Error
         raise
       rescue => error
-        raise failure("unable to close session log", error), cause: nil
+        raise build_error("unable to close session log", error), cause: nil
       end
 
       private
 
-      # 结束未换行的回显，保持事件独占一行。
-      def finish_line
-        return unless @writer
-
-        finish_output
-        @io.write("\n") if @line_open
-        @line_open = false
+      # 每次读取调用方的当前阈值，不缓存级别、不改写共享 Logger。
+      def enabled?(level)
+        @logger && LEVELS.fetch(level) >= [@logger.level, LEVELS.fetch(@configuration.log_level)].max
       end
 
-      # 先完成终端渲染，再写出脱敏流的最后几个字节。
+      def write_event(name, level:, **fields)
+        return unless enabled?(level)
+
+        values = @context.compact.merge(fields.reject { |key, _| CONTEXT_FIELDS.include?(key.to_s) })
+        values = values.merge(host: @configuration.host, session_id: @session_id)
+        @logger.public_send(level, Event.new(name, values, redactor: @redactor))
+      end
+
+      def open_transcript
+        @transcript = Transcript.new { |line| write_event("device_output", level: :debug, output: line) }
+        @output = RedactingWriter.new(@transcript, @redactor)
+        @writer = TerminalRenderer.new(@output, max_line_bytes: @configuration.max_output_bytes)
+      end
+
+      # 先渲染，再结束过滤流，最后发出半行事件；顺序不能反转。
       def finish_output
         @writer.finish if @writer.respond_to?(:finish)
         @output&.finish unless @output.equal?(@writer)
+        @transcript&.finish
+      rescue Error
+        raise
+      rescue => error
+        raise build_error("unable to finish session output", error), cause: nil
       end
-
-      # 文件写入边界保留短尾部，避免分片或终端控制符拼出明文凭据。
-      class RedactingWriter
-        # 保存目标与作用域；每个日志目标独占 expect-pty 的过滤流。
-        def initialize(target, redactor)
-          @target = target
-          @redactor = redactor
-          @filter = redactor.stream
-        end
-
-        # 写入已确认安全的前缀，暂存可能与下一分片组成秘密的尾部。
-        def write(bytes)
-          @filter.patterns = @redactor.patterns
-          @target.write(@filter.append(bytes.b))
-          bytes.bytesize
-        end
-
-        # 刷新目标流，仍不提前写出待判断的尾部。
-        def flush = @target.flush
-
-        # 在日志结束时脱敏并写出剩余尾部。
-        def finish
-          @filter.patterns = @redactor.patterns
-          # 保留旧日志的完整词匹配契约；配置正文由 Session 的敏感范围直接隔离。
-          @target.write(@filter.finish(partial: false))
-          flush
-        end
-      end
-
-      private_constant :RedactingWriter
 
       # 以私有权限打开设备日志文件。
       def open_file(path)
@@ -224,7 +245,7 @@ module Net
       end
 
       # 将日志异常包装成统一错误并保留脱敏原因。
-      def failure(message, error)
+      def build_error(message, error)
         LogError.new(message, phase: :logging,
                      underlying: UnderlyingError.new(error, @redactor, sensitive: @redactor.sensitive?))
       end

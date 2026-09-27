@@ -109,10 +109,10 @@ module Net
           end
           raise Error.new("Netdisco inventory exceeded max_pages", code: :max_pages), cause: nil
         rescue QueryRequired
-          legacy_devices(token, budget)
+          query_required_devices(token, budget)
         end
 
-        def legacy_devices(token, budget)
+        def query_required_devices(token, budget)
           uri = endpoint("api/v1/search/device")
           uri.query = URI.encode_www_form(q: "%", seeallcolumns: true)
           rows = request_json(uri, authorized_get(uri, token), budget, allow_empty: true)

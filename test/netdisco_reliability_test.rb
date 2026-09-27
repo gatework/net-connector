@@ -142,7 +142,7 @@ class NetdiscoReliabilityTest < Minitest::Test
           Object.new.tap do |connector|
             connector.define_singleton_method(:tftp_backup) do |**options|
               paths << options.fetch(:path)
-              Net::Connector::TftpBackup.new(server: options.fetch(:host), path: paths.last, completed_at: Time.now.utc)
+              Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: paths.last, completed_at: Time.now.utc)
             end
             connector.define_singleton_method(:close) {}
           end

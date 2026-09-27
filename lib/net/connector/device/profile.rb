@@ -65,13 +65,18 @@ module Net
         @command_timeout = duration(command_timeout, :command_timeout)
         @terminal_size = validate_terminal_size(terminal_size)
         @running_config_strategy = strategy_class(running_config_strategy, :running_config_strategy,
-                                                  %i[clean result_step prompt_text check_response])
+                                                  %i[clean result_step prompt_text validate_response!])
         @tftp_strategy = strategy_class(tftp_strategy, :tftp_strategy,
-                                        %i[source_file default_path remote_path script complete?])
+                                        %i[resolve_source_file default_path remote_path script device_reported_complete? validate_options! receipt_metadata])
+        if @tftp_strategy && !@tftp_strategy.respond_to?(:filename)
+          raise ArgumentError, "tftp_strategy must expose filename"
+        end
         @topology_strategy = strategy_class(topology_strategy, :topology_strategy,
                                             %i[neighbor_command neighbor_template expected_neighbor_count empty_neighbor_output?
                                                protocol description_template interface_key configuration_interface
-                                               decode_description enter_configuration change_commands finish_commands script_command])
+                                               decode_description validate_descriptions! change_error_code supports?
+                                               enter_configuration_command change_commands script_command
+                                               leave_configuration_commands verification_commands persistence_commands persistence_confirmed?])
         if @topology_strategy && !@topology_strategy.respond_to?(:supports?)
           raise ArgumentError, "topology_strategy must expose supports?"
         end

@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require_relative "../../operations/topology/immediate_strategy"
+require_relative "../../device/topology/immediate_strategy"
 
 module Net
   module Connector
     module H3c
-      class Topology < Operations::Topology::ImmediateStrategy
+      class Topology < Topology::ImmediateStrategy
         TABLE_HEADER = /^\s*(?:System Name\s+Local Interface\b|(?:Local Interface|LocalIf)\s+)/i
         # H3C 提供 LLDP 邻居、配置描述读取和描述变更。
         def self.supports?(capability)
@@ -19,10 +19,10 @@ module Net
         def description_template = "h3c_interface_descriptions.textfsm"
 
         # 进入系统视图以修改接口描述。
-        def enter_configuration = "system-view"
+        def enter_configuration_command = "system-view"
 
         # 返回用户视图读回；保存交给后续独立阶段。
-        def leave_configuration = ["return"]
+        def leave_configuration_commands = ["return"]
 
         def persistence_pattern = /\ASaved the current configuration to mainboard device successfully\.\z/i
 
@@ -52,7 +52,7 @@ module Net
 
         # 在接口视图设置描述后用 quit 返回系统视图。
         def change_commands(change)
-          InterfaceDescription.commands(interface: change.interface, description: change.new_description, leave: "quit")
+          Net::Connector::Topology::InterfaceDescription.commands(interface: change.interface, description: change.new_description, leave: "quit")
         end
 
         private

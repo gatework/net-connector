@@ -41,7 +41,7 @@ class ScriptOutputBudgetTest < Minitest::Test
     assert_equal ["show first\n"], @transport.writes
     assert @transport.closed?
     @transport.events.concat(["router#", response])
-    assert @device.execute("show fresh").success?
+    assert @device.execute_command("show fresh").success?
     assert_equal ["show first\n", "show fresh\n"], @transport.writes
   end
 
@@ -71,7 +71,7 @@ class ScriptOutputBudgetTest < Minitest::Test
     @device.close
     text = "名\nrouter#"
     build(text, max_script_output_bytes: text.length)
-    result = @device.execute("show")
+    result = @device.execute_command("show")
     assert_budget_error(result, "show")
     assert_equal text.b, result.steps.first.output
   end
@@ -79,8 +79,8 @@ class ScriptOutputBudgetTest < Minitest::Test
   def test_before_batch_query_consumes_budget_before_the_first_script_command
     response = "probe\nrouter#"
     build(response, max_script_output_bytes: response.bytesize)
-    @device.define_singleton_method(:before_batch) { |execution| execution.query("probe") }
-    result = @device.execute("never")
+    @device.define_singleton_method(:before_batch) { |execution| execution.execute_command("probe") }
+    result = @device.execute_command("never")
     assert_budget_error(result, "never")
     assert_empty result.steps
     assert_equal ["probe\n"], @transport.writes
@@ -92,7 +92,7 @@ class ScriptOutputBudgetTest < Minitest::Test
     execution = nil
     @device.define_singleton_method(:prepare_command) { |command, current| execution = current; command }
     prompt = lambda do |command|
-      execution.query("probe") if command.text == "main"
+      execution.execute_command("probe") if command.text == "main"
       /router#\z/
     end
     result = @device.execute_operation(Connector::Script.new(["main"]), name: :fixture, prompt: prompt)
@@ -107,7 +107,7 @@ class ScriptOutputBudgetTest < Minitest::Test
       response = "probe\nrouter#"
       replies = hook == :prepare_command ? [response] : [response, response]
       build(*replies, max_script_output_bytes: response.bytesize + (hook == :prepare_command ? -1 : 1))
-      @device.define_singleton_method(hook) { |*args| args.last.query("probe"); args.first }
+      @device.define_singleton_method(hook) { |*args| args.last.execute_command("probe"); args.first }
       result = @device.execute_script(["main", "never"])
       assert_budget_error(result, "probe")
       assert_equal(hook == :prepare_command ? [] : [response], result.steps.map(&:output))
@@ -118,7 +118,7 @@ class ScriptOutputBudgetTest < Minitest::Test
   def test_each_script_has_a_new_budget_even_within_one_operation_lease
     response = "response\nrouter#"
     build(response, response, max_script_output_bytes: response.bytesize)
-    results = @device.with_operation(:fixture) { [@device.execute("first"), @device.execute("second")] }
+    results = @device.with_operation(:fixture) { [@device.execute_command("first"), @device.execute_command("second")] }
     assert results.all?(&:success?)
     assert_equal [response, response], results.map(&:output)
     assert_equal ["first\n", "second\n"], @transport.writes
@@ -128,11 +128,11 @@ class ScriptOutputBudgetTest < Minitest::Test
     response = "response\nrouter#"
     build(response, response, max_script_output_bytes: response.bytesize + 1)
     @device.define_singleton_method(:after_command) do |_, _, execution|
-      execution.query("probe")
+      execution.execute_command("probe")
     rescue Connector::ScriptOutputLimitExceeded
       nil
     end
-    result = @device.execute("main")
+    result = @device.execute_command("main")
     assert_budget_error(result, "probe")
     assert_equal [response], result.steps.map(&:output)
     assert_equal ["main\n", "probe\n"], @transport.writes
@@ -166,7 +166,7 @@ class ScriptOutputBudgetTest < Minitest::Test
     @transport = ConnectorFake.new("fw#", "Export ok,target file name backup.dat\nfw#")
     @device = Connector.build(:hillstone, host: "192.0.2.1", username: "audit", transport: @transport, max_script_output_bytes: 8)
     error = assert_raises(Connector::TftpCompletionError) { @device.tftp_backup(host: "192.0.2.10", path: "backup.dat") }
-    assert_equal "backup.dat", error.transfer.path
+    assert_equal "backup.dat", error.receipt.path
     assert_equal :device_reported, error.receipt.verification
     assert_equal "Net::Connector::ScriptOutputLimitExceeded", error.underlying_type
     assert_equal 1, @transport.writes.size

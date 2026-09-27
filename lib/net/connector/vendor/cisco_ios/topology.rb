@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require_relative "../../operations/topology/immediate_strategy"
+require_relative "../../device/topology/immediate_strategy"
 
 module Net
   module Connector
     module CiscoIos
-      class Topology < Operations::Topology::ImmediateStrategy
+      class Topology < Topology::ImmediateStrategy
         # IOS 提供 CDP 邻居、配置描述读取和描述变更。
         def self.supports?(capability)
           %i[neighbors interface_descriptions interface_description_changes].include?(capability)
@@ -21,10 +21,10 @@ module Net
         def protocol = :cdp
 
         # 进入全局配置视图。
-        def enter_configuration = "configure terminal"
+        def enter_configuration_command = "configure terminal"
 
         # 先回到执行视图读回，随后才执行档案中的保存命令。
-        def leave_configuration = ["end"]
+        def leave_configuration_commands = ["end"]
 
         def persistence_pattern = /\A(?:\[OK\]|Copy complete\.)\z/i
 
@@ -40,7 +40,7 @@ module Net
 
         # 复用公共接口描述命令，保留本机接口原名。
         def change_commands(change)
-          InterfaceDescription.commands(interface: change.interface, description: change.new_description)
+          Net::Connector::Topology::InterfaceDescription.commands(interface: change.interface, description: change.new_description)
         end
       end
     end

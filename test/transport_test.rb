@@ -34,7 +34,7 @@ class ConnectorTransportTest < Minitest::Test
       $stdin.read
     RUBY
 
-    result = device.execute("show")
+    result = device.execute_command("show")
     assert result.success?, result.error&.message
     assert_equal "first\n\nlast\nrouter#", result.output
     channel = transport.channel
@@ -105,7 +105,7 @@ class ConnectorTransportTest < Minitest::Test
     channel = transport.channel
     started = Expect.monotonic
 
-    result = device.execute("show", timeout: 0.1)
+    result = device.execute_command("show", timeout: 0.1)
 
     assert_instance_of Connector::CommandTimeout, result.error
     assert_operator Expect.monotonic - started, :<, 2
@@ -149,7 +149,7 @@ class ConnectorTransportTest < Minitest::Test
       $stdin.read
     RUBY
 
-    result = device.execute("show")
+    result = device.execute_command("show")
 
     assert result.success?, result.error&.message
     assert_equal ("x" * 100_000) + "\nrouter#", result.output
@@ -212,7 +212,7 @@ class ConnectorTransportTest < Minitest::Test
     RUBY
     device = Connector.build(:cisco_ios, configuration: configuration, transport: transport)
 
-    result = device.execute("show size")
+    result = device.execute_command("show size")
 
     assert result.success?, result.error&.message
     assert_equal "size=40,100\nrouter#", result.output
@@ -242,7 +242,7 @@ class ConnectorTransportTest < Minitest::Test
         assert result.success?, result.error.inspect
         assert_equal "service opaque #{secret}\nrouter#", result.config
         assert result.steps.last.command.output_sensitive?
-        assert device.execute("show status").success?
+        assert device.execute_command("show status").success?
         channel = transport.channel
         pid = channel.pid
         device.close

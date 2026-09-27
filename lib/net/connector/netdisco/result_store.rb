@@ -3,7 +3,7 @@
 require "json"
 require "fileutils"
 require "securerandom"
-require_relative "../operations/private_file"
+require_relative "../storage/private_file"
 
 module Net
   module Connector
@@ -17,7 +17,7 @@ module Net
             FileUtils.mkdir_p(destination, mode: 0o700)
             filename = "netdisco-#{batch.mode}-#{batch.started_at.strftime("%Y%m%dT%H%M%SZ")}-#{SecureRandom.hex(4)}.json"
             path = File.join(destination, filename)
-            Operations::PrivateFile.write(path, JSON.pretty_generate(batch.summary))
+            Storage::PrivateFile.write(path, JSON.pretty_generate(batch.summary)).path
           end
         end
 

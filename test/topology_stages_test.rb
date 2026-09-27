@@ -2,6 +2,7 @@
 
 require "minitest/autorun"
 require "timeout"
+require "tmpdir"
 require_relative "../lib/net/connector"
 require_relative "support/topology_fixture"
 
@@ -111,7 +112,7 @@ class TopologyStagesTest < Minitest::Test
     refute device.supports?(:interface_description_changes)
     error = assert_raises(Net::Connector::UnsupportedOperation) { device.plan_interface_descriptions }
     assert_equal :candidate_isolation_unavailable, error.code
-    plan = Net::Connector::Operations::Topology::Plan.new(host: device.host, vendor: device.vendor,
+    plan = Net::Connector::Topology::Plan.new(host: device.host, vendor: device.vendor,
                                                          evidence: {}, changes: [Object.new], commands: ["configure", "commit"])
     error = assert_raises(Net::Connector::UnsupportedOperation) { device.apply_interface_descriptions(plan, confirmed: true) }
     assert_equal :candidate_isolation_unavailable, error.code
@@ -152,7 +153,7 @@ class TopologyStagesTest < Minitest::Test
     fixture.device.define_singleton_method(:running_config) do
       result = collect.call
       if fixture.description == "planned"
-        other_fiber = Fiber.new { execute("other fiber") }.resume
+        other_fiber = Fiber.new { execute_command("other fiber") }.resume
         checked << true
         Timeout.timeout(3) { resume.pop }
       end
@@ -161,7 +162,7 @@ class TopologyStagesTest < Minitest::Test
     applying = Thread.new { fixture.device.apply_interface_descriptions(plan, confirmed: true) }
     begin
       Timeout.timeout(3) { checked.pop }
-      competing = fixture.device.execute("other thread")
+      competing = fixture.device.execute_command("other thread")
       assert_instance_of Net::Connector::SessionBusy, competing.error
       assert_instance_of Net::Connector::SessionBusy, other_fiber.error
       refute_includes fixture.transport.writes, "copy running-config startup-config\n"
@@ -189,10 +190,38 @@ class TopologyStagesTest < Minitest::Test
       assert_nil result.error.cause
       fixture.fail_on = nil
       fixture.transport.events << fixture.prompt
-      assert fixture.device.execute("show status").success?
+      assert fixture.device.execute_command("show status").success?
       assert_equal 2, fixture.transport.opens
       assert_equal 1, fixture.transport.writes.count("description planned\n")
       assert_equal 1, fixture.transport.writes.count("#{fixture.sample.fetch(:save)}\n")
+    end
+  end
+
+  def test_log_cleanup_failure_after_confirmed_save_preserves_steps_and_releases_lease
+    Dir.mktmpdir do |directory|
+      fixture = TopologyFixture.new(:cisco_ios, log_file: File.join(directory, "session.log"), log_format: :raw)
+      plan = fixture.device.plan_interface_descriptions { "planned" }
+      topology = Net::Connector::Topology.new(fixture.device)
+      strategy = topology.instance_variable_get(:@strategy)
+      confirmed = strategy.method(:persistence_confirmed?)
+      io = fixture.device.instance_variable_get(:@session).instance_variable_get(:@log).instance_variable_get(:@io)
+      flush = io.method(:flush)
+      fail_flush = false
+      strategy.define_singleton_method(:persistence_confirmed?) do |result|
+        confirmed.call(result).tap { |saved| fail_flush = saved }
+      end
+      io.define_singleton_method(:flush) { fail_flush ? raise(Errno::EIO) : flush.call }
+      result = topology.apply_interface_descriptions(plan, confirmed: true)
+      assert result.failure?
+      assert_instance_of Net::Connector::LogError, result.error
+      assert_equal plan.commands, (result.steps.map { |step| step.command.text })
+      assert_equal "planned", fixture.description
+      assert_equal 1, fixture.transport.writes.count("#{fixture.sample.fetch(:save)}\n")
+      fail_flush = false
+      assert fixture.device.execute_command("show status").success?
+    ensure
+      fail_flush = false
+      fixture&.close
     end
   end
 end

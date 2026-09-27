@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "expect/redactor"
+require_relative "error_metadata"
 
 module Net
   module Connector
@@ -20,6 +21,19 @@ module Net
         @source = source
         @line = line
         @underlying = underlying
+      end
+
+      # 内置错误保留业务回执，但不复制可能含秘密的原生 cause 和调用栈。
+      # 自定义子类重新构造，避免其 message 等方法继续读取未脱敏的私有字段。
+      def with_diagnostics(message:, **context)
+        context = { code: code, host: host, phase: phase, command: command, output: output,
+                    source: source, line: line, underlying: underlying }.merge(context)
+        return self.class.new(message, **context) unless ErrorMetadata.known_type?(self.class.name)
+
+        copy = self.class.allocate
+        instance_variables.each { |name| copy.instance_variable_set(name, instance_variable_get(name)) }
+        Error.instance_method(:initialize).bind_call(copy, message, **context)
+        copy
       end
 
       # 返回不展开命令和输出的错误摘要。
@@ -101,7 +115,7 @@ module Net
       end
 
       # 临时命令响应在错误归一化期间保留，离开作用域后不进入长期会话。
-      def scope(reuse: false)
+      def with_scope(reuse: false)
         return yield if reuse && @scoped
 
         previous = @secrets

@@ -46,7 +46,7 @@ module Net
                      end
           # Profile 使用宽、高；PTY 使用行数、列数。
           @channel.slave.winsize = @terminal_size.reverse if @terminal_size
-          @channel.log_output = method(:record)
+          @channel.log_output = method(:write_log_output)
           @channel.spawn(*argv)
           self
         rescue Exception # rubocop:disable Lint/RescueException -- A half-open PTY must be released on interrupts.
@@ -104,7 +104,7 @@ module Net
         private
 
         # 检查缓冲上限并把设备输出写入当前日志目标。
-        def record(bytes)
+        def write_log_output(bytes)
           if @channel.buffer.bytesize > configuration.max_output_bytes
             raise OutputLimitExceeded.new("transport buffer exceeded max_output_bytes",
                                           phase: :read, output: @channel.buffer.dup), cause: nil

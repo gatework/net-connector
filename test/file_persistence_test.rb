@@ -7,8 +7,9 @@ require "securerandom"
 require_relative "../lib/net/connector/netdisco"
 
 class FilePersistenceTest < Minitest::Test
-  Operations = Net::Connector::Operations
-  PrivateFile = Operations::PrivateFile
+  Storage = Net::Connector::Storage
+  LocalBackup = Net::Connector::LocalBackup
+  PrivateFile = Storage::PrivateFile
   Netdisco = Net::Connector::Netdisco
 
   class ExternalWriteError < PrivateFile::PersistenceError
@@ -26,10 +27,10 @@ class FilePersistenceTest < Minitest::Test
     refute_includes error.inspect, @secret
   end
 
-  def test_success_receipt_and_legacy_path_return_are_distinct_contracts
+  def test_success_returns_a_durable_write_receipt
     Dir.mktmpdir do |directory|
       path = File.join(directory, "data.txt")
-      receipt = PrivateFile.write_receipt(path, "first")
+      receipt = PrivateFile.write(path, "first")
       assert_equal path, receipt.path
       assert_equal :durable, receipt.state
       assert_equal :complete, receipt.phase
@@ -37,7 +38,7 @@ class FilePersistenceTest < Minitest::Test
       assert receipt.durable?
       assert receipt.frozen?
       assert receipt.path.frozen?
-      assert_equal path, PrivateFile.write(path, "second")
+      assert PrivateFile.write(path, "second").durable?
       assert_equal "second", File.read(path)
       assert_equal 0o600, File.stat(path).mode & 0o777
     end
@@ -179,7 +180,7 @@ class FilePersistenceTest < Minitest::Test
       calls = 0
       device = local_device { calls += 1; @secret }
       failure = with_directory_sync_failure(directory) do
-        assert_raises(Net::Connector::Error) { Operations::LocalBackup.new(device).call(path: path) }
+        assert_raises(Net::Connector::Error) { LocalBackup.new(device).call(path: path) }
       end
       assert_instance_of Net::Connector::BackupPersistenceError, failure
       assert_equal :backup_persistence_unconfirmed, failure.code
@@ -194,14 +195,14 @@ class FilePersistenceTest < Minitest::Test
       assert_empty failure.output
       assert_safe(failure)
       # 错误后的路径锁已释放；相同内容重试无需重新写入，也不伪造上次的 durable 回执。
-      assert_equal :unchanged, Operations::LocalBackup.new(device).call(path: path).change
+      assert_equal :unchanged, LocalBackup.new(device).call(path: path).change
     end
   end
 
-  def test_fleet_preserves_committed_backup_and_legacy_baseline_as_partial_success
+  def test_fleet_preserves_committed_backup_and_current_baseline_as_partial_success
     Dir.mktmpdir do |directory|
-      legacy = File.join(directory, "old-name-192.0.2.1.txt")
-      File.write(legacy, "old")
+      previous = File.join(directory, "192.0.2.1.txt")
+      File.write(previous, "old")
       connector = local_device { @secret }
       closes = 0
       connector.define_singleton_method(:close) { closes += 1; raise IOError, "secondary close error" }
@@ -217,7 +218,6 @@ class FilePersistenceTest < Minitest::Test
       assert_equal :changed, item.backup.change
       assert_equal 1, closes
       assert_equal @secret, File.binread(item.backup.path)
-      assert_equal "old", File.read(legacy)
       refute_includes batch.summary.to_json, @secret
     end
   end
@@ -260,7 +260,7 @@ class FilePersistenceTest < Minitest::Test
       batch = with_directory_sync_failure(directory, fail_on: 2) { fleet.backup_all(directory: directory) }
       refute batch.success?
       assert_equal :backed_up, batch.outcomes.first.status
-      assert_equal "Net::Connector::Operations::PrivateFile::PersistenceError", batch.report_error
+      assert_equal "Net::Connector::Storage::PrivateFile::PersistenceError", batch.report_error
       refute_nil batch.report_location
       assert_equal batch.outcomes.first.backup.path,
                    JSON.parse(File.read(batch.report_location)).fetch("devices").first.fetch("path")
@@ -279,7 +279,7 @@ class FilePersistenceTest < Minitest::Test
       store = Object.new
       store.define_singleton_method(:write) { |*_, **_options| raise error }
       batch = fleet_for(local_device { "configuration" }, result_store: store).backup_all(directory: directory)
-      assert_equal ExternalWriteError.name, batch.report_error
+      assert_equal "StandardError", batch.report_error
       assert_nil batch.report_location
       refute batch.success?
 
@@ -319,7 +319,7 @@ class FilePersistenceTest < Minitest::Test
     Object.new.tap do |device|
       device.define_singleton_method(:host) { "192.0.2.1" }
       device.define_singleton_method(:running_config) { Net::Connector::Result.new(config: contents.call) }
-      device.define_singleton_method(:backup) { |path:| Operations::LocalBackup.new(self).call(path: path) }
+      device.define_singleton_method(:backup) { |path:| LocalBackup.new(self).call(path: path) }
       device.define_singleton_method(:close) {}
     end
   end

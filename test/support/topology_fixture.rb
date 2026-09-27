@@ -23,7 +23,7 @@ class TopologyFixture
   attr_reader :transport, :device, :sample, :observed
   attr_accessor :description, :mismatch, :fail_on, :save_output, :partial_readback, :on_command
 
-  def initialize(vendor)
+  def initialize(vendor, **settings)
     @sample = SAMPLES.fetch(vendor)
     @vendor = vendor
     @mode = :exec
@@ -31,7 +31,7 @@ class TopologyFixture
     @save_output = sample.fetch(:saved)
     @observed = []
     @transport = ConnectorFake.new(prompt)
-    @device = Net::Connector.build(vendor, host: "192.0.2.1", username: "audit", transport: transport)
+    @device = Net::Connector.build(vendor, host: "192.0.2.1", username: "audit", transport: transport, **settings)
     transport.on_write = method(:write)
   end
 

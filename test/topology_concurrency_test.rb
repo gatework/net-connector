@@ -63,7 +63,7 @@ class TopologyConcurrencyTest < Minitest::Test
     refute_includes @transport.writes, "description concurrent\n"
     assert result.success?, result.error.inspect
     assert_equal "planned", @description
-    assert @device.execute("show version").success?, "operation must release its lease"
+    assert @device.execute_command("show version").success?, "operation must release its lease"
   end
 
   def test_facade_forwards_description_format_options
@@ -79,31 +79,31 @@ class TopologyConcurrencyTest < Minitest::Test
     error = assert_raises(Net::Connector::DeviceError) { @device.apply_interface_descriptions(plan, confirmed: true) }
     assert_equal :stale_plan, error.code
     refute_includes @transport.writes, "description planned\n"
-    assert @device.execute("show version").success?
+    assert @device.execute_command("show version").success?
   end
 
   def test_callbacks_cannot_reenter_an_operation_owned_script
     nested = nil
     closed = nil
     @device.with_operation(:test) do
-      result = @device.execute("show version") do
-        nested = @device.execute("interleaved")
+      result = @device.execute_command("show version") do
+        nested = @device.execute_command("interleaved")
         closed = assert_raises(Net::Connector::SessionBusy) { @device.close }
       end
       assert result.success?, result.error.inspect
-      assert @device.execute("show next").success?
+      assert @device.execute_command("show next").success?
     end
     assert_instance_of Net::Connector::SessionBusy, nested.error
     assert_equal :session_busy, closed.code
     refute_includes @transport.writes, "interleaved\n"
-    assert @device.execute("show final").success?
+    assert @device.execute_command("show final").success?
   end
 
   def test_other_fiber_cannot_borrow_an_operation_lease
     @device.with_operation(:test) do
-      result = Fiber.new { @device.execute("interleaved") }.resume
+      result = Fiber.new { @device.execute_command("interleaved") }.resume
       assert_instance_of Net::Connector::SessionBusy, result.error
-      assert @device.execute("show version").success?
+      assert @device.execute_command("show version").success?
     end
     refute_includes @transport.writes, "interleaved\n"
   end
@@ -123,6 +123,6 @@ class TopologyConcurrencyTest < Minitest::Test
     assert_equal :unrecognized_output, result.error.code
     assert_includes result.steps.map { |step| step.command.text }, "description planned"
     assert_equal "planned", @description
-    assert @device.execute("show version").success?
+    assert @device.execute_command("show version").success?
   end
 end

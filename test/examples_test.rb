@@ -90,7 +90,7 @@ class ConnectorExamplesTest < Minitest::Test
         def initialize(**options)
           factory = lambda do |device, settings|
             transport = ConnectorFake.new("fw#", #{"Export ok,target file name #{actual_path}\nfw#".inspect})
-            device.connector(**settings, transport: transport)
+            device.build_connector(**settings, transport: transport)
           end
           super(**options, connector_factory: factory)
         end

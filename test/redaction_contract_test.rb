@@ -25,7 +25,7 @@ class RedactionContractTest < Minitest::Test
 
   def test_sensitive_command_remains_redacted_in_callback_errors
     device, = build("fw#")
-    result = device.execute("set password #{SECRET}", sensitive: true) { raise "callback rejected #{SECRET}" }
+    result = device.execute_command("set password #{SECRET}", sensitive: true) { raise "callback rejected #{SECRET}" }
 
     assert_private_failure(result)
     assert_equal MARKER, result.error.command
@@ -37,7 +37,7 @@ class RedactionContractTest < Minitest::Test
   def test_sensitive_command_is_registered_before_preparation
     device, transport = build
     device.define_singleton_method(:prepare_command) { |command, _| raise "invalid #{command.text.split.last}" }
-    result = device.execute("set password #{SECRET}", sensitive: true)
+    result = device.execute_command("set password #{SECRET}", sensitive: true)
 
     assert_private_failure(result)
     assert_equal MARKER, result.error.command
@@ -52,7 +52,7 @@ class RedactionContractTest < Minitest::Test
       Net::Connector::Command.new("set password #{SECRET}", sensitive: true)
     end
     device.define_singleton_method(:after_command) { |_, _, _| raise "invalid #{SECRET}" }
-    result = device.execute("replace password")
+    result = device.execute_command("replace password")
 
     assert_private_failure(result)
     assert_equal MARKER, result.error.command
@@ -63,7 +63,7 @@ class RedactionContractTest < Minitest::Test
 
   def test_sensitive_interaction_remains_redacted_through_user_callback
     device, = build("Token:", "fw#")
-    result = device.execute("renew token", interactions: [token_interaction]) { raise "invalid #{SECRET}" }
+    result = device.execute_command("renew token", interactions: [token_interaction]) { raise "invalid #{SECRET}" }
 
     assert_private_failure(result)
     assert_equal "renew token", result.error.command
@@ -75,9 +75,9 @@ class RedactionContractTest < Minitest::Test
     device, = build("fw#", "Token:", "fw#")
     interaction = token_interaction
     device.define_singleton_method(:after_command) do |_, _, execution|
-      execution.query(Net::Connector::Command.new("renew token", interactions: [interaction]))
+      execution.execute_command(Net::Connector::Command.new("renew token", interactions: [interaction]))
     end
-    result = device.execute("refresh state") { raise "invalid #{SECRET}" }
+    result = device.execute_command("refresh state") { raise "invalid #{SECRET}" }
 
     assert_private_failure(result)
   ensure
@@ -87,7 +87,7 @@ class RedactionContractTest < Minitest::Test
   def test_failing_sensitive_interaction_does_not_expose_a_partial_token
     device, = build("Token:")
     interaction = Net::Connector::Interaction.new(/Token:\z/, ->(_) { raise "rejected #{SECRET[0, 12]}" }, sensitive: true)
-    result = device.execute("renew token", interactions: [interaction])
+    result = device.execute_command("renew token", interactions: [interaction])
 
     assert_private_failure(result, SECRET[0, 12])
   ensure
@@ -131,7 +131,7 @@ class RedactionContractTest < Minitest::Test
     redactor = device.instance_variable_get(:@session).redactor
     assert_equal MARKER, redactor.call(SECRET)
     refute redactor.sensitive?
-    result = device.execute("show status") { raise "ordinary callback failed" }
+    result = device.execute_command("show status") { raise "ordinary callback failed" }
     assert_equal "ordinary callback failed", result.error.underlying.message
     assert_includes transport.writes, "#{SECRET}\n"
   ensure
@@ -140,7 +140,7 @@ class RedactionContractTest < Minitest::Test
 
   def test_sensitive_domain_error_is_resanitized_including_its_underlying_snapshot
     device, = build("fw#")
-    result = device.execute("set password #{SECRET}", sensitive: true) do
+    result = device.execute_command("set password #{SECRET}", sensitive: true) do
       original = RuntimeError.new("rejected #{SECRET[0, 12]}")
       original.set_backtrace(["#{SECRET}:42"])
       unsafe = Net::Connector::UnderlyingError.new(original, Net::Connector::Redactor.new)
@@ -156,7 +156,7 @@ class RedactionContractTest < Minitest::Test
 
   def test_sensitive_interaction_does_not_trust_a_callback_supplied_error_command
     device, = build("Token:", "fw#")
-    result = device.execute("renew token", interactions: [token_interaction]) do
+    result = device.execute_command("renew token", interactions: [token_interaction]) do
       raise Net::Connector::ScriptError.new("rejected token", command: SECRET[0, 12])
     end
     assert result.failure?
@@ -168,7 +168,7 @@ class RedactionContractTest < Minitest::Test
 
   def test_ordinary_callback_error_retains_diagnostic_message_and_backtrace
     device, = build("fw#")
-    result = device.execute("show status") { raise "ordinary callback failed" }
+    result = device.execute_command("show status") { raise "ordinary callback failed" }
 
     assert_instance_of Net::Connector::InternalError, result.error
     assert_equal "show status", result.error.command
@@ -181,17 +181,17 @@ class RedactionContractTest < Minitest::Test
 
   def test_completed_and_skipped_commands_release_the_sensitive_scope
     device, = build("fw#", "fw#")
-    first = device.execute("set password #{SECRET}", sensitive: true)
+    first = device.execute_command("set password #{SECRET}", sensitive: true)
     assert first.success?, first.error&.message
     session = device.instance_variable_get(:@session)
     assert_equal SECRET, session.redactor.call(SECRET)
-    result = device.execute("show status") { raise "ordinary callback failed" }
+    result = device.execute_command("show status") { raise "ordinary callback failed" }
     assert_equal "ordinary callback failed", result.error.underlying.message
     device.close
 
     device, = build
     device.define_singleton_method(:prepare_command) { |_, _| nil }
-    assert device.execute("set password #{SECRET}", sensitive: true).success?
+    assert device.execute_command("set password #{SECRET}", sensitive: true).success?
     assert_equal "set password #{SECRET}", device.instance_variable_get(:@session).redactor.call("set password #{SECRET}")
   ensure
     device&.close
@@ -199,7 +199,7 @@ class RedactionContractTest < Minitest::Test
 
   def test_failed_command_releases_dynamic_secret_scope
     device, = build("Token:", "fw#")
-    result = device.execute("renew token", interactions: [token_interaction]) { raise "rejected #{SECRET}" }
+    result = device.execute_command("renew token", interactions: [token_interaction]) { raise "rejected #{SECRET}" }
     assert result.failure?
     assert_equal SECRET, device.instance_variable_get(:@session).redactor.call(SECRET)
   ensure
@@ -208,10 +208,10 @@ class RedactionContractTest < Minitest::Test
 
   def test_nested_redactor_scopes_restore_the_outer_dictionary_even_on_failure
     redactor = Net::Connector::Redactor.new("permanent")
-    redactor.scope do
+    redactor.with_scope do
       redactor.remember("outer")
       assert_raises(RuntimeError) do
-        redactor.scope do
+        redactor.with_scope do
           redactor.remember("inner")
           assert_equal "#{MARKER} #{MARKER} #{MARKER}", redactor.call("permanent outer inner")
           raise "failed inner scope"
@@ -251,7 +251,7 @@ class RedactionContractTest < Minitest::Test
         transport = ConnectorFake.new("fw#", "prefix[REDA", "CTED]suffix\nfw#")
         device = Net::Connector.build(:cisco_ios, host: "192.0.2.1", username: "audit", password: secret,
                                       transport: transport, log_file: path, log_format: format, log_level: :debug)
-        assert device.execute("show status").success?
+        assert device.execute_command("show status").success?
         device.close
         contents = File.read(path)
         assert_includes contents, "[REDACTED]"
@@ -278,7 +278,7 @@ class RedactionContractTest < Minitest::Test
     redactor = Net::Connector::Redactor.new("permanent")
     assert_instance_of Expect::Redactor, redactor.stream
     assert redactor.patterns.frozen?
-    redactor.scope do
+    redactor.with_scope do
       redactor.remember("temporary")
       assert_equal "#{MARKER} #{MARKER}", redactor.call("permanent temporary")
       assert_equal "#{MARKER} #{MARKER}", redact_chunks(redactor, ["perma", "nent tempo", "rary"])

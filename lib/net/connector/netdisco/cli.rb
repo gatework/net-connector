@@ -48,11 +48,10 @@ module Net
 
           batch = backup(fleet, plan, settings, options)
           summary = batch.summary
-          summary = summary.merge(report_location: batch.report_location, report_error: batch.report_error) unless batch.instance_of?(Report)
           @output.puts JSON.pretty_generate(summary)
-          (batch.instance_of?(Report) ? batch.policy_success? : batch.success?) ? 0 : 1
-        rescue Operations::PrivateFile::WriteError => exception
-          message = Operations::PrivateFile.receipt_error?(exception) ? exception.message : exception.class.name
+          batch.policy_success? ? 0 : 1
+        rescue Storage::PrivateFile::WriteError => exception
+          message = Storage::PrivateFile.receipt_error?(exception) ? exception.message : exception.class.name
           @error.puts "net-connector-backup: #{message}"
           2
         rescue OptionParser::ParseError, ArgumentError, KeyError, Errno::ENOENT,
@@ -81,7 +80,7 @@ module Net
 
         # 导出已有配置不创建清单或设备连接。
         def export_config(settings, options)
-          path = Operations::SavedConfig.new(directory: settings.backup_directory)
+          path = Storage::SavedConfig.new(directory: settings.backup_directory)
                                         .export(host: options[:export], output: options[:output], io: @output)
           @output.puts JSON.generate(host: options[:export], output: path) if path
         end
@@ -103,7 +102,7 @@ module Net
 
         # 仅执行已经校验的计划，保留本地与 TFTP 两种结果语义。
         def backup(fleet, plan, settings, options)
-          reporting = options.slice(:success_policy, :report_schema)
+          reporting = options.slice(:success_policy)
           if options[:tftp]
             fleet.tftp_backup_all(plan: plan, server: settings.tftp_server,
                                   concurrency: settings.concurrency,
@@ -135,7 +134,6 @@ module Net
             end
             args.on("--all", "选择全部就绪设备") { options[:all] = true }
             args.on("--success-policy POLICY", %w[strict selected], "成功判定：strict（默认）或 selected") { |value| options[:success_policy] = value.to_sym }
-            args.on("--report-schema N", Integer, "报告版本：1（默认）或 2；selected 使用 2") { |value| options[:report_schema] = value }
             args.on("-v", "--version", "显示版本") do
               @output.puts Net::Connector::VERSION
               options[:done] = true
@@ -153,7 +151,7 @@ module Net
 
         # 拒绝互斥或缺少依赖的命令行选项。
         def validate_options!(options)
-          Report.options(policy: options.fetch(:success_policy, :strict), schema: options[:report_schema])
+          Report.validate_policy!(options.fetch(:success_policy, :strict))
           Planner.validate_limit!(options[:limit])
           Worker.new(concurrency: options[:concurrency]) if options[:concurrency]
           modes = [:show_config, :plan, :export].count { |key| options[key] }
@@ -161,7 +159,7 @@ module Net
           raise ArgumentError, "--output 需要同时指定 --export" if options[:output] && !options[:export]
           raise ArgumentError, "--all 不能与 --limit-per-vendor 同时使用" if options[:all] && options[:limit]
           if options[:export] && (options[:tftp] || options[:all] || options[:limit] || options[:concurrency] || options[:host] ||
-                                  options[:success_policy] || options[:report_schema] || options[:max_script_output_bytes])
+                                  options[:success_policy] || options[:max_script_output_bytes])
             raise ArgumentError, "--export 不能与备份选项同时使用"
           end
         end

@@ -4,14 +4,25 @@ require "minitest/autorun"
 require "tmpdir"
 require "securerandom"
 require_relative "../lib/net/connector"
-require_relative "../lib/net/connector/operations/saved_config"
+require_relative "../lib/net/connector/storage/saved_config"
 require_relative "support/fake_transport"
 
 class ParsingEncodingTest < Minitest::Test
   TEMPLATE = "cisco_ios_running_config_interfaces.textfsm"
 
   def setup
-    @parser = Net::Connector::Operations::ParseOutput.new
+    @parser = Net::Connector::TextFSM.new
+  end
+
+  def test_terminal_text_boundary_keeps_original_bytes_and_control_sequence_evidence
+    bytes = "invalid looking\r\e[2K名称\n".b.freeze
+    decoded = Net::Connector::TerminalText.utf8(bytes)
+    assert_equal Encoding::UTF_8, decoded.encoding
+    assert_equal bytes, decoded.b
+    assert_equal Encoding::BINARY, bytes.encoding
+    refute_same bytes, decoded
+    assert_equal "名称\n", Net::Connector::TerminalText.render(bytes)
+    assert_raises(ArgumentError) { Net::Connector::TerminalText.utf8(nil) }
   end
 
   def test_valid_utf8_bytes_and_terminal_controls_parse_without_changing_the_input
@@ -49,7 +60,7 @@ class ParsingEncodingTest < Minitest::Test
     Dir.mktmpdir do |directory|
       path = File.join(directory, "192.0.2.1.txt")
       File.binwrite(path, bytes)
-      reader = Net::Connector::Operations::SavedConfig.new(directory: directory)
+      reader = Net::Connector::Storage::SavedConfig.new(directory: directory)
       output = StringIO.new
       reader.export(host: "192.0.2.1", io: output)
       assert_equal bytes.b, output.string.b
@@ -78,13 +89,13 @@ class ParsingEncodingTest < Minitest::Test
     samples.each do |vendor, output|
       commands = []
       device = Net::Connector.build(vendor, host: "192.0.2.1", username: "audit", transport: ConnectorFake.new)
-      device.define_singleton_method(:execute) do |command|
+      device.define_singleton_method(:execute_command) do |command|
         commands << command
         Net::Connector::Result.new(config: output)
       end
       device.define_singleton_method(:running_config) { raise "invalid neighbors must stop before config collection" }
-      topology = Net::Connector::Operations::Topology.new(device)
-      error = assert_raises(Net::Connector::ParsingError) { topology.plan_descriptions { "proposed" } }
+      topology = Net::Connector::Topology.new(device)
+      error = assert_raises(Net::Connector::ParsingError) { topology.plan_interface_descriptions { "proposed" } }
       assert_encoding_error(error, "\xFF".b)
       assert_equal [device.profile.topology_strategy.new(device).neighbor_command], commands
     ensure

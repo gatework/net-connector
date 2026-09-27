@@ -78,10 +78,10 @@ class NetdiscoTest < Minitest::Test
     device = Net::Connector::Netdisco::Device.from_row({ "ip" => "192.0.2.5", "vendor" => "custom maker" },
                                                        rules: settings.rules)
     assert_equal :huawei, device.vendor
-    assert_equal "huawei", settings.credentials_for(device)[:username]
-    assert_equal "vendor-secret", settings.credentials_for(device)[:password]
+    assert_equal "huawei", settings.device_credentials_for(device)[:username]
+    assert_equal "vendor-secret", settings.device_credentials_for(device)[:password]
     env["NET_CONNECTOR_HUAWEI_PASSWORD"] = "rotated"
-    assert_equal "rotated", settings.credentials_for(device)[:password]
+    assert_equal "rotated", settings.device_credentials_for(device)[:password]
     assert_equal :cisco_nxos, settings.rules.resolve("vendor" => "Cisco", "model" => "CustomNX-01")
     assert_equal :h3c_wireless, settings.rules.resolve("ip" => "192.0.2.9", "vendor" => "Hillstone")
     assert_raises(ArgumentError) do
@@ -248,7 +248,7 @@ class NetdiscoTest < Minitest::Test
       Object.new.tap do |connector|
         connector.define_singleton_method(:tftp_backup) do |**options|
           calls << [device.host, options]
-          Net::Connector::TftpBackup.new(server: options.fetch(:host), path: options.fetch(:path),
+          Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
                                          completed_at: Time.now.utc)
         end
         connector.define_singleton_method(:close) {}
@@ -286,7 +286,7 @@ class NetdiscoTest < Minitest::Test
       Object.new.tap do |connector|
         connector.define_singleton_method(:tftp_backup) do |**options|
           calls << device.host
-          Net::Connector::TftpBackup.new(server: options.fetch(:host), path: options.fetch(:path),
+          Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
                                          completed_at: Time.now.utc)
         end
         connector.define_singleton_method(:close) {}
@@ -307,7 +307,7 @@ class NetdiscoTest < Minitest::Test
     connector = Object.new
     connector.define_singleton_method(:tftp_backup) do |**options|
       received = options
-      Net::Connector::TftpBackup.new(server: options.fetch(:host), path: options.fetch(:path),
+      Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
                                      completed_at: Time.now.utc)
     end
     connector.define_singleton_method(:close) {}
@@ -324,7 +324,7 @@ class NetdiscoTest < Minitest::Test
     connector = Object.new
     connector.define_singleton_method(:tftp_backup) do |**options|
       received = options
-      Net::Connector::TftpBackup.new(server: options.fetch(:host), path: options.fetch(:path),
+      Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
                                      completed_at: Time.now.utc)
     end
     connector.define_singleton_method(:close) {}
@@ -346,7 +346,7 @@ class NetdiscoTest < Minitest::Test
       Object.new.tap do |connector|
         connector.define_singleton_method(:tftp_backup) do |**options|
           received[device.vendor] = options
-          Net::Connector::TftpBackup.new(server: options.fetch(:host), path: options.fetch(:path),
+          Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
                                          completed_at: Time.now.utc)
         end
         connector.define_singleton_method(:close) do
@@ -375,7 +375,7 @@ class NetdiscoTest < Minitest::Test
       Object.new.tap do |connector|
         connector.define_singleton_method(:tftp_backup) do |**options|
           calls << device.host
-          Net::Connector::TftpBackup.new(server: options.fetch(:host), path: options.fetch(:path),
+          Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
                                          completed_at: Time.now.utc)
         end
         connector.define_singleton_method(:close) {}
@@ -479,7 +479,7 @@ class NetdiscoTest < Minitest::Test
           if device.host.end_with?(".1")
             nil
           else
-            Net::Connector::TftpBackup.new(server: settings.fetch(:host), path: settings.fetch(:path),
+            Net::Connector::TftpReceipt.new(server: settings.fetch(:host), path: settings.fetch(:path),
                                            completed_at: Time.now.utc)
           end
         end
@@ -516,7 +516,7 @@ class NetdiscoTest < Minitest::Test
     row = { "ip" => "192.0.2.1", "vendor" => "H3C" }
     connector = Object.new
     connector.define_singleton_method(:backup) do |path:|
-      Net::Connector::TftpBackup.new(server: "192.0.2.10", path: path, completed_at: Time.now.utc)
+      Net::Connector::TftpReceipt.new(server: "192.0.2.10", path: File.basename(path), completed_at: Time.now.utc)
     end
     connector.define_singleton_method(:close) {}
     fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new([row]),
@@ -572,7 +572,7 @@ class NetdiscoTest < Minitest::Test
     row = { "ip" => "192.0.2.91", "vendor" => "H3C" }
     connector = Object.new
     connector.define_singleton_method(:tftp_backup) do |**options|
-      Net::Connector::TftpBackup.new(server: options.fetch(:host), path: options.fetch(:path),
+      Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
                                      completed_at: Time.now.utc)
     end
     connector.define_singleton_method(:close) {}
@@ -663,7 +663,7 @@ class NetdiscoTest < Minitest::Test
 
   def test_cli_exports_saved_configuration_without_inventory_credentials
     Dir.mktmpdir do |directory|
-      source = File.join(directory, "edge-192.0.2.5.txt")
+      source = File.join(directory, "192.0.2.5.txt")
       File.binwrite(source, "hostname edge\nsecret 123\n")
       destination = File.join(directory, "exports", "edge.cfg")
       output = StringIO.new
@@ -687,7 +687,7 @@ class NetdiscoTest < Minitest::Test
         output: StringIO.new, error: error
       ).run
       File.binwrite(File.join(directory, "renamed-192.0.2.5.txt"), "other")
-      assert_raises(ArgumentError) { Net::Connector::Operations::SavedConfig.new(directory: directory).find("192.0.2.5") }
+      assert_equal source, Net::Connector::Storage::SavedConfig.new(directory: directory).find("192.0.2.5")
     end
   end
 
@@ -700,7 +700,7 @@ class NetdiscoTest < Minitest::Test
         Object.new.tap do |connector|
           connector.define_singleton_method(:tftp_backup) do |**options|
             calls << [device.host, options]
-            Net::Connector::TftpBackup.new(server: options.fetch(:host), path: options.fetch(:path),
+            Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
                                            completed_at: Time.now.utc)
           end
           connector.define_singleton_method(:close) {}

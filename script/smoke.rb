@@ -7,7 +7,7 @@ require "rbconfig"
 require "stringio"
 require "logger"
 
-raise "Offline entry eagerly loaded TextFSM" if $LOADED_FEATURES.any? { |path| path.include?("/textfsm") }
+raise "Offline entry eagerly loaded TextFSM" if $LOADED_FEATURES.any? { |path| path.match?(%r{/lib/textfsm(?:/|\.rb)}) }
 
 spec = Gem.loaded_specs.fetch("net-connector")
 root = File.realpath(ENV.fetch("GEM_HOME"))
@@ -68,7 +68,7 @@ begin
   rows = device.parse_config(template: "cisco_ios_running_config_interfaces.textfsm")
   raise "Installed TextFSM template failed" unless rows.first.fetch("DESCRIPTION") == "package-smoke"
   raise "Installed collection leaked diagnostic output" if session_log.string.include?("package-smoke")
-  raise "Installed ordinary command failed" unless device.execute("show status").success?
+  raise "Installed ordinary command failed" unless device.execute_command("show status").success?
   raise "Installed ordinary logging did not resume" unless session_log.string.include?("public-package-output")
 
   directory = File.join(root, "backup-smoke-#{ARGV.fetch(0)}")
@@ -76,25 +76,14 @@ begin
   backup = device.backup(path: File.join(directory, "192.0.2.1.txt"))
   raise "Installed backup failed" unless backup.change == :created && File.binread(backup.path).include?("package-smoke")
   raise "Installed backup is not private" unless (File.stat(backup.path).mode & 0o7777) == 0o600
-  lock_path = Net::Connector::Operations::BackupLock.lock_path(backup.path)
+  lock_path = Net::Connector::Storage::BackupLock.lock_path(backup.path)
   raise "Installed path lock is not private" unless (File.stat(lock_path).mode & 0o7777) == 0o600
-  receipt = Net::Connector::Operations::PrivateFile.write_receipt(File.join(directory, "receipt.txt"), "fixture")
+  receipt = Net::Connector::Storage::PrivateFile.write(File.join(directory, "receipt.txt"), "fixture")
   raise "Installed directory synchronization failed" unless receipt.durable?
-  saved = Net::Connector::Operations::SavedConfig.new(directory: directory)
+  saved = Net::Connector::Storage::SavedConfig.new(directory: directory)
   raise "Installed safe read failed" unless saved.read("192.0.2.1") == File.binread(backup.path)
-  legacy = File.join(directory, "old-192.0.2.2.txt")
-  File.binwrite(legacy, "legacy fixture")
-  indexed = Net::Connector::Operations::SavedConfig.new(directory: directory, indexed: true)
-  raise "Installed legacy index failed" unless indexed.read("192.0.2.2") == "legacy fixture"
-  File.binwrite(legacy, "changed legacy fixture")
   begin
-    indexed.read("192.0.2.2")
-    raise "Installed legacy index accepted a changed file"
-  rescue Net::Connector::SavedConfigChanged => error
-    raise "Installed snapshot error changed" unless error.code == :saved_config_changed && error.cause.nil?
-  end
-  begin
-    Net::Connector::Operations::ParseOutput.new.call("\xFF".b, template: "cisco_ios_running_config_interfaces.textfsm")
+    Net::Connector::TextFSM.new.call("\xFF".b, template: "cisco_ios_running_config_interfaces.textfsm")
     raise "Installed parser accepted invalid encoding"
   rescue Net::Connector::ParsingError => error
     raise "Installed encoding error changed" unless error.code == :invalid_output_encoding && error.cause.nil?
@@ -106,11 +95,10 @@ begin
   raise "Installed staged topology failed" unless applied.success?
   raise "Installed topology omitted readback steps" unless applied.steps.any? { |step| step.command.text == "show running-config" && step.command.output_sensitive? }
 
-  transfer = device.tftp_backup_receipt(host: "192.0.2.10", path: "installed.cfg")
+  transfer = device.tftp_backup(host: "192.0.2.10", path: "installed.cfg")
   raise "Installed TFTP metadata failed" unless transfer.configuration_kind == :running && transfer.format == :cfg
   raise "Installed TFTP evidence level changed" unless transfer.verification == :device_reported && transfer.server_sha256.nil?
-  raise "Installed TFTP target changed" unless transfer.actual_path == "installed.cfg" && transfer.transfer.path == "installed.cfg"
-  raise "Installed legacy TFTP shape changed" unless Net::Connector::TftpBackup.members == %i[server path completed_at]
+  raise "Installed TFTP target changed" unless transfer.path == "installed.cfg" && transfer.requested_path == "installed.cfg"
 ensure
   device.close
 end
@@ -139,7 +127,7 @@ cli = Net::Connector::Netdisco::CLI.new(argv: ["--show-config", "--max-script-ou
 raise "Installed offline settings failed" unless cli.run.zero? && JSON.parse(output.string).fetch("netdisco").fetch("inventory_timeout") == 300
 raise "Installed script budget setting missing" unless JSON.parse(output.string).fetch("ssh").fetch("max_script_output_bytes") == 64
 
-# 不连接设备即可检查安装包中的 v2 策略包装与旧 Data 契约。
+# 不连接设备即可检查安装包中的统一报告和成功策略。
 inventory_device = Net::Connector::Netdisco::Device.from_row({ "ip" => "192.0.2.1", "vendor" => "Cisco" },
                                                             rules: Net::Connector::Netdisco::Rules.new)
 outcomes = %i[backed_up filtered].map do |status|
@@ -147,8 +135,7 @@ outcomes = %i[backed_up filtered].map do |status|
 end
 batch = Net::Connector::Netdisco::Batch.new(mode: :backup, outcomes: outcomes, started_at: Time.now.utc,
                                             finished_at: Time.now.utc, callback_errors: [], report_error: nil, report_location: nil)
-report = batch.report(policy: :selected)
+report = batch.build_report(policy: :selected)
 raise "Installed selected policy failed" unless report.policy_success? && !report.success? && report.status == :incomplete
 raise "Installed v2 coverage missing" unless report.summary.fetch(:schema_version) == 2 && !report.summary.fetch(:coverage).fetch(:complete)
-raise "Installed legacy report changed" if batch.summary.key?(:schema_version) || Net::Connector::Netdisco::Outcome.members.include?(:diagnostic)
 puts "Installed #{spec.full_name}: #{ARGV.fetch(0)}, PTY, vendor profiles, templates and CLI passed"

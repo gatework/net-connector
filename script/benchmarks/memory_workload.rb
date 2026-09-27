@@ -151,7 +151,7 @@ module MemoryBenchmark
         result
       when "response"
         session = device.instance_variable_get(:@session)
-        response = session.perform(:script) { session.exchange(Net::Connector::Command.new("show fixture 0"), timeout: 60) }
+        response = session.perform(:script) { session.execute_command(Net::Connector::Command.new("show fixture 0"), timeout: 60) }
         raise "response buffering changed fixture bytes" unless response.raw == @response && response.output == @response
 
         response
@@ -161,7 +161,7 @@ module MemoryBenchmark
 
         text
       when "parse"
-        rows = Net::Connector::Operations::ParseOutput.new.call(@payload, template: "cisco_ios_running_config_interfaces.textfsm")
+        rows = Net::Connector::TextFSM.new.call(@payload, template: "cisco_ios_running_config_interfaces.textfsm")
         raise "parser lost fixture records" unless rows.size == @payload.bytesize / MemoryFixture::BLOCK.bytesize
 
         rows

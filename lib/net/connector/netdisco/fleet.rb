@@ -18,7 +18,7 @@ module Net
           @client = client
           @rules = rules
           @credentials = credentials
-          @connector_factory = connector_factory || ->(device, connection_settings) { device.connector(**connection_settings) }
+          @connector_factory = connector_factory || ->(device, connection_settings) { device.build_connector(**connection_settings) }
           @result_store = result_store
           raise ArgumentError, "credentials must respond to call" if @credentials && !@credentials.respond_to?(:call)
           raise ArgumentError, "result_store must respond to write" if result_store && !result_store.respond_to?(:write)
@@ -42,8 +42,8 @@ module Net
         # 先拉取完整清单，再并发采集并保存设备配置。
         def backup_all(directory: DEFAULT_SETTING, concurrency: DEFAULT_SETTING,
                        limit_per_vendor: nil, plan: nil, on_start: nil, on_result: nil, on_change: nil,
-                       success_policy: :strict, report_schema: nil)
-          reporting = Report.options(policy: success_policy, schema: report_schema)
+                       success_policy: :strict)
+          reporting = Report.validate_policy!(success_policy)
           policy = @settings.snapshot(mode: :backup)
           directory = policy.backup_directory if directory.equal?(DEFAULT_SETTING)
           concurrency = policy.concurrency if concurrency.equal?(DEFAULT_SETTING)
@@ -59,19 +59,18 @@ module Net
           callbacks = [on_result]
           callbacks << ->(item) { on_change.call(item) if item.backup.is_a?(Backup) && item.backup.changed? } if on_change
           target_directory = File.expand_path(directory)
-          saved_config = Operations::SavedConfig.new(directory: target_directory, indexed: true)
           run_batch(:backup, plan, concurrency: concurrency, report_directory: directory,
                     output_directory: target_directory, policy: policy, reporting: reporting,
                     on_start: on_start, on_result: callbacks.compact) do |device, log_directory|
-            backup_one(device, target_directory, log_directory, policy, saved_config)
+            backup_one(device, target_directory, log_directory, policy)
           end
         end
 
         # 让设备主动导出配置，在执行前检查同批目标文件名冲突。
         def tftp_backup_all(server:, source_files: {}, concurrency: DEFAULT_SETTING,
                             limit_per_vendor: 5, vrfs: {}, on_start: nil, on_result: nil, plan: nil,
-                            report_directory: DEFAULT_SETTING, success_policy: :strict, report_schema: nil)
-          reporting = Report.options(policy: success_policy, schema: report_schema)
+                            report_directory: DEFAULT_SETTING, success_policy: :strict)
+          reporting = Report.validate_policy!(success_policy)
           policy = @settings.snapshot(mode: :tftp)
           concurrency = policy.concurrency if concurrency.equal?(DEFAULT_SETTING)
           report_directory = policy.backup_directory if report_directory.equal?(DEFAULT_SETTING)
@@ -121,15 +120,13 @@ module Net
           log_directory = policy.log_directory
           FileUtils.mkdir_p(log_directory, mode: 0o700) if log_directory && !plan.ready.empty?
           callback_errors = worker.run(plan.ready, outcomes: outcomes, on_start: on_start, on_result: on_result,
-                                       on_error: ->(device, error) { outcome(device, :failed, error: error) }) do |device|
+                                       on_error: ->(device, error) { build_outcome(device, :failed, error: error) }) do |device|
             yield device, log_directory
           end
           batch = Batch.new(mode: mode, outcomes: outcomes.freeze, started_at: started_at,
                             finished_at: Time.now.utc, callback_errors: callback_errors,
                             report_location: nil, report_error: nil)
-          if reporting.fetch(:schema) == 2
-            batch = Report.new(batch, policy: reporting.fetch(:policy), duration_ms: ((monotonic - started) * 1000).round)
-          end
+          batch = Report.new(batch, policy: reporting, duration_ms: ((monotonic - started) * 1000).round)
           save_report(batch, directory: report_directory)
         end
 
@@ -145,16 +142,12 @@ module Net
           return batch unless @result_store
 
           batch.with(report_location: @result_store.write(batch, directory: directory))
-        rescue Operations::PrivateFile::WriteError => error
+        rescue Storage::PrivateFile::WriteError => error
           # 报告也可能已经原子替换；保留已知位置，不将持久性失败误写成完全没有产物。
-          location = error.receipt.path if Operations::PrivateFile.receipt_error?(error) && error.receipt.committed?
-          return batch.with_report_error(error, location: location) if batch.instance_of?(Report)
-
-          batch.with(report_location: location, report_error: error.class.name)
+          location = error.receipt.path if Storage::PrivateFile.receipt_error?(error) && error.receipt.committed?
+          batch.with_report_error(error, location: location)
         rescue StandardError => error
-          return batch.with_report_error(error) if batch.instance_of?(Report)
-
-          batch.with(report_error: error.class.name)
+          batch.with_report_error(error)
         end
 
         # 确认传入计划属于当前备份模式。
@@ -165,7 +158,7 @@ module Net
         end
 
         # 构造包含错误类型的单台设备结果。
-        def outcome(device, status, backup: nil, error: nil)
+        def build_outcome(device, status, backup: nil, error: nil)
           Outcome.new(device: device, status: status, backup: backup,
                       error_code: error.respond_to?(:code) ? error.code : nil,
                       error_type: error&.class&.name, diagnostic: Diagnostic.from(error, backup: backup))
@@ -174,7 +167,7 @@ module Net
         # 执行单台设备的 TFTP 导出。
         def tftp_backup_one(device, server, source_files, log_directory, vrfs, policy)
           run_one(device, log_directory, policy, success_status: :reported_uploaded,
-                  close_error_status: :reported_with_error, backup_class: TftpBackup) do |connector|
+                  close_error_status: :reported_with_error, backup_class: TftpReceipt) do |connector|
             source_file = source_files.fetch(device.vendor, nil)
             transfer_settings = { host: server, path: device.tftp_filename, source_file: source_file }
             transfer_settings[:vrf] = vrfs.fetch(device.vendor) if vrfs.key?(device.vendor)
@@ -183,27 +176,21 @@ module Net
         end
 
         # 执行单台设备的本地配置采集。
-        def backup_one(device, directory, log_directory, policy, saved_config)
+        def backup_one(device, directory, log_directory, policy)
           destination = File.join(directory, device.backup_filename)
-          Operations::BackupLock.synchronize(destination, host: device.host) do |path_lock|
-            previous = saved_config.fingerprint(device.host, required: false)
-            previous_digest = previous.sha256 if previous && previous.path != destination
-            result = run_one(device, log_directory, policy, success_status: :backed_up,
-                             close_error_status: :saved_with_error, backup_class: Backup) do |connector|
-              path_lock.delegate { connector.backup(path: destination) }
+          Storage::BackupLock.synchronize(destination, host: device.host) do |path_lock|
+            Storage::SafeFile.open(destination, missing: true) { |_file, _stat| nil }
+            run_one(device, log_directory, policy, success_status: :backed_up,
+                    close_error_status: :saved_with_error, backup_class: Backup) do |connector|
+              path_lock.with_delegated_lock { connector.backup(path: destination) }
             end
-            backup = result.backup
-            next result unless backup.is_a?(Backup) && backup.change == :created && previous_digest
-
-            result.with(backup: backup.with(previous_sha256: previous_digest,
-                                           change: backup.sha256 == previous_digest ? :unchanged : :changed))
           end
         end
 
         # 隔离单台设备的凭据、连接、操作和关闭异常。
         def run_one(device, log_directory, policy, success_status:, close_error_status:, backup_class:)
           connection_settings = @credentials ? @credentials.call(device) : @settings.device_credentials_for(device)
-          return outcome(device, :missing_credentials) if connection_settings.nil?
+          return build_outcome(device, :missing_credentials) if connection_settings.nil?
           unless connection_settings.is_a?(Hash) && connection_settings.keys.all?(Symbol) &&
                  connection_settings[:username].is_a?(String) && !connection_settings[:username].empty? &&
                  !connection_settings.key?(:host)
@@ -217,11 +204,11 @@ module Net
           end
           connector = @connector_factory.call(device, connection_settings)
           backup, failure = perform_one(connector, backup_class) { yield connector }
-          return outcome(device, success_status, backup: backup) unless failure
+          return build_outcome(device, success_status, backup: backup) unless failure
 
-          outcome(device, backup ? close_error_status : :failed, backup: backup, error: failure)
+          build_outcome(device, backup ? close_error_status : :failed, backup: backup, error: failure)
         rescue StandardError => error
-          outcome(device, :failed, error: error)
+          build_outcome(device, :failed, error: error)
         end
 
         # 仅信任库定义且产物类型匹配的提交后错误；普通第三方异常上的 backup 字段不代表完成。
@@ -237,8 +224,8 @@ module Net
             failure = error
             if backup_class == Backup && error.instance_of?(BackupPersistenceError) && error.backup.instance_of?(Backup)
               backup = error.backup
-            elsif backup_class == TftpBackup && error.instance_of?(TftpCompletionError) && error.transfer.instance_of?(TftpBackup)
-              backup = error.transfer
+            elsif backup_class == TftpReceipt && error.instance_of?(TftpCompletionError) && error.receipt.instance_of?(TftpReceipt)
+              backup = error.receipt
             end
           ensure
             begin

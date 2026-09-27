@@ -2,6 +2,7 @@
 
 require "minitest/autorun"
 require_relative "../lib/net/connector"
+require_relative "../lib/net/connector/vendor/cisco_ios/topology"
 require_relative "support/topology_fixture"
 
 class TopologyTest < Minitest::Test
@@ -17,7 +18,7 @@ class TopologyTest < Minitest::Test
       @commands = []
     end
 
-    def execute(command)
+    def execute_command(command)
       @commands << command
       Net::Connector::Result.new(config: neighbor_output)
     end
@@ -54,38 +55,38 @@ class TopologyTest < Minitest::Test
 
   def test_unsupported_vendor_rejects_nonempty_forged_plan_without_network_calls
     device = Device.new(vendor: :huawei, neighbor_output: "")
-    topology = Net::Connector::Operations::Topology.new(device)
-    plan = Net::Connector::Operations::Topology::Plan.new(
+    topology = Net::Connector::Topology.new(device)
+    plan = Net::Connector::Topology::Plan.new(
       host: device.host, vendor: device.vendor, evidence: {}, changes: [Object.new], commands: ["reload"]
     )
 
-    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.apply(plan, confirmed: true) }
+    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.apply_interface_descriptions(plan, confirmed: true) }
     assert_equal :neighbor_discovery_unsupported, error.code
     assert_empty device.commands
     assert_nil device.script
-    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.descriptions }
+    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.interface_descriptions }
     assert_equal :description_unsupported, error.code
   end
 
   def test_custom_read_only_strategy_allows_reads_and_rejects_planning_and_apply
-    read_only = Class.new(Net::Connector::Operations::Topology::Cisco) do
+    read_only = Class.new(Net::Connector::CiscoIos::Topology) do
       def self.supports?(capability) = %i[neighbors interface_descriptions].include?(capability)
     end
     device = Device.new(vendor: :cisco_ios, neighbor_output: "Total cdp entries displayed : 0")
     profile = device.profile
     profile.topology_strategy = read_only
     device.define_singleton_method(:profile) { profile }
-    topology = Net::Connector::Operations::Topology.new(device)
+    topology = Net::Connector::Topology.new(device)
     assert_empty topology.neighbors
-    assert_empty topology.descriptions
-    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.plan_descriptions }
+    assert_empty topology.interface_descriptions
+    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.plan_interface_descriptions }
     assert_equal :description_unsupported, error.code
     assert_equal :plan, error.phase
 
-    plan = Net::Connector::Operations::Topology::Plan.new(
+    plan = Net::Connector::Topology::Plan.new(
       host: device.host, vendor: device.vendor, evidence: {}, changes: [Object.new], commands: ["reload"]
     )
-    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.apply(plan, confirmed: true) }
+    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.apply_interface_descriptions(plan, confirmed: true) }
     assert_equal :description_unsupported, error.code
     assert_equal :apply, error.phase
     assert_nil device.script
@@ -94,12 +95,12 @@ class TopologyTest < Minitest::Test
       def self.supports?(_capability) = false
     end
     profile.topology_strategy = disabled
-    topology = Net::Connector::Operations::Topology.new(device)
+    topology = Net::Connector::Topology.new(device)
     device.commands.clear
     error = assert_raises(Net::Connector::UnsupportedOperation) { topology.neighbors }
     assert_equal :neighbor_discovery_unsupported, error.code
     assert_empty device.commands
-    assert_raises(Net::Connector::UnsupportedOperation) { topology.descriptions }
+    assert_raises(Net::Connector::UnsupportedOperation) { topology.interface_descriptions }
   end
 
   def test_h3c_old_and_new_lldp_column_orders
@@ -113,7 +114,7 @@ class TopologyTest < Minitest::Test
     ]
     samples.each do |output|
       device = Device.new(vendor: :h3c, neighbor_output: output)
-      neighbor = Net::Connector::Operations::Topology.new(device).neighbors.fetch(0)
+      neighbor = Net::Connector::Topology.new(device).neighbors.fetch(0)
       assert_equal "XGE1/0/1", neighbor.local_interface
       assert_equal "switch-a", neighbor.neighbor_name
       assert_equal "Ten-GigabitEthernet1/0/2", neighbor.neighbor_interface
@@ -122,7 +123,7 @@ class TopologyTest < Minitest::Test
 
     device = Device.new(vendor: :h3c, neighbor_output: "Local Interface Chassis ID Port ID System Name\n" \
       "GE1/0/1 000f-e25d-ee91 Port 12 switch-b\n")
-    assert_equal "Port 12", Net::Connector::Operations::Topology.new(device).neighbors.fetch(0).neighbor_interface
+    assert_equal "Port 12", Net::Connector::Topology.new(device).neighbors.fetch(0).neighbor_interface
   end
 
   def test_hillstone_and_palo_alto_lldp
@@ -141,7 +142,7 @@ class TopologyTest < Minitest::Test
       Local information:
     OUTPUT
     [hillstone, panos].each do |device|
-      neighbor = Net::Connector::Operations::Topology.new(device).neighbors.fetch(0)
+      neighbor = Net::Connector::Topology.new(device).neighbors.fetch(0)
       assert_equal "switch-b", neighbor.neighbor_name
       assert_equal :lldp, neighbor.protocol
     end
@@ -166,12 +167,12 @@ class TopologyTest < Minitest::Test
       System name: switch-b
     OUTPUT
     device = Device.new(vendor: :palo_alto, neighbor_output: empty)
-    assert_empty Net::Connector::Operations::Topology.new(device).neighbors
+    assert_empty Net::Connector::Topology.new(device).neighbors
     device.neighbor_output = full + empty
-    neighbors = Net::Connector::Operations::Topology.new(device).neighbors
+    neighbors = Net::Connector::Topology.new(device).neighbors
     assert_equal ["ethernet1/14"], neighbors.map(&:local_interface)
     device.neighbor_output = full.sub("Port ID: Ethernet1/2\n", "") + empty
-    error = assert_raises(Net::Connector::ParsingError) { Net::Connector::Operations::Topology.new(device).neighbors }
+    error = assert_raises(Net::Connector::ParsingError) { Net::Connector::Topology.new(device).neighbors }
     assert_equal :unrecognized_output, error.code
   end
 
@@ -181,14 +182,14 @@ class TopologyTest < Minitest::Test
       Platform: N9K-C93180, Capabilities: Router Switch
       Interface: Ethernet1/1, Port ID (outgoing port): Ethernet1/2
     OUTPUT
-    neighbor = Net::Connector::Operations::Topology.new(device).neighbors.fetch(0)
+    neighbor = Net::Connector::Topology.new(device).neighbors.fetch(0)
     assert_equal :cdp, neighbor.protocol
     assert_equal "leaf-b", neighbor.neighbor_name
     assert_equal ["show cdp neighbors detail"], device.commands
 
     radware = Device.new(vendor: :radware, neighbor_output: "")
     error = assert_raises(Net::Connector::UnsupportedOperation) do
-      Net::Connector::Operations::Topology.new(radware).neighbors
+      Net::Connector::Topology.new(radware).neighbors
     end
     assert_equal :neighbor_discovery_unsupported, error.code
     assert_empty radware.commands
@@ -202,9 +203,9 @@ class TopologyTest < Minitest::Test
     OUTPUT
       set network interface ethernet ethernet1/1 comment "old uplink"
     CONFIG
-    topology = Net::Connector::Operations::Topology.new(device)
-    assert_equal "old uplink", topology.descriptions.fetch("ethernet1/1")
-    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.plan_descriptions }
+    topology = Net::Connector::Topology.new(device)
+    assert_equal "old uplink", topology.interface_descriptions.fetch("ethernet1/1")
+    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.plan_interface_descriptions }
     assert_equal :candidate_isolation_unavailable, error.code
     assert_nil device.script
   end
@@ -219,7 +220,7 @@ class TopologyTest < Minitest::Test
        description existing
       exit
     CONFIG
-    plan = Net::Connector::Operations::Topology.new(hillstone).plan_descriptions
+    plan = Net::Connector::Topology.new(hillstone).plan_interface_descriptions
     assert_equal ["configure", "interface ethernet0/1", "description To switch-b Gi2/0",
                   "exit", "exit", "terminal length 0", "show configuration running", "save all"], plan.commands
 
@@ -228,13 +229,13 @@ class TopologyTest < Minitest::Test
        description uplink
       !
     CONFIG
-    assert_equal({ "gigabitethernet1/0/1" => "uplink" }, Net::Connector::Operations::Topology.new(cisco).descriptions)
+    assert_equal({ "gigabitethernet1/0/1" => "uplink" }, Net::Connector::Topology.new(cisco).interface_descriptions)
 
     cisco.neighbor_output = <<~OUTPUT
       Device ID: switch-c
       Interface: Gi1/0/1, Port ID (outgoing port): Gi1/0/2
     OUTPUT
-    assert_equal "uplink", Net::Connector::Operations::Topology.new(cisco).plan_descriptions.changes.fetch(0).old_description
+    assert_equal "uplink", Net::Connector::Topology.new(cisco).plan_interface_descriptions.changes.fetch(0).old_description
   end
 
   def test_radware_port_names_are_read_from_configuration_dump
@@ -248,7 +249,7 @@ class TopologyTest < Minitest::Test
       /cfg/port 3/name "backup link"
     CONFIG
     assert_equal({ "1" => "uplink to core", "2" => "", "3" => "backup link" },
-                 Net::Connector::Operations::Topology.new(device).descriptions)
+                 Net::Connector::Topology.new(device).interface_descriptions)
   end
 
   def test_description_formatting_keeps_original_evidence_and_custom_formatter_input
@@ -260,20 +261,20 @@ class TopologyTest < Minitest::Test
        description old uplink
       !
     CONFIG
-    topology = Net::Connector::Operations::Topology.new(device)
-    plan = topology.plan_descriptions
+    topology = Net::Connector::Topology.new(device)
+    plan = topology.plan_interface_descriptions
     assert_equal "To Core-SW Eth1/2", plan.changes.first.new_description
     assert_equal "Ethernet1/1", plan.changes.first.interface
     assert_equal "Ethernet1/2", plan.changes.first.neighbor.neighbor_interface
     assert_equal ["Core-SW", "Ethernet1/2", "old uplink"], plan.evidence.fetch("ethernet1/1")
-    assert_equal "To Core-SW eth1/2", topology.plan_descriptions(lowercase: true).changes.first.new_description
-    assert_equal "To Core-SW Ethernet1/2", topology.plan_descriptions(abbreviate: false).changes.first.new_description
-    assert_equal "Ethernet1/2", topology.plan_descriptions { |neighbor| neighbor.neighbor_interface }.changes.first.new_description
+    assert_equal "To Core-SW eth1/2", topology.plan_interface_descriptions(lowercase: true).changes.first.new_description
+    assert_equal "To Core-SW Ethernet1/2", topology.plan_interface_descriptions(abbreviate: false).changes.first.new_description
+    assert_equal "Ethernet1/2", topology.plan_interface_descriptions { |neighbor| neighbor.neighbor_interface }.changes.first.new_description
 
     device.on_execute = ->(_) { device.config_output = device.config_output.sub("old uplink", "To Core-SW Eth1/2") }
-    assert topology.apply(plan, confirmed: true).success?
-    assert_empty topology.plan_descriptions.changes
-    assert_empty topology.plan_descriptions.commands
+    assert topology.apply_interface_descriptions(plan, confirmed: true).success?
+    assert_empty topology.plan_interface_descriptions.changes
+    assert_empty topology.plan_interface_descriptions.commands
   end
 
   def test_plan_requires_confirmation_and_rechecks_evidence
@@ -285,25 +286,25 @@ class TopologyTest < Minitest::Test
        description old uplink
       #
     CONFIG
-    topology = Net::Connector::Operations::Topology.new(device)
-    plan = topology.plan_descriptions
+    topology = Net::Connector::Topology.new(device)
+    plan = topology.plan_interface_descriptions
     assert_equal "old uplink", plan.changes.fetch(0).old_description
     assert_equal "To switch-a Te1/0/2", plan.changes.fetch(0).new_description
     assert_equal ["system-view", "interface Ten-GigabitEthernet1/0/1", "description To switch-a Te1/0/2",
                   "quit", "return", "dis cur", "save force"], plan.commands
 
-    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.apply(plan) }
+    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.apply_interface_descriptions(plan) }
     assert_equal :confirmation_required, error.code
     assert_nil device.script
 
     device.config_output = device.config_output.sub("old uplink", "changed by another admin")
-    error = assert_raises(Net::Connector::DeviceError) { topology.apply(plan, confirmed: true) }
+    error = assert_raises(Net::Connector::DeviceError) { topology.apply_interface_descriptions(plan, confirmed: true) }
     assert_equal :stale_plan, error.code
     assert_nil device.script
 
     device.config_output = device.config_output.sub("changed by another admin", "old uplink")
     device.on_execute = ->(_) { device.config_output = device.config_output.sub("old uplink", "To switch-a Te1/0/2") }
-    result = topology.apply(plan, confirmed: true)
+    result = topology.apply_interface_descriptions(plan, confirmed: true)
     assert result.success?
     assert_equal plan.commands, (result.steps.map { |step| step.command.text })
   end
@@ -317,8 +318,8 @@ class TopologyTest < Minitest::Test
        description old uplink
       !
     CONFIG
-    topology = Net::Connector::Operations::Topology.new(device)
-    result = topology.apply(topology.plan_descriptions, confirmed: true)
+    topology = Net::Connector::Topology.new(device)
+    result = topology.apply_interface_descriptions(topology.plan_interface_descriptions, confirmed: true)
     assert result.failure?
     assert_equal :description_unconfirmed, result.error.code
   end
@@ -326,7 +327,7 @@ class TopologyTest < Minitest::Test
   def test_invalid_and_ambiguous_neighbor_output_does_not_produce_a_plan
     device = Device.new(vendor: :h3c, neighbor_output: "unexpected output\n")
     error = assert_raises(Net::Connector::ParsingError) do
-      Net::Connector::Operations::Topology.new(device).neighbors
+      Net::Connector::Topology.new(device).neighbors
     end
     assert_equal :unrecognized_output, error.code
 
@@ -334,7 +335,7 @@ class TopologyTest < Minitest::Test
       "GE1/0/1 000f-e25d-ee91 GE1/0/2 switch-a\n" \
       "GE1/0/1 000f-e25d-ee92 GE1/0/3 switch-b\n"
     error = assert_raises(Net::Connector::ParsingError) do
-      Net::Connector::Operations::Topology.new(device).plan_descriptions
+      Net::Connector::Topology.new(device).plan_interface_descriptions
     end
     assert_equal :ambiguous_neighbor, error.code
   end
@@ -346,7 +347,7 @@ class TopologyTest < Minitest::Test
       GE1/0/3 000f-e25d-ee92 unexpected port format switch-b
     OUTPUT
     error = assert_raises(Net::Connector::ParsingError) do
-      Net::Connector::Operations::Topology.new(device).neighbors
+      Net::Connector::Topology.new(device).neighbors
     end
     assert_equal :unrecognized_output, error.code
 
@@ -356,7 +357,7 @@ class TopologyTest < Minitest::Test
       switch-a ethernet0/1 7425.8ae4.4f4c ethernet0/2
     OUTPUT
     error = assert_raises(Net::Connector::ParsingError) do
-      Net::Connector::Operations::Topology.new(device).neighbors
+      Net::Connector::Topology.new(device).neighbors
     end
     assert_equal :unrecognized_output, error.code
   end
@@ -369,7 +370,7 @@ class TopologyTest < Minitest::Test
         output = "System Name Local Interface Chassis ID Port ID\n#{prefix}unrecognized neighbor format with extra columns\n"
         device = Device.new(vendor: vendor, neighbor_output: output)
         error = assert_raises(Net::Connector::ParsingError) do
-          Net::Connector::Operations::Topology.new(device).neighbors
+          Net::Connector::Topology.new(device).neighbors
         end
         assert_equal :unrecognized_output, error.code
       end
@@ -385,11 +386,11 @@ class TopologyTest < Minitest::Test
        description old uplink
       #
     CONFIG
-    topology = Net::Connector::Operations::Topology.new(device)
-    plan = topology.plan_descriptions
+    topology = Net::Connector::Topology.new(device)
+    plan = topology.plan_interface_descriptions
     device.neighbor_output = device.neighbor_output.sub("000f-e25d-ee91", "000f-e25d-ee92")
 
-    error = assert_raises(Net::Connector::DeviceError) { topology.apply(plan, confirmed: true) }
+    error = assert_raises(Net::Connector::DeviceError) { topology.apply_interface_descriptions(plan, confirmed: true) }
 
     assert_equal :stale_plan, error.code
     assert_nil device.script
@@ -401,7 +402,7 @@ class TopologyTest < Minitest::Test
       second line"
     CONFIG
     error = assert_raises(Net::Connector::ParsingError) do
-      Net::Connector::Operations::Topology.new(device).descriptions
+      Net::Connector::Topology.new(device).interface_descriptions
     end
     assert_equal :unrecognized_output, error.code
   end
@@ -409,11 +410,11 @@ class TopologyTest < Minitest::Test
   def test_panos_complete_quoted_comment_is_readable_but_truncation_is_rejected
     prefix = "set network interface ethernet ethernet1/1 comment "
     device = Device.new(vendor: :palo_alto, neighbor_output: "", config_output: "#{prefix}\"uplink A\"\n")
-    topology = Net::Connector::Operations::Topology.new(device)
-    assert_equal({ "ethernet1/1" => "uplink A" }, topology.descriptions)
+    topology = Net::Connector::Topology.new(device)
+    assert_equal({ "ethernet1/1" => "uplink A" }, topology.interface_descriptions)
 
     device.config_output = "#{prefix}\"uplink A\n"
-    error = assert_raises(Net::Connector::ParsingError) { topology.descriptions }
+    error = assert_raises(Net::Connector::ParsingError) { topology.interface_descriptions }
     assert_equal :unrecognized_output, error.code
     assert_nil device.script
   end
@@ -423,7 +424,7 @@ class TopologyTest < Minitest::Test
       strategy = Net::Connector.vendor_class(vendor).profile.topology_strategy.new(nil)
       output = "#{strategy.neighbor_command}\nSystem Name Local Interface Chassis ID Port ID\n----------------\n#{prompt}"
       device = Device.new(vendor: vendor, neighbor_output: output)
-      assert_empty Net::Connector::Operations::Topology.new(device).neighbors
+      assert_empty Net::Connector::Topology.new(device).neighbors
     end
   end
 
@@ -432,13 +433,13 @@ class TopologyTest < Minitest::Test
       Local Interface Chassis ID Port ID System Name
       GE1/0/1 000f-e25d-ee91 GE1/0/2 switch-a
     OUTPUT
-    topology = Net::Connector::Operations::Topology.new(device)
-    error = assert_raises(Net::Connector::ParsingError) { topology.plan_descriptions }
+    topology = Net::Connector::Topology.new(device)
+    error = assert_raises(Net::Connector::ParsingError) { topology.plan_interface_descriptions }
     assert_equal :interface_missing, error.code
 
     device.config_output = "interface GigabitEthernet1/0/1\n description first\n#\n" \
       "interface GigabitEthernet1/0/1\n description second\n#\n"
-    error = assert_raises(Net::Connector::ParsingError) { topology.descriptions }
+    error = assert_raises(Net::Connector::ParsingError) { topology.interface_descriptions }
     assert_equal :ambiguous_description, error.code
   end
 
@@ -452,10 +453,10 @@ class TopologyTest < Minitest::Test
       set network interface ethernet ethernet1/2 comment "existing uplink"
       set network interface ethernet ethernet1/2 layer3 mtu 1500
     CONFIG
-    topology = Net::Connector::Operations::Topology.new(device)
-    assert_equal({ "ethernet1/1" => "", "ethernet1/2" => "existing uplink" }, topology.descriptions)
-    assert_equal "", topology.descriptions.fetch("ethernet1/1")
-    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.plan_descriptions }
+    topology = Net::Connector::Topology.new(device)
+    assert_equal({ "ethernet1/1" => "", "ethernet1/2" => "existing uplink" }, topology.interface_descriptions)
+    assert_equal "", topology.interface_descriptions.fetch("ethernet1/1")
+    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.plan_interface_descriptions }
     assert_equal :candidate_isolation_unavailable, error.code
   end
 end

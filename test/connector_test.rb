@@ -15,8 +15,8 @@ class ConnectorTest < Minitest::Test
                                                      transport: ConnectorFake.new)
       refute_empty klass.profile.config_commands
     end
-    assert_equal Net::Connector.vendor_class(:cisco_nxos), Net::Connector.vendor_class(:cisco_n9k)
-    assert_equal Net::Connector.vendor_class(:palo_alto), Net::Connector.vendor_class(:paloalto)
+    assert_raises(ArgumentError) { Net::Connector.vendor_class(:cisco_n9k) }
+    assert_raises(ArgumentError) { Net::Connector.vendor_class(:paloalto) }
   end
 
   def test_vendor_connectors_delegate_backup_operations
@@ -162,8 +162,8 @@ class ConnectorTest < Minitest::Test
       device = klass.new(host: "192.0.2.1", username: "admin", transport: transport, log_file: path,
                          log_level: :debug)
       interaction = Net::Connector::Interaction.new(/Token:\z/, "secret-token\n", sensitive: true)
-      assert device.execute("verify", interactions: [interaction]).success?
-      assert device.execute("show status").success?
+      assert device.execute_command("verify", interactions: [interaction]).success?
+      assert device.execute_command("show status").success?
       device.close
       log = File.binread(path)
       refute_includes log, "secret-token"
@@ -187,7 +187,7 @@ class ConnectorTest < Minitest::Test
       end
       device = klass.new(host: "192.0.2.1", username: "admin", password: "secret-password",
                          transport: transport, log_file: path, log_level: :debug)
-      assert device.execute("show status").success?
+      assert device.execute_command("show status").success?
       device.close
       log = File.read(path, encoding: Encoding::UTF_8)
       assert_equal 0o600, File.stat(path).mode & 0o777
@@ -198,9 +198,10 @@ class ConnectorTest < Minitest::Test
       assert_match(/登录成功，设备提示符：fw#/, log)
       assert_match(/下发命令：show status/, log)
       assert_match(/设备回显：/, log)
-      assert_match(/show status\nline one\nline two/, log)
+      output = log.lines.grep(/event=device_output.*phase=command.*output=/)
+      assert_equal(["show status", "line one", "line two", "fw#"], output.map { |line| line[/output="([^"]+)"/, 1] })
       assert_match(/命令回显结束，已收到设备提示符/, log)
-      assert_match(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} [+-]\d{2}:\d{2}\] INFO \[host=192\.0\.2\.1\] /, log)
+      assert_match(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} [+-]\d{2}:\d{2}\] INFO \[host=192\.0\.2\.1\] /, log)
       refute_includes log, '"status"'
       refute_includes log, "secret-password"
       refute File.exist?("#{path}.transcript")
@@ -222,7 +223,7 @@ class ConnectorTest < Minitest::Test
     end
     device = klass.new(host: "192.0.2.1", username: "admin", transport: transport,
                        logger: logger, log_level: :debug)
-    assert device.execute("show status").success?
+    assert device.execute_command("show status").success?
     device.close
     assert_equal ::Logger::INFO, logger.level
     assert_match(/\[host=192\.0\.2\.1\] 开始连接/, output.string)
@@ -246,9 +247,9 @@ class ConnectorTest < Minitest::Test
     end
     device = klass.new(host: "192.0.2.2", username: "admin", transport: transport,
                        logger: logger, log_level: :debug)
-    assert device.execute("show status").success?
+    assert device.execute_command("show status").success?
     device.close
-    assert_match(/\[host=192\.0\.2\.2\]\s+ready/, output.string)
+    assert_match(/\[host=192\.0\.2\.2\].*event=device_output.*command_id=1.*output=ready/, output.string)
   end
 
   def test_session_log_records_login_failure_without_credentials
@@ -280,7 +281,7 @@ class ConnectorTest < Minitest::Test
       end
       device = klass.new(host: "192.0.2.1", username: "admin", transport: transport,
                          log_file: path, log_level: :info)
-      assert device.execute("show status").success?
+      assert device.execute_command("show status").success?
       device.close
       log = File.read(path, encoding: Encoding::UTF_8)
       assert_match(/INFO \[host=192\.0\.2\.1\] 开始连接/, log)

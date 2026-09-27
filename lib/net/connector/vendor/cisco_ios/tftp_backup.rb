@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require_relative "../../operations/tftp/strategy"
+require_relative "../../device/tftp/strategy"
 
 module Net
   module Connector
     module CiscoIos
-      class TftpBackup < Operations::Tftp::Strategy
+      class TftpBackup < Tftp::Strategy
         # 在连接前拒绝当前厂商不支持的参数组合。
         def validate_options!(_target, source_file:, vrf: nil)
           raise ArgumentError, "Cisco IOS does not use source_file" unless source_file.nil?
@@ -28,7 +28,7 @@ module Net
         end
 
         # 检查设备回显是否确认 TFTP 传输完成。
-        def complete?(result)
+        def device_reported_complete?(result)
           completion_lines(result).any? do |line|
             copied_bytes?(line) || line.match?(/\A\[OK(?:\s*-\s*[1-9]\d*\s+bytes)?\]\z/i)
           end

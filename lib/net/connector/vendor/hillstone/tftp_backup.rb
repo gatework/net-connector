@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require_relative "../../operations/tftp/strategy"
+require_relative "../../device/tftp/strategy"
 
 module Net
   module Connector
     module Hillstone
-      class TftpBackup < Operations::Tftp::Strategy
+      class TftpBackup < Tftp::Strategy
         # 山石原生导出的配置文件使用 dat 扩展名。
         def self.file_extension = "dat"
 
@@ -31,7 +31,7 @@ module Net
         end
 
         # 检查设备回显是否确认 TFTP 传输完成。
-        def complete?(result)
+        def device_reported_complete?(result)
           !completion_line(result).nil?
         end
 

@@ -6,7 +6,7 @@ require_relative "batch"
 module Net
   module Connector
     module Netdisco
-      # v2 显式包装旧 Batch；成功策略与清单覆盖分开，默认 Batch JSON 不增加字段。
+      # 唯一的批量报告契约，分开呈现成功策略、清单覆盖和受控诊断。
       class Report
         extend Forwardable
         SUCCESS = %i[backed_up reported_uploaded].freeze
@@ -17,19 +17,14 @@ module Net
         attr_reader :batch, :policy, :duration_ms, :report_diagnostic
         def_delegators :@batch, *Batch.members, :success?, :status, :counts
 
-        # selected 必须使用带策略和覆盖信息的 v2；默认 strict 继续使用旧 schema。
-        def self.options(policy: :strict, schema: nil)
+        def self.validate_policy!(policy)
           raise ArgumentError, "success_policy must be strict or selected" unless %i[strict selected].include?(policy)
 
-          schema = policy == :selected ? 2 : 1 if schema.nil?
-          raise ArgumentError, "report_schema must be 1 or 2" unless schema.is_a?(Integer) && [1, 2].include?(schema)
-          raise ArgumentError, "selected success policy requires report schema 2" if policy == :selected && schema != 2
-
-          { policy: policy, schema: schema }.freeze
+          policy
         end
 
         def initialize(batch, policy: :strict, duration_ms: nil, report_diagnostic: nil)
-          self.class.options(policy: policy, schema: 2)
+          self.class.validate_policy!(policy)
           raise ArgumentError, "report requires a Batch" unless batch.instance_of?(Batch)
           unless duration_ms.nil? || (duration_ms.is_a?(Numeric) && duration_ms.real? && duration_ms.finite? && duration_ms >= 0)
             raise ArgumentError, "duration_ms must be nonnegative and finite"
@@ -42,7 +37,7 @@ module Net
           freeze
         end
 
-        # 旧 success?/status 委托给 Batch；新策略绝不把未知状态当作可忽略跳过。
+        # 严格完成情况与所选成功策略分别保留，未知状态不能当作可忽略跳过。
         def policy_success?
           return batch.success? if policy == :strict
           return false unless callback_errors.empty? && report_error.nil?
@@ -62,17 +57,17 @@ module Net
                           policy: policy, duration_ms: duration_ms, report_diagnostic: diagnostic)
         end
 
-        # 复用旧业务数据，但重新白名单化所有诊断字段，包括手工构造的旧 Batch。
+        # 手工构造的批次同样经过诊断白名单，不序列化任意异常内容。
         def summary
-          legacy = batch.summary
-          legacy.merge(
+          data = batch_summary
+          data.merge(
             schema_version: 2, policy: policy, policy_success: policy_success?, duration_ms: duration_ms,
             coverage: { complete: !outcomes.empty? && outcomes.all? { |item| ATTEMPTED.include?(item.status) },
                         attempted: outcomes.count { |item| ATTEMPTED.include?(item.status) },
                         skipped: outcomes.count { |item| !ATTEMPTED.include?(item.status) } },
-            devices: device_summaries(legacy.fetch(:devices)),
-            callback_errors: callback_errors.map { |entry| { host: entry[:host], error_type: Diagnostic.type(entry[:error_type]) } },
-            report_location: report_location, report_error: Diagnostic.type(report_error),
+            devices: device_summaries(data.fetch(:devices)),
+            callback_errors: callback_errors.map { |entry| { host: entry[:host], error_type: ErrorMetadata.type(entry[:error_type]) } },
+            report_location: report_location, report_error: ErrorMetadata.type(report_error),
             report_diagnostic: report_diagnostic&.to_h
           )
         end
@@ -80,6 +75,32 @@ module Net
         def inspect = "#<#{self.class} policy=#{policy} status=#{status} policy_success=#{policy_success?}>"
 
         private
+
+        # 生成可写入报告及供命令行展示的结构化摘要。
+        def batch_summary
+          {
+            mode: mode, status: status, started_at: started_at.iso8601, finished_at: finished_at.iso8601,
+            total: outcomes.size,
+            succeeded: outcomes.count(&:success?),
+            partial: outcomes.count(&:partial?),
+            failed: outcomes.count { |item| item.status == :failed },
+            skipped: outcomes.count(&:skipped?),
+            counts: counts,
+            callback_errors: callback_errors,
+            devices: outcomes.map do |item|
+              { host: item.device.host || item.device.source_ip, name: item.device.name,
+                vendor: item.device.vendor,
+                status: item.status, path: item.backup&.path,
+                bytes: item.backup.is_a?(Backup) ? item.backup.bytes : nil,
+                sha256: item.backup.is_a?(Backup) ? item.backup.sha256 : nil,
+                change: item.backup.is_a?(Backup) ? item.backup.change : nil,
+                previous_sha256: item.backup.is_a?(Backup) ? item.backup.previous_sha256 : nil,
+                started_at: item.started_at&.iso8601, finished_at: item.finished_at&.iso8601,
+                duration_ms: item.duration_ms,
+                error_code: item.error_code, error_type: item.error_type }
+            end
+          }
+        end
 
         def device_summaries(entries)
           entries.zip(outcomes).map do |entry, item|

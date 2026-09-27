@@ -200,7 +200,7 @@ class EngineBoundaryTest < Minitest::Test
       "replace-me" + ("a" * 4094) + "!" => "]" + ("a" * 4094) + "!"
     }
     examples.each do |output, expected|
-      created = session.error(Connector::DeviceError, "failed", phase: :command, output: output)
+      created = session.build_error(Connector::DeviceError, "failed", phase: :command, output: output)
       normalized = session.normalize_error(Connector::DeviceError.new("failed", output: output), phase: :command)
       [created, normalized].each do |error|
         assert_equal expected, error.output

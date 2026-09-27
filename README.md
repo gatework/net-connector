@@ -2,7 +2,7 @@
 
 `net-connector` 通过 SSH 或 Telnet 操作网络设备的命令行。它可以采集运行配置、保存私有备份、执行命令脚本、回答设备提示、记录脱敏会话日志，并在失败时返回结构化错误和已完成的步骤。
 
-代码按职责组织：`engine/` 管理会话、传输、脚本、结果和日志；`device/` 提供设备入口、档案、运行配置和接口名称处理；`vendor/<厂商>/` 保存各厂商的采集、TFTP 和拓扑规则；`operations/` 实现公共业务流程；`netdisco/` 负责清单和批量编排。相同规则直接复用，设计说明见[架构文档](docs/architecture.md)。用 `require "net/connector"` 加载设备 API，用 `require "net/connector/netdisco"` 加载 Netdisco 集成；厂商规则和 TextFSM 解析器按需加载。
+代码按职责组织：`engine/` 管理会话、传输、脚本、结果和日志；`device/` 集中设备入口、档案、配置采集/保存、备份和拓扑能力；`vendor/<厂商>/` 保存厂商差异；`storage/` 负责私有文件、路径锁和离线配置；`textfsm.rb` 提供唯一的 TextFSM 适配入口；`netdisco/` 负责清单和批量编排。每项设备能力的公开方法与实现放在一起，由 `Base` 组合，设计说明见[架构文档](docs/architecture.md)。用 `require "net/connector"` 加载设备 API，用 `require "net/connector/netdisco"` 加载 Netdisco 集成；厂商规则和 TextFSM 依赖按需加载。
 
 支持 Ruby 3.2 及以上版本和 POSIX 系统。SSH 调用本机 OpenSSH，Telnet 需要本机安装 `telnet` 并显式选择。主要依赖为 [`expect-pty`](https://rubygems.org/gems/expect-pty) 0.5.x 和 [`textfsm`](https://rubygems.org/gems/textfsm) 0.2.x。
 
@@ -33,7 +33,7 @@ require "net/connector"
 | `:huawei` | 华为 | `dis cur` | `save force` |
 | `:hillstone` | 山石 StoneOS | `show configuration running` | `save all` |
 
-兼容标识 `:cisco_n9k` 和 `:paloalto`。厂商连接器位于 `Net::Connector` 下，例如 `Net::Connector::H3cWireless::Connector`。
+厂商标识仅使用上表的规范名称。厂商连接器位于 `Net::Connector` 下，例如 `Net::Connector::H3cWireless::Connector`。
 
 ## 登录与本地备份
 
@@ -67,15 +67,19 @@ end
 
 示例会下发 `tftp 192.0.2.30 put flash:/startup.cfg`；可传入 `path: "site/switch.cfg"` 指定目标文件名。H3C 默认通过 `display startup` 查找保存配置；华为因型号差异需要显式指定 `source_file:`。Cisco IOS 使用交互式 `copy running-config tftp:`；Nexus 9000 默认使用 `vrf management`，可用 `vrf:` 覆盖。山石导出已保存的启动配置，Radware Alteon 生成 `.tgz` 并处理私钥及 `mansync` 提示，PAN-OS 使用固定的 `running-config.xml` 文件名。其他厂商默认使用 `<管理地址>.cfg`。
 
-只有设备回显确认传输完成，方法才返回 `TftpBackup(server:, path:, completed_at:)`。明确失败对应 `:transfer_failed`，缺少成功证据对应 `:transfer_unconfirmed`。本方法不读取服务器上的文件。TFTP 不加密配置数据，应限制在合适的管理网络中使用。
+只有设备回显确认传输完成，`tftp_backup` 才返回不可变的 `TftpReceipt`。回执直接包含 `server`、实际目标 `path`、`completed_at`、`configuration_kind`、`source_file`、`format`、`requested_path`、`verification` 和 `server_sha256`。明确失败对应 `:transfer_failed`，缺少成功证据对应 `:transfer_unconfirmed`。本方法不读取服务器上的文件。TFTP 不加密配置数据，应限制在合适的管理网络中使用。
 
-需要来源和格式时，调用 `device.tftp_backup_receipt(...)`，参数与旧入口相同。返回的不可变 `TftpReceipt` 包含原 `transfer`，以及 `configuration_kind`、`source_file`、`format`、`requested_path`、`actual_path`、`verification` 和 `server_sha256`。当前验证等级为 `:device_reported`，摘要为 `nil`。H3C 自动探测结果标为 `:startup`；H3C/华为显式文件标为 `:saved_file`，格式为 `:unknown`，不凭扩展名推断内容。山石未指定文件名时 `requested_path` 为 `nil`，`actual_path` 保留设备生成名称。
+回执的当前验证等级为 `:device_reported`，服务器摘要为 `nil`。H3C 自动探测结果标为 `:startup`；H3C/华为显式文件标为 `:saved_file`，格式为 `:unknown`，不凭扩展名推断内容。山石未指定文件名时 `requested_path` 为 `nil`，`path` 保留设备生成名称。
 
-内置策略先校验参数组合，再在同一次会话租约中完成源探测、上传、证据检查和收尾。上传已确认但日志或清理失败时抛出 `TftpCompletionError`，通过 `error.receipt` 和 `error.transfer` 保留完成事实。显式请求与实际路径不同返回 `:transfer_path_mismatch`；实际路径无法安全确认返回 `:transfer_path_unconfirmed`，此时回执的 `actual_path` 和 `transfer.path` 为 `nil`。这些错误不会自动重传；Fleet 保留上传事实并标为 `reported_with_error`。原 `TftpBackup` 的三个成员和构造方式不变。
+策略先校验参数组合，再在同一次会话租约中完成源探测、上传、证据检查和收尾。上传已确认但日志或清理失败时抛出 `TftpCompletionError`，通过 `error.receipt` 保留完成事实。显式请求与实际路径不同返回 `:transfer_path_mismatch`；实际路径无法安全确认返回 `:transfer_path_unconfirmed`，此时回执的 `path` 为 `nil`。这些错误不会自动重传；Fleet 保留上传事实并标为 `reported_with_error`。
 
 可运行[单设备示例](examples/tftp_backup.rb)。它从环境变量读取 `DEVICE_VENDOR`、`DEVICE_HOST`、`DEVICE_USERNAME`、`DEVICE_PASSWORD` 和 `TFTP_HOST`；`TFTP_SOURCE_FILE`、`TFTP_PATH`、`TFTP_VRF` 分别指定源文件、目标文件和设备 VRF。
 
 只需在内存中采集配置时，调用 `device.running_config`；它返回 `Result`，`result.value!` 返回清理后的文本，失败时抛出对应错误。
+
+配置采集统一由 `device/running_config` 提供，厂商差异位于 `vendor/<厂商>/running_config`。
+旧 `operations/running_config`、TFTP / 拓扑厂商转发路径及 `engine/base` 等设备转发入口已移除；
+自定义扩展请按[加载入口与迁移表](docs/architecture.md#加载入口与厂商策略)使用当前路径和常量。
 
 配置采集默认屏蔽日志和错误诊断中的配置正文，包括 debug/raw 日志和外部 logger；返回的配置、步骤输出和备份内容保持完整。调用方应按敏感数据保管这些业务结果。
 
@@ -100,7 +104,7 @@ interfaces = device.parse_config(template: "cisco_ios_running_config_interfaces.
 两种方法都返回由模板字段名组成的哈希数组；匹配不到记录时返回 `[]`。模板缺失或无效会抛出 `ParsingError`，设备命令失败则保留原始连接器错误。可用 `template:` 指定外部模板，或用 `template_dir:` 指定含 `index` 的模板目录。每次解析使用独立解析器，批量任务之间不共享状态。已有本地备份也可离线解析：
 
 ```ruby
-saved = Net::Connector::Operations::SavedConfig.new(directory: "/var/backups")
+saved = Net::Connector::Storage::SavedConfig.new(directory: "/var/backups")
 rows = saved.parse(host: "192.0.2.10", template: "/path/to/template.textfsm")
 ```
 
@@ -153,17 +157,37 @@ if result.failure?
 end
 ```
 
-`execute` 执行一条命令；`execute_script` 接收 `Script` 或命令数组；`Script.load(path)` 读取脚本文件。所有命令在设备 I/O 前校验，后续步骤失败时仍保留已完成结果，库不会自动重放命令。`save_config` 显式执行厂商保存命令，普通脚本不会自动保存。
+`execute_command` 执行一条命令；`execute_script` 接收 `Script` 或命令数组；`Script.load(path)` 读取脚本文件。所有命令在设备 I/O 前校验，后续步骤失败时仍保留已完成结果，库不会自动重放命令。`save_config` 显式执行厂商保存命令，普通脚本不会自动保存。
 
 创建连接器时可设置 `max_script_output_bytes: 8 * 1024 * 1024`，限制每个脚本及其追加查询累计收到的原始响应字节；默认 `nil` 保持原有完整输出行为。达到上限后不再发送下一命令，当前响应超过上限时保留刚完成的步骤并返回 `ScriptOutputLimitExceeded`（`code: :script_output_limit_exceeded`）。命令可能已经执行，不会自动重试。原有 `max_output_bytes` 继续限制单次读取响应；累计预算不是进程内存上限，详细计数规则见架构文档。
 
-厂商档案处理分页和常见确认提示。特定命令可给 `execute` 传入 `interactions: [Net::Connector::Interaction.new(/Token:\z/, ->(_) { "value\n" }, sensitive: true)]`。敏感命令及交互会暂停回显日志并在错误中脱敏；若普通命令文本包含秘密，必须显式标记 `sensitive: true`。
+厂商档案处理分页和常见确认提示。特定命令可给 `execute_command` 传入 `interactions: [Net::Connector::Interaction.new(/Token:\z/, ->(_) { "value\n" }, sensitive: true)]`。敏感命令及交互会暂停回显日志并在错误中脱敏；若普通命令文本包含秘密，必须显式标记 `sensitive: true`。
 
-命令文本安全、输出可能包含秘密时，使用 `device.execute("show running-config", output_sensitive: true)`。该标记保护响应及其准备、后处理、回调异常，保留安全命令文字；不会改写 `Result` 的业务输出。`running_config` 和 `collect_config` 自动启用此保护，手写脚本的默认值仍为 `false`。
+命令文本安全、输出可能包含秘密时，使用 `device.execute_command("show running-config", output_sensitive: true)`。该标记保护响应及其准备、后处理、回调异常，保留安全命令文字；不会改写 `Result` 的业务输出。`running_config` 自动启用此保护，手写脚本的默认值仍为 `false`。
 
 ## 连接与日志设置
 
-`Configuration` 支持 `protocol: :ssh`（默认）或 `:telnet`，以及端口、超时、输出大小、`log_file`、`logger`、`log_format`、`log_level` 和 `known_hosts` 等参数。文本日志使用 Ruby 标准库 `Logger`，记录本地时间、级别、设备标记和中文事件。`:info` 记录连接、登录、命令和 TFTP 结果；`:debug` 还记录脱敏回显与耗时；`:warn`、`:error` 只保留相应级别。`:raw` 文件只写设备字节，不写事件元数据。可注入 `logger: Rails.logger`，连接器不会关闭或修改调用方的日志器。
+`Configuration` 支持 `protocol: :ssh`（默认）或 `:telnet`，以及端口、超时、输出大小、`log_file`、`logger`、`log_format`、`log_level` 和 `known_hosts` 等参数。文本日志使用 Ruby 标准库 `Logger`，记录毫秒时间、级别、设备、中文说明和完整事件字段。`:info` 包括连接、登录、命令响应、脚本处理和 TFTP 结果；`:debug` 增加逐行脱敏回显；`:warn`、`:error` 只保留相应级别。`:raw` 文件只写经过现有敏感保护的设备字节，不添加事件字段。
+
+每次连接生成 `session_id`，每条实际发送的命令分配 `command_id`；日志还包含 `operation`、`phase`、脚本 `source` / `line`、`duration_ms`、`response_bytes` 和失败 `code`。`command_complete` 的 `response_received` 只表示收到了提示符；`operation_complete` 覆盖脚本准备、执行及后处理，不替代 TFTP 服务端核验或设备持久化证据。普通自定义事件使用 `device.log_event("audit", level: :info, count: 2)`。
+
+可注入 `logger: Rails.logger` 或普通 `Logger`。有效级别取 `log_level` 与调用方**当前**级别中较严格的一项；连接器不修改它的级别、formatter 或 progname，也不关闭它。消息是已脱敏且冻结的 `Net::Connector::Log::Event`，`to_s` 供文本显示，`to_h` 供应用 formatter 输出 JSON：
+
+```ruby
+require "net/connector"
+require "json"
+require "logger"
+require "time"
+
+logger = Logger.new($stdout)
+logger.formatter = lambda do |severity, time, program, message|
+  fields = message.is_a?(Net::Connector::Log::Event) ? message.to_h : { message: message.to_s }
+  "#{JSON.generate(time: time.iso8601(3), severity: severity, program: program, **fields)}\n"
+end
+# 将 logger: logger 传给 Net::Connector.build / open。
+```
+
+事件字段接受字符串、符号、整数、有限浮点数、布尔和 nil；复杂对象统一隐藏，不展开对象内容。事件名、字段名和值经过校验/脱敏，会话与命令标识不可由自定义字段覆盖。敏感命令或配置处理期间，自定义事件的名称和载荷整体隐藏，避免钩子把未登记的配置秘密写进日志。更多边界见[架构文档](docs/architecture.md)。
 
 主机密钥策略默认为 `:strict`；`:accept_new` 接受首次连接的密钥；`:replace` 需要显式 `known_hosts` 文件。`telnet_fallback` 和 `legacy_ssh` 默认关闭，只在已识别的连接失败时使用。外部命令以参数数组执行，不经 shell。Telnet 不提供 SSH 加密，只应在可信管理网络启用。设备授权和变更审批由调用方负责。
 
@@ -171,9 +195,9 @@ end
 
 `Net::Connector::Netdisco` 读取并验证完整清单，再将支持的记录映射到连接器，使用有上限的工作线程执行备份。Netdisco 只提供清单字段；设备凭据来自环境变量或调用方提供的解析器。清单会在连接任何设备前完成校验；不支持、被过滤、重复、缺少凭据、失败，以及保存成功但关闭失败的结果分别保留。
 
-每次 `Client#devices` 默认限制单响应 16 MiB、累计响应 128 MiB、去重前 100,000 条记录、10,000 页和 300 秒总期限。认证、分页及兼容查询共用这些预算；默认 HTTP 客户端逐块计数，超限会关闭连接并抛出带稳定 `code` 的 `Client::Error`，Fleet 不会执行半份清单。这些默认值是可调整的设计起点，不是实测容量。旧 `requester: ->(uri, request)` 仍可使用，但只能在回调返回后检查正文和期限，回调自身的阻塞及内存用量由注入方控制。
+每次 `Client#devices` 默认限制单响应 16 MiB、累计响应 128 MiB、去重前 100,000 条记录、10,000 页和 300 秒总期限。认证、分页及兼容查询共用这些预算；默认 HTTP 客户端逐块计数，超限会关闭连接并抛出带稳定 `code` 的 `Client::Error`，Fleet 不会执行半份清单。这些默认值是可调整的设计起点，不是实测容量。可注入 `requester: ->(uri, request)`；该回调只能在回调返回后检查正文和期限，回调自身的阻塞及内存用量由注入方控制。
 
-推荐使用 HTTPS，标准证书验证保持开启。为兼容既有部署，`allow_insecure_http` 默认仍为 `true`；设为 `false` 可在发请求前拒绝 HTTP，ENV 中对应 `NETDISCO_ALLOW_INSECURE_HTTP=false`。HTTP 会明文传输登录凭据和 API key，迁移时应先提供可验证的 HTTPS 端点。
+推荐使用 HTTPS，标准证书验证保持开启。`allow_insecure_http` 默认为 `true`；设为 `false` 可在发请求前拒绝 HTTP，ENV 中对应 `NETDISCO_ALLOW_INSECURE_HTTP=false`。HTTP 会明文传输登录凭据和 API key，迁移时应先提供可验证的 HTTPS 端点。
 
 `Fleet#plan_backup` 和 `Fleet#plan_tftp_backup` 从同一份清单生成计划。把计划传给 `backup_all(plan:)` 或 `tftp_backup_all(plan:)`，可使预览与执行选择同一批设备；计划与清单不符时会拒绝执行。单台设备异常或结果回调失败不会阻止其他设备。`batch.summary` 包含总数、成功、失败、部分成功、跳过、具体状态和逐台结果。部分成功包括已保存但关闭失败，以及本地文件已替换但目录同步或收尾失败；后者保留 backup 并标为 `saved_with_error`。TFTP 的 `reported_uploaded` 仅代表设备报告上传，不代表服务器文件已核验。
 
@@ -181,9 +205,9 @@ end
 
 每批默认写入私有 JSON 报告，路径见 `batch.report_location`。调用方如有数据库仓储，可传 `ResultStore::Database.new(repository: YourModel)`；仓储需实现 `create!(attributes)`。`result_store: nil` 表示由调用方自行持久化。报告失败保留在 `batch.report_error`，同时使 `batch.success?` 为假。若报告已替换但目录同步失败，仍保留位置；离线 `--export --output` 遇到同类错误返回 2，并说明文件已经提交。
 
-默认仍返回原 `Batch` 和原 JSON 字段。显式传 `report_schema: 2` 可获得 `Netdisco::Report`，通过 `report.batch` 访问原批次；`success?` 和 `status` 仍保留严格语义。新报告增加 `policy`、`policy_success`、清单覆盖和受控诊断。任务耗时使用单调时钟，UTC 开始/结束时间独立保留；墙钟调整不会产生负的设备耗时。已有批次可用 `batch.report(policy: :selected)` 创建 v2 视图，不会再次执行设备或重写已有报告。
+Fleet 统一返回 `Netdisco::Report`，JSON 的 `schema_version` 固定为 `2`。报告包含 `policy`、`policy_success`、清单覆盖和受控诊断；`success?` / `status` 表示严格完成情况，`policy_success?` 表示所选成功策略。任务耗时使用单调时钟，UTC 开始/结束时间独立保留。`report.batch` 是原始执行快照；手工构造的 Batch 可用 `batch.build_report(policy: :selected)` 生成报告，不会再次执行设备或重写文件。
 
-`success_policy: :selected` 显式使用 v2：至少一台设备成功，其他记录只因 `filtered` 或 `sample_limit` 跳过，而且没有部分成功、回调或报告错误时，`report.policy_success?` 才为真。缺少凭据、重复地址、无效地址、未知厂商、目标冲突和未知状态均会阻止成功。`coverage.complete` 只表示每条清单记录都已尝试任务；失败任务也计入尝试，不能据此判断配置已保存。所有设备成功与否仍单独查看 `policy_success` 和逐台结果。自定义 `ResultStore#write(result, directory:)` 签名保持；选择 v2 时传入 Report，其 `summary` 为新格式。
+`success_policy: :selected` 要求至少一台设备成功，其他记录只因 `filtered` 或 `sample_limit` 跳过，而且没有部分成功、回调或报告错误。缺少凭据、重复地址、无效地址、未知厂商、目标冲突和未知状态均会阻止成功。`coverage.complete` 只表示每条清单记录都已尝试任务；失败任务也计入尝试，不能据此判断配置已保存。自定义 `ResultStore#write(report, directory:)` 始终接收 Report，并通过 `summary` 获取统一 JSON 结构。
 
 ```sh
 export NETDISCO_URL=https://netdisco.example/netdisco
@@ -250,11 +274,11 @@ net-connector-backup --config config.yml --tftp --all
 net-connector-backup --config config.yml --export 192.0.2.7 --output ./exports/device.cfg
 ```
 
-`--plan` 只拉取并验证清单；`--host` 选择一个管理地址；`--tftp` 默认每厂商最多选择五台，`--all` 选择所有就绪设备。本地备份默认选择所有就绪设备，可用 `--limit-per-vendor` 限制。`--show-config` 只输出有效的非敏感设置，不访问 Netdisco。CLI 会拒绝未知 YAML 字段、Ruby 对象标签及配置中的凭据。`--export IP` 离线读取已有 `<IP>.txt`，或唯一匹配的旧版 `<设备名>-<IP>.txt`；默认原样写到标准输出，指定 `--output` 后以 `0600` 权限原子写文件。导出的配置仍是敏感数据。
+`--plan` 只拉取并验证清单；`--host` 选择一个管理地址；`--tftp` 默认每厂商最多选择五台，`--all` 选择所有就绪设备。本地备份默认选择所有就绪设备，可用 `--limit-per-vendor` 限制。`--show-config` 只输出有效的非敏感设置，不访问 Netdisco。CLI 会拒绝未知 YAML 字段、Ruby 对象标签及配置中的凭据。`--export IP` 只离线读取规范化管理地址对应的 `<IP>.txt`；默认原样写到标准输出，指定 `--output` 后以 `0600` 权限原子写文件。导出的配置仍是敏感数据。
 
-CLI 的计划与批次摘要使用 JSON。默认 `--success-policy strict` 保留原规则：非空清单且全部成功、回调及报告正常时为 `0`；空清单或有跳过、部分成功、失败时为 `1`；清单或配置错误为 `2`。`--host` 未在清单中找到也返回 `2`。由于其他清单记录会标记为过滤，默认单主机备份成功时批次退出码仍可能是 `1`；应查看 JSON 中的 `succeeded`、`skipped` 和逐台 `status`。
+CLI 的计划与批次摘要使用 JSON。默认 `--success-policy strict` 使用严格规则：非空清单且全部成功、回调及报告正常时为 `0`；空清单或有跳过、部分成功、失败时为 `1`；清单或配置错误为 `2`。`--host` 未在清单中找到也返回 `2`。由于其他清单记录会标记为过滤，默认单主机备份成功时批次退出码仍可能是 `1`；应查看 JSON 中的 `succeeded`、`skipped` 和逐台 `status`。
 
-显式使用 `--success-policy selected` 后，CLI 按上述 selected 规则决定退出码，并自动输出/存储 v2 报告，保留 `status: incomplete` 与跳过计数，另列 `policy_success`。例如 `net-connector-backup --config config.yml --host 192.0.2.7 --success-policy selected`。仅想增加诊断时使用 `--report-schema 2`，成功策略仍为 strict；selected 不能配合 schema 1。策略和报告版本由本次 CLI/API 参数指定，不改变已批准的清单选择，也不触发重试。
+显式使用 `--success-policy selected` 后，CLI 按上述 selected 规则决定退出码，保留严格的 `status: incomplete` 与跳过计数，另列 `policy_success`。例如 `net-connector-backup --config config.yml --host 192.0.2.7 --success-policy selected`。成功策略由本次 CLI/API 参数指定，不改变已批准的清单选择，也不触发重试。
 
 小范围现场试运行可用[本地批量示例](examples/netdisco_backup.rb)，默认每厂商最多三台；`NET_CONNECTOR_SAMPLE_PER_VENDOR` 可设为 1 至 5。设备发起 TFTP 上传可用[批量 TFTP 示例](examples/netdisco_tftp_backup.rb)，默认每厂商最多五台；`NET_CONNECTOR_ALL=1` 才选择全部就绪设备，全量任务默认并发 50。`NET_CONNECTOR_CONCURRENCY` 可覆盖并发数。两类示例将结果和日志写入唯一的 `examples/backups/<UTC 时间戳>-<后缀>/` 目录，该目录不纳入 Git。
 
@@ -262,9 +286,8 @@ CLI 的计划与批次摘要使用 JSON。默认 `--success-policy strict` 保�
 
 批量 TFTP 可用 `NET_CONNECTOR_<VENDOR>_TFTP_SOURCE_FILE` 指定单厂商源文件。`NET_CONNECTOR_H3C_TFTP_SOURCE_FILE` 与 `NET_CONNECTOR_H3C_WIRELESS_TFTP_SOURCE_FILE` 可分别覆盖 H3C 设备的自动发现结果；华为使用 `NET_CONNECTOR_HUAWEI_TFTP_SOURCE_FILE`。源文件是设备上的路径，需符合连接器校验规则。
 
-本地配置备份写到 `<目录>/<IP>.txt`，IPv6 的 `:` 转成 `_`。设备改名不改变文件名或比较基线。若规范文件不存在，唯一匹配的旧版 `<设备名>-<IP>.txt` 可作比较基线但不会被改写；匹配多个旧文件时会明确失败。规范文件优先，符号链接和非普通文件会被拒绝。文件原子替换为 `0600`，新目录权限为 `0700`。批次在当前进程执行，需要定时任务或持久队列时由调用方安排；失败命令不会自动重试。
+本地配置备份写到 `<目录>/<IP>.txt`，IPv6 的 `:` 转成 `_`。设备改名不改变文件名或比较基线；只读取该规范路径，缺失时创建新备份。其他名称的文件不参与查找或哈希比较。Fleet 和离线读取拒绝符号链接及非普通文件。文件原子替换为 `0600`，新目录权限为 `0700`。批次在当前进程执行，需要定时任务或持久队列时由调用方安排；失败命令不会自动重试。
 
-同批次的旧文件目录最多扫描一次，规范文件全命中时不扫描；新批次重建索引。索引只保留文件名和身份元数据，读取时再次核验；旧文件在快照后消失、替换或修改会返回 `SavedConfigChanged`（`code: :saved_config_changed`），该设备不继续采集。批次中新出现的旧名称文件到下一批才可见，规范文件始终优先。
 
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |

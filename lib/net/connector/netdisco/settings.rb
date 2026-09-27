@@ -164,12 +164,6 @@ module Net
           options.freeze
         end
 
-        # 兼容原入口；Fleet 传入本批策略，独立调用则读取当前策略和当前秘密。
-        def credentials_for(device, policy: snapshot(mode: :backup))
-          credentials = device_credentials_for(device)
-          policy.connection_options(device.vendor).merge(credentials) if credentials
-        end
-
         def device_credentials_for(device)
           prefix = "NET_CONNECTOR_#{device.vendor.to_s.upcase}_"
           username = secret_value(prefix + "USERNAME") || secret_value("NET_CONNECTOR_DEVICE_USERNAME")

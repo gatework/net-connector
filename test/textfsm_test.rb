@@ -3,7 +3,7 @@
 require "minitest/autorun"
 require "tmpdir"
 require_relative "../lib/net/connector"
-require_relative "../lib/net/connector/operations/saved_config"
+require_relative "../lib/net/connector/storage/saved_config"
 require_relative "support/fake_transport"
 
 class TextfsmTest < Minitest::Test
@@ -36,8 +36,8 @@ class TextfsmTest < Minitest::Test
     assert_equal expected, device.parse_config(template: template)
 
     Dir.mktmpdir do |directory|
-      File.binwrite(File.join(directory, "edge-192.0.2.1.txt"), config)
-      saved = Net::Connector::Operations::SavedConfig.new(directory: directory)
+      File.binwrite(File.join(directory, "192.0.2.1.txt"), config)
+      saved = Net::Connector::Storage::SavedConfig.new(directory: directory)
       assert_equal expected, saved.parse(host: "192.0.2.1", template: template)
     end
   ensure
@@ -54,18 +54,18 @@ class TextfsmTest < Minitest::Test
         Start
           ^${NAME}\s+${STATE}$$ -> Record
       FSM
-      parser = Net::Connector::Operations::ParseOutput.new
+      parser = Net::Connector::TextFSM.new
       assert_equal [{ "NAME" => "port1", "STATE" => "up" }], parser.call("port1 up\n", template: template)
       assert_empty parser.call("other output\n", template: template)
       assert_equal [{ "NAME" => "port1", "STATE" => "up" }],
                    parser.call("\e[32mport1 up\e[0m\r\n", template: template)
 
       File.write(File.join(directory, "index"), "Template, Vendor, Command\nstatus.textfsm, h3c, display status$\n")
-      custom = Net::Connector::Operations::ParseOutput.new(template_dir: directory)
+      custom = Net::Connector::TextFSM.new(template_dir: directory)
       assert_equal [{ "NAME" => "port1", "STATE" => "up" }],
                    custom.call("port1 up\n", vendor: :h3c, command: "display status")
       File.write(File.join(directory, "invalid_index"), "Vendor, Command\nh3c, display status\n")
-      invalid = Net::Connector::Operations::ParseOutput.new(template_dir: directory, index: "invalid_index")
+      invalid = Net::Connector::TextFSM.new(template_dir: directory, index: "invalid_index")
       error = assert_raises(Net::Connector::ParsingError) do
         invalid.call("port1 up\n", vendor: :h3c, command: "display status")
       end
@@ -88,7 +88,7 @@ class TextfsmTest < Minitest::Test
         Start
           ^${NAME} -> Error "unexpected input"
       FSM
-      parser = Net::Connector::Operations::ParseOutput.new
+      parser = Net::Connector::TextFSM.new
       error = assert_raises(Net::Connector::ParsingError) do
         parser.call("private-password\n", template: template)
       end
@@ -107,7 +107,7 @@ class TextfsmTest < Minitest::Test
   end
 
   def test_parser_does_not_share_textfsm_state_between_threads
-    parser = Net::Connector::Operations::ParseOutput.new
+    parser = Net::Connector::TextFSM.new
     results = (1..12).map do |index|
       Thread.new do
         parser.call("GigabitEthernet0/#{index} 192.0.2.#{index} YES manual up up\n",

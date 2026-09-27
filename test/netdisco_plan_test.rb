@@ -85,12 +85,10 @@ class NetdiscoPlanTest < Minitest::Test
     assert_equal "192.0.2.1.cfg", strategy.new(Struct.new(:host).new(device.host)).default_path(nil)
   end
 
-  def test_legacy_strategy_without_class_naming_keeps_the_default_filename
-    connector_class = Net::Connector.vendor_class(:h3c)
-    profile = Struct.new(:tftp_strategy).new(Class.new)
-    device = Netdisco::Device.from_row({ "ip" => "192.0.2.1", "name" => "edge", "vendor" => "H3C" },
-                                       rules: Netdisco::Rules.new)
-
-    connector_class.stub(:profile, profile) { assert_equal "edge-192.0.2.1.cfg", device.tftp_filename }
+  def test_strategy_must_declare_its_filename_contract
+    strategy = Class.new(Net::Connector::H3c::TftpBackup)
+    strategy.singleton_class.undef_method(:filename)
+    assert_raises(ArgumentError) { Net::Connector::Profile.new(tftp_strategy: strategy) }
   end
+
 end

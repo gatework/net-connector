@@ -202,7 +202,7 @@ class NetdiscoSettingsTest < Minitest::Test
       assert_equal 2048, policy.connection_options.fetch(:max_script_output_bytes)
       env["NET_CONNECTOR_DEVICE_PASSWORD"] = "second"
       device = Netdisco::Device.from_row(rows.first, rules: policy.rules)
-      assert_equal "second", settings.credentials_for(device).fetch(:password)
+      assert_equal "second", settings.device_credentials_for(device).fetch(:password)
       status, output, error = cli(env, ["--config", path, "--show-config", "--concurrency", "5", "--limit-per-vendor", "1",
                                        "--max-script-output-bytes", "4096"])
       assert_equal 0, status, error

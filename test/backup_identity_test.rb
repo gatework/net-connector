@@ -5,19 +5,19 @@ require "tmpdir"
 require "stringio"
 require "digest"
 require_relative "../lib/net/connector/netdisco"
-require_relative "../lib/net/connector/operations/saved_config"
+require_relative "../lib/net/connector/storage/saved_config"
 require_relative "support/fake_transport"
 
 class BackupIdentityTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
-  SavedConfig = Net::Connector::Operations::SavedConfig
+  SavedConfig = Net::Connector::Storage::SavedConfig
   CONFIG = "sysname sw\ninterface GigabitEthernet1/0/1\n#\n[sw]"
 
   def fleet(client, config: CONFIG, **options)
     Netdisco::Fleet.new(client: client, settings: Netdisco::Settings.new(env: {}), result_store: nil,
                         credentials: ->(_) { { username: "backup" } },
                         connector_factory: ->(device, settings) {
-                          device.connector(**settings, transport: ConnectorFake.new("[sw]", config))
+                          device.build_connector(**settings, transport: ConnectorFake.new("[sw]", config))
                         }, **options)
   end
 
@@ -28,7 +28,7 @@ class BackupIdentityTest < Minitest::Test
   # 新增的持久路径锁是文件协议的一部分；仅排除当前目标的这一项，其他多余文件仍会失败。
   def backup_entries(directory, host: "192.0.2.1")
     path = File.join(directory, SavedConfig.filename(host))
-    Dir.children(directory) - [File.basename(Net::Connector::Operations::BackupLock.lock_path(path))]
+    Dir.children(directory) - [File.basename(Net::Connector::Storage::BackupLock.lock_path(path))]
   end
 
   def test_renaming_inventory_keeps_one_backup_and_its_change_baseline
@@ -70,64 +70,28 @@ class BackupIdentityTest < Minitest::Test
     end
   end
 
-  def test_unique_legacy_backup_is_an_unchanged_baseline_without_being_modified
+
+
+
+  def test_noncanonical_names_are_not_read_or_used_as_a_change_baseline
     Dir.mktmpdir do |directory|
-      legacy = File.join(directory, "old-name-192.0.2.1.txt")
-      File.binwrite(legacy, CONFIG)
+      other = File.join(directory, "old-name-192.0.2.1.txt")
+      File.binwrite(other, CONFIG)
+      saved = SavedConfig.new(directory: directory)
+      assert_nil saved.find("192.0.2.1", required: false)
+      assert_raises(Errno::ENOENT) { saved.read("192.0.2.1") }
       changes = []
-      batch = fleet(client).backup_all(directory: directory, on_change: ->(outcome) { changes << outcome })
-      assert batch.success?, batch.outcomes.inspect
-
-      backup = batch.outcomes.first.backup
-      assert_equal :unchanged, backup.change
-      assert_equal Digest::SHA256.hexdigest(CONFIG), backup.previous_sha256
-      assert_equal CONFIG, File.binread(legacy)
-      assert_equal CONFIG, File.binread(File.join(directory, "192.0.2.1.txt"))
-      assert_equal 0o600, File.stat(backup.path).mode & 0o777
-      assert_empty changes
-      assert_equal backup.path, SavedConfig.new(directory: directory).find("192.0.2.1")
+      result = fleet(client).backup_all(directory: directory, on_change: ->(item) { changes << item.backup.change })
+      assert result.success?
+      assert_equal :created, result.outcomes.first.backup.change
+      assert_nil result.outcomes.first.backup.previous_sha256
+      assert_equal [:created], changes
+      assert_equal CONFIG, File.binread(other)
+      assert_equal CONFIG, saved.read("192.0.2.1")
     end
   end
 
-  def test_unique_legacy_backup_reports_changed_against_old_contents_and_preserves_them
-    Dir.mktmpdir do |directory|
-      legacy = File.join(directory, "old-name-192.0.2.1.txt")
-      File.binwrite(legacy, "old configuration\n")
-      changes = []
-      batch = fleet(client).backup_all(directory: directory, on_change: ->(outcome) { changes << outcome.backup.change })
-      assert batch.success?, batch.outcomes.inspect
-
-      backup = batch.outcomes.first.backup
-      assert_equal :changed, backup.change
-      assert_equal Digest::SHA256.hexdigest("old configuration\n"), backup.previous_sha256
-      assert_equal "old configuration\n", File.binread(legacy)
-      assert_equal CONFIG, File.binread(File.join(directory, "192.0.2.1.txt"))
-      assert_equal [:changed], changes
-      assert_equal :changed, batch.summary.fetch(:devices).first.fetch(:change)
-    end
-  end
-
-  def test_ambiguous_legacy_backups_fail_before_credentials_and_device_io
-    Dir.mktmpdir do |directory|
-      %w[first second].each { |name| File.binwrite(File.join(directory, "#{name}-192.0.2.1.txt"), name) }
-      calls = []
-      collector = fleet(client, credentials: ->(_) { calls << :credentials; { username: "backup" } },
-                        connector_factory: ->(*) { calls << :connector; raise "unexpected I/O" })
-      batch = collector.backup_all(directory: directory)
-
-      refute batch.success?
-      assert_equal :failed, batch.outcomes.first.status
-      assert_equal "ArgumentError", batch.outcomes.first.error_type
-      assert_nil batch.outcomes.first.backup
-      assert_empty calls
-      assert_equal %w[first-192.0.2.1.txt second-192.0.2.1.txt], backup_entries(directory).sort
-      %w[first second].each { |name| assert_equal name, File.binread(File.join(directory, "#{name}-192.0.2.1.txt")) }
-      error = assert_raises(ArgumentError) { SavedConfig.new(directory: directory).find("192.0.2.1") }
-      assert_match(/multiple saved configurations/, error.message)
-    end
-  end
-
-  def test_canonical_backup_wins_over_multiple_legacy_files
+  def test_only_canonical_files_are_used_even_when_other_names_contain_the_address
     Dir.mktmpdir do |directory|
       %w[first second].each { |name| File.binwrite(File.join(directory, "#{name}-192.0.2.1.txt"), name) }
       canonical = File.join(directory, "192.0.2.1.txt")
@@ -142,7 +106,7 @@ class BackupIdentityTest < Minitest::Test
     end
   end
 
-  def test_invalid_canonical_file_is_not_replaced_or_bypassed_by_legacy
+  def test_invalid_canonical_file_is_rejected_before_credentials_or_device_io
     [:symlink, :dangling_symlink, :directory].each do |kind|
       Dir.mktmpdir do |directory|
         legacy = File.join(directory, "old-name-192.0.2.1.txt")
@@ -168,33 +132,12 @@ class BackupIdentityTest < Minitest::Test
     end
   end
 
-  def test_invalid_legacy_file_is_not_used_as_a_baseline
-    [:symlink, :directory].each do |kind|
-      Dir.mktmpdir do |directory|
-        legacy = File.join(directory, "old-name-192.0.2.1.txt")
-        if kind == :symlink
-          source = File.join(directory, "source")
-          File.binwrite(source, "private contents")
-          File.symlink(source, legacy)
-        else
-          Dir.mkdir(legacy)
-        end
-        assert_raises(ArgumentError) { SavedConfig.new(directory: directory).find("192.0.2.1") }
-        calls = []
-        batch = fleet(client, connector_factory: ->(*) { calls << :connector }).backup_all(directory: directory)
-        refute batch.success?, kind
-        assert_equal "ArgumentError", batch.outcomes.first.error_type
-        assert_empty calls
-        refute File.exist?(File.join(directory, "192.0.2.1.txt"))
-      end
-    end
-  end
 
-  def test_failed_collection_preserves_legacy_and_creates_no_canonical_file
+  def test_failed_collection_preserves_unrelated_files_and_creates_no_backup
     Dir.mktmpdir do |directory|
       legacy = File.join(directory, "old-name-192.0.2.1.txt")
       File.binwrite(legacy, "old configuration")
-      factory = ->(device, settings) { device.connector(**settings, transport: ConnectorFake.new("[sw]", :timeout)) }
+      factory = ->(device, settings) { device.build_connector(**settings, transport: ConnectorFake.new("[sw]", :timeout)) }
       batch = fleet(client, connector_factory: factory).backup_all(directory: directory)
 
       refute batch.success?
@@ -204,8 +147,8 @@ class BackupIdentityTest < Minitest::Test
     end
   end
 
-  def test_cli_exports_canonical_and_unique_legacy_files_without_inventory
-    ["192.0.2.1.txt", "old-name-192.0.2.1.txt"].each do |filename|
+  def test_cli_exports_canonical_files_without_inventory
+    ["192.0.2.1.txt"].each do |filename|
       Dir.mktmpdir do |directory|
         File.binwrite(File.join(directory, filename), CONFIG)
         output = StringIO.new

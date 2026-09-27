@@ -56,7 +56,7 @@ module Net
           return command unless /\A[ \t]*rule[ \t]+XXX[ \t]+append\b/i.match?(command.text)
 
           rule_id = execution.context[:rule_id]
-          raise execution.failure("new rule ID has not been acquired") unless rule_id
+          raise execution.build_error("new rule ID has not been acquired") unless rule_id
 
           command.with_text(command.text.sub(/XXX/i, rule_id))
         end
@@ -65,9 +65,9 @@ module Net
         def after_command(command, _response, execution)
           return unless /\A[ \t]*rule[ \t]+pass\b/i.match?(command.text)
 
-          response = execution.query("dis this")
+          response = execution.execute_command("dis this")
           rule_id = response.raw[/rule\s+(\d+)\s+pass[^\n]+\n\s*#/i, 1]
-          raise execution.failure("device did not return the new rule ID") unless rule_id
+          raise execution.build_error("device did not return the new rule ID") unless rule_id
 
           execution.context[:rule_id] = rule_id
         end

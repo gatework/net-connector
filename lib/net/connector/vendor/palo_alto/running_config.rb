@@ -23,7 +23,7 @@ module Net
         end
 
         # 采集前后都检查候选差异，拒绝把未提交配置误作运行配置。
-        def check_response(command, response, _execution)
+        def validate_response!(command, response, _execution)
           return unless command.text == "show config diff"
           return if body(response.output, command.text).empty?
 

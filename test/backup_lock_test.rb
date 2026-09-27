@@ -10,7 +10,8 @@ require_relative "../lib/net/connector/netdisco"
 require_relative "support/fake_transport"
 
 class BackupLockTest < Minitest::Test
-  Operations = Net::Connector::Operations
+  Storage = Net::Connector::Storage
+  LocalBackup = Net::Connector::LocalBackup
 
   def collector(&block)
     Object.new.tap do |device|
@@ -19,7 +20,7 @@ class BackupLockTest < Minitest::Test
     end
   end
 
-  def backup(device, path, **options) = Operations::LocalBackup.new(device).call(path: path, **options)
+  def backup(device, path, **options) = LocalBackup.new(device).call(path: path, **options)
 
   def test_two_instances_contend_before_collecting_and_leave_a_stable_private_lock
     Dir.mktmpdir do |directory|
@@ -40,7 +41,7 @@ class BackupLockTest < Minitest::Test
         owner.join(3) || owner.kill.join
       end
       owner.value
-      lock_path = Operations::BackupLock.lock_path(path)
+      lock_path = Storage::BackupLock.lock_path(path)
       stat = File.stat(lock_path)
       assert_equal 0o600, stat.mode & 0o777
       assert_equal 1, stat.nlink
@@ -59,9 +60,9 @@ class BackupLockTest < Minitest::Test
       File.symlink(directory, File.join(root, "alias"))
       path = File.join(directory, "device.txt")
       aliases = [File.join(directory, "sub", "..", "device.txt"), File.join(root, "alias", "device.txt")]
-      Operations::BackupLock.synchronize(path) do
+      Storage::BackupLock.synchronize(path) do
         aliases.each do |candidate|
-          assert_equal Operations::BackupLock.lock_path(path), Operations::BackupLock.lock_path(candidate)
+          assert_equal Storage::BackupLock.lock_path(path), Storage::BackupLock.lock_path(candidate)
           error = Fiber.new { assert_raises(Net::Connector::Error) { backup(collector { flunk "collected while busy" }, candidate) } }.resume
           assert_equal :backup_busy, error.code
         end
@@ -86,9 +87,9 @@ class BackupLockTest < Minitest::Test
     Dir.mktmpdir do |directory|
       path = File.join(directory, "D\u00e9vice.TXT")
       aliases = [File.join(directory, "d\u00e9vice.txt"), File.join(directory, "De\u0301vice.TXT"), path.b]
-      Operations::BackupLock.synchronize(path) do
+      Storage::BackupLock.synchronize(path) do
         aliases.each do |candidate|
-          assert_equal Operations::BackupLock.lock_path(path), Operations::BackupLock.lock_path(candidate)
+          assert_equal Storage::BackupLock.lock_path(path), Storage::BackupLock.lock_path(candidate)
           error = Fiber.new do
             assert_raises(Net::Connector::Error) { backup(collector { flunk "collected through filename alias" }, candidate) }
           end.resume
@@ -102,7 +103,7 @@ class BackupLockTest < Minitest::Test
   def test_lock_rejects_hardlinks_and_fifo_without_blocking
     Dir.mktmpdir do |directory|
       path = File.join(directory, "device.txt")
-      lock_path = Operations::BackupLock.lock_path(path)
+      lock_path = Storage::BackupLock.lock_path(path)
       outside = File.join(directory, "outside")
       File.write(outside, "unchanged", mode: "w", perm: 0o600)
       File.link(outside, lock_path)
@@ -149,7 +150,7 @@ class BackupLockTest < Minitest::Test
                                  credentials: ->(*) { flunk "read credentials while path busy" },
                                  connector_factory: ->(*) { flunk "created connector while path busy" })
       path = File.join(directory, "192.0.2.1.txt")
-      Operations::BackupLock.synchronize(path) do
+      Storage::BackupLock.synchronize(path) do
         batch = fleet.backup_all(directory: directory)
         assert_equal :failed, batch.outcomes.first.status
         assert_equal :backup_busy, batch.outcomes.first.error_code
@@ -178,10 +179,10 @@ class BackupLockTest < Minitest::Test
   def test_lock_wait_is_finite_and_uses_one_monotonic_deadline
     Dir.mktmpdir do |directory|
       path = File.join(directory, "device.txt")
-      Operations::BackupLock.synchronize(path) {}
-      File.open(Operations::BackupLock.lock_path(path), File::RDWR) do |owner|
+      Storage::BackupLock.synchronize(path) {}
+      File.open(Storage::BackupLock.lock_path(path), File::RDWR) do |owner|
         owner.flock(File::LOCK_EX)
-        waiter = Operations::BackupLock.new(path, timeout: 0.1)
+        waiter = Storage::BackupLock.new(path, timeout: 0.1)
         now = 10.0
         waits = []
         waiter.stub(:monotonic, -> { now }) do
@@ -191,7 +192,7 @@ class BackupLockTest < Minitest::Test
           end
         end
         assert_in_delta 0.1, waits.sum, 0.000001
-        waiter = Operations::BackupLock.new(path, timeout: 1)
+        waiter = Storage::BackupLock.new(path, timeout: 1)
         waiter.stub(:wait, ->(_seconds) { owner.flock(File::LOCK_UN) }) do
           assert_equal :acquired, (waiter.synchronize { :acquired })
         end
@@ -206,8 +207,8 @@ class BackupLockTest < Minitest::Test
       [-1, Float::INFINITY, Float::NAN, nil, true, "1"].each do |timeout|
         assert_raises(ArgumentError) { backup(device, path, lock_timeout: timeout) }
       end
-      Operations::BackupLock.synchronize(path) {}
-      lock_path = Operations::BackupLock.lock_path(path)
+      Storage::BackupLock.synchronize(path) {}
+      lock_path = Storage::BackupLock.lock_path(path)
       File.chmod(0o644, lock_path)
       assert_raises(ArgumentError) { backup(device, path) }
       File.unlink(lock_path)
@@ -272,7 +273,7 @@ class BackupLockTest < Minitest::Test
         STDIN.gets or abort "missing release signal"
         Net::Connector::Result.new(config: "child configuration")
       end
-      Net::Connector::Operations::LocalBackup.new(device).call(path: ARGV.fetch(0))
+      Net::Connector::LocalBackup.new(device).call(path: ARGV.fetch(0))
       puts "done"
     RUBY
     Dir.mktmpdir do |directory|
@@ -305,7 +306,7 @@ class BackupLockTest < Minitest::Test
       outside = File.join(directory, "outside")
       File.write(path, "approved")
       File.write(outside, "unregistered-test-secret")
-      saved = Operations::SavedConfig.new(directory: directory)
+      saved = Storage::SavedConfig.new(directory: directory)
       real_open = File.method(:open)
       swapped = false
       intercept = lambda do |target, *args, **options, &block|
@@ -342,7 +343,7 @@ class BackupLockTest < Minitest::Test
         file
       end
       output = StringIO.new
-      File.stub(:open, intercept) { Operations::SavedConfig.new(directory: directory).export(host: "192.0.2.1", io: output) }
+      File.stub(:open, intercept) { Storage::SavedConfig.new(directory: directory).export(host: "192.0.2.1", io: output) }
       assert_equal "approved", output.string
       assert_equal 1, opened.size
       assert opened.all?(&:closed?)

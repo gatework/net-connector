@@ -36,13 +36,13 @@ class CollectionContractTest < Minitest::Test
   def test_empty_collection_commands_fail_without_opening_transport
     build_device { define_method(:config_commands) { [] } }
     assert @device.execute_script([]).success?
-    assert_incomplete @device.collect_config
+    assert_incomplete @device.running_config
     assert_equal 0, @transport.opens
   end
 
   def test_skipped_collection_steps_fail_and_close_session
     build_device("device#") { define_method(:prepare_command) { |*| nil } }
-    result = @device.collect_config
+    result = @device.running_config
     assert_incomplete result
     assert_empty result.steps
     assert_equal 1, @transport.closes
@@ -50,7 +50,7 @@ class CollectionContractTest < Minitest::Test
 
   def test_blank_cleaned_configuration_fails_with_completed_evidence
     build_device("device#", " \r\n device#")
-    result = @device.collect_config
+    result = @device.running_config
     assert_incomplete result
     assert_equal ["show config"], (result.steps.map { |step| step.command.text })
     assert_equal 1, @transport.closes
@@ -59,7 +59,7 @@ class CollectionContractTest < Minitest::Test
   def test_custom_cleaner_returning_nil_is_incomplete_configuration
     build_device("device#", "hostname router\ndevice#")
     @device.define_singleton_method(:clean_config) { |_text| nil }
-    result = @device.collect_config
+    result = @device.running_config
     assert_incomplete result
     assert_equal ["show config"], (result.steps.map { |step| step.command.text })
     assert_equal 1, @transport.closes
@@ -84,9 +84,9 @@ class CollectionContractTest < Minitest::Test
     @device = Net::Connector.build(:palo_alto, host: "192.0.2.1", username: "admin", transport: @transport)
   end
 
-  def test_palo_collect_config_selects_show_and_retains_complete_sequence
+  def test_palo_running_config_selects_show_and_retains_complete_sequence
     palo_device
-    result = @device.collect_config
+    result = @device.running_config
     assert result.success?, result.error.inspect
     assert_equal "set system host-name firewall", result.config
     assert_equal @device.config_commands, (result.steps.map { |step| step.command.text })
@@ -104,7 +104,7 @@ class CollectionContractTest < Minitest::Test
   def test_palo_cleaning_occurs_inside_session_lock
     palo_device
     @device.define_singleton_method(:clean_config) do |text|
-      @nested_result = execute("interleaved")
+      @nested_result = execute_command("interleaved")
       super(text)
     end
     result = @device.running_config

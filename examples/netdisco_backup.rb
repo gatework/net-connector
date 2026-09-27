@@ -35,7 +35,7 @@ if ARGV == ["--stdin-credentials"]
   end
 elsif ARGV.empty?
   client = settings.client
-  credentials = settings.method(:credentials_for)
+  credentials = settings.method(:device_credentials_for)
 else
   abort "用法：ruby -Ilib examples/netdisco_backup.rb [--stdin-credentials]"
 end

@@ -51,6 +51,18 @@ bundle exec ruby -Ilib:test test/module_loading_test.rb
 实施记录保存在源码树的 `docs/optimization/`，不进入 gem 发布白名单。
 每个工作包的初始状态、已运行命令与未验证边界均以该记录中的日期和环境为限。
 
+`test/module_loading_test.rb` 在独立进程中分别检查设备入口与厂商策略先加载、
+公共 API 先加载两种顺序，确认业务流程可用、公共层无厂商别名、没有额外厂商
+或 TextFSM 被提前加载。`test/running_config_strategy_test.rb` 检查同次采集的策略
+状态贯穿响应校验、步骤选择和清理，覆盖子类 `super`、其他 Fiber 的离线清理、
+嵌套采集拒绝及失败重连。两者共同约束模块边界和执行行为。
+
+## 日志与命名边界
+
+`test/logging_test.rb` 检查安全事件对象、文本与 JSON formatter、会话/命令关联、脚本来源、响应字节和耗时；覆盖 logger 级别在运行中变化、重连分配新标识、回调失败、逐行输出的命令归属，以及调用方 logger 的资源所有权。自定义字段不能覆盖上下文，复杂对象和非有限浮点数不会进入 JSON，敏感范围内的任意事件名称和载荷整体隐藏。
+
+库、示例、测试和隔离安装烟测统一使用 `log_event`、`execute_command` / `execute_script`、`running_config`、单一 `tftp_backup` 回执和 Report。策略接口在 Profile 构造时校验，不通过旧方法名或可选旧钩子回退。历史版本说明和 `docs/optimization/` 的原始记录保留当时名称，不是当前可调用接口。
+
 ## 离线内存基准与累计预算
 
 `bundle exec ruby script/benchmark_memory.rb --suite baseline --directory tmp/benchmarks/my-run`
@@ -127,19 +139,17 @@ SHA-256，首次使用时从官方 GitHub Release 下载，缓存到 `tmp/tools/
 
 `test/topology_stages_test.rb` 使用 `test/support/topology_fixture.rb` 的四类合成对话，验证视图转换、先读回后保存、各阶段超时、读回不匹配/不完整、审批与实际查询一致、旧计划拒绝、保存完成证据和重连不重放。Queue 固定读回完成至保存之前的竞争窗口，检查线程和 Fiber 所有权。PAN-OS 无候选隔离证据时在 I/O 前拒绝自动改写，保留只读解析。夹具的官方来源、推断和 unknown 固件范围见 `test/fixtures/topology/README.md`；测试不等于现场设备认证。普通及最小 Bundler 隔离安装另用本地 PTY 验证分阶段拓扑流程及读回输出敏感标记。
 
-`test/tftp_boundary_test.rb` 验证内置策略在首次 I/O 前拒绝不支持的参数组合，使用 Queue 固定 H3C 源探测后的竞争窗口，检查线程/Fiber 拒绝。上传确认后的日志、命令清理、租约清理、路径和元数据钩子失败保留回执且不重传；随机假秘密不进入新错误正文。回执测试保留旧 Data 解构/成员，核对配置来源及设备报告等级；Fleet 拒绝第三方和子类提供的完成事实。既有成功/失败/echo/控制符证据用同一套合成夹具继续测试，来源和 unknown 固件范围见 `test/fixtures/tftp/README.md`。普通及最小 Bundler 安装通过本地 PTY 验证新的回执入口，没有连接真实 TFTP 服务器或上传配置。
+`test/tftp_boundary_test.rb` 验证内置策略在首次 I/O 前拒绝不支持的参数组合，使用 Queue 固定 H3C 源探测后的竞争窗口，检查线程/Fiber 拒绝。上传确认后的日志、命令清理、租约清理、路径和元数据钩子失败保留回执且不重传；随机假秘密不进入新错误正文。统一回执测试核对配置来源、实际路径、设备报告等级和冻结字段；Fleet 拒绝第三方和子类提供的完成事实。既有成功/失败/echo/控制符证据用同一套合成夹具继续测试，来源和 unknown 固件范围见 `test/fixtures/tftp/README.md`。普通及最小 Bundler 安装通过本地 PTY 验证唯一的 TFTP 回执入口，没有连接真实 TFTP 服务器或上传配置。
 
-`test/netdisco_reporting_test.rb` 覆盖 strict/selected 的状态决策矩阵、显式 CLI 退出码、默认 JSON 键及 Data 成员/位置参数不变、旧 Fleet/ResultStore 签名，以及部分成功/回调/报告错误阻止 selected 成功。动态假秘密放入异常消息、输出、命令、source、line、phase、code 和自定义类型名，v2 报告与私有 JSON 不得含它。受控文件/TFTP 回执阶段跨 Worker 复制仍保留，普通文件异常不能冒充设备产物。可控时钟让 UTC 倒退而单调时间前进，断言设备及批次耗时准确且无负值；没有用固定睡眠推断时间行为。
+`test/netdisco_reporting_test.rb` 覆盖 strict/selected 的状态决策矩阵、显式 CLI 退出码、统一 schema 2、Outcome 的耗时与诊断成员、Fleet/ResultStore 的 Report 契约，以及部分成功/回调/报告错误阻止 selected 成功。动态假秘密放入异常消息、输出、命令、source、line、phase、code 和自定义类型名，报告与私有 JSON 不得含它。受控文件/TFTP 回执阶段跨 Worker 复制仍保留，普通文件异常不能冒充设备产物。可控时钟让 UTC 倒退而单调时间前进，断言设备及批次耗时准确且无负值；没有用固定睡眠推断时间行为。
 
-`test/backup_lock_test.rb` 通过 Queue、独立 Ruby 进程及可控单调时钟检查采集前互斥、有限等待、锁释放、线程/Fiber/回调递归、路径别名、私有权限、硬链接/FIFO 拒绝和符号链接替换。`test/backup_identity_test.rb` 保留旧命名比较及 mtime 契约；稳定锁文件不再作为多余备份计数。
+`test/backup_lock_test.rb` 通过 Queue、独立 Ruby 进程及可控单调时钟检查采集前互斥、有限等待、锁释放、线程/Fiber/回调递归、路径别名、私有权限、硬链接/FIFO 拒绝和符号链接替换。`test/backup_identity_test.rb` 验证规范地址命名、改名后的稳定身份、mtime、非普通文件拒绝和非规范文件不参与比较；稳定锁文件不作为多余备份计数。
 
-`test/legacy_index_test.rb` 用 8 台合成设备和 4 个 worker 统计目录扫描：旧命名迁移一批只扫描一次，规范文件全命中时为零；同一 Fleet 的新批次重新识别歧义。覆盖 IPv6/zone 身份、文件类型、快照失败及文件消失、替换、原位修改；在读返回期间注入修改，断言失效正文不交付。端到端批次验证失效基线在凭据和连接器调用前失败。计数证明扫描次数减少，不代表已经测出墙钟性能提升。
-
-`test/module_loading_test.rb` 在独立 Ruby 进程核验 Netdisco 加载、CLI 离线导出和实际解析的 `$LOADED_FEATURES`；旧入口双加载顺序继续检查。`test/parsing_encoding_test.rb` 覆盖 UTF-8/二进制标签、非法 UTF-8、Latin-1 字节、回车/退格/ANSI、被控制符隐藏的非法输入、分裂多字节字符、原备份不变及拓扑不能把异常输出当作空表。原有 PAN-OS 引号多行拒绝及多线程独立解析测试保留。没有真实其他编码设备样本，本次不增加自动或显式设备编码配置；严格转码能力留待实际设备需求验证。
+`test/module_loading_test.rb` 在独立 Ruby 进程核验 Netdisco 加载、CLI 离线导出和实际解析的 `$LOADED_FEATURES`；当前设备与厂商入口的双加载顺序分别检查，确认公共层无厂商别名，Storage 不加载设备。`test/parsing_encoding_test.rb` 覆盖 UTF-8/二进制标签、非法 UTF-8、Latin-1 字节、回车/退格/ANSI、被控制符隐藏的非法输入、分裂多字节字符、原备份不变及拓扑不能把异常输出当作空表。原有 PAN-OS 引号多行拒绝及多线程独立解析测试保留。没有真实其他编码设备样本，本次不增加自动或显式设备编码配置；严格转码能力留待实际设备需求验证。
 
 `test/file_persistence_test.rb` 对临时文件创建、写入、flush/fsync、rename、父目录打开/同步及收尾注入故障，检查磁盘内容、阶段回执、无正文诊断、Fleet 部分成功及报告/导出行为。同步不支持与 EIO 分开，第三方回执子类不能供应完成事实。隔离安装烟测还通过真实本地 PTY 采集写入，验证私有锁、目录同步及安全读取。本地 macOS 测试证明协议与故障分支；Linux、网络文件系统、真实断电恢复需单独验证。
 
-`test/netdisco_budget_test.rb` 用合成响应、可控单调时钟及本地 TCP HTTP 端点验证单页/累计字节、记录数、分页、认证和兼容查询的共用期限。流式上限覆盖 chunked、无长度和虚报长度；超限时设备工厂与凭据解析器均未调用。阻塞读取场景断言关闭自有传输并回收观察线程，不靠固定 sleep 判断竞态。旧 requester 只验证返回后的预算，不声称能强制中止任意回调。
+`test/netdisco_budget_test.rb` 用合成响应、可控单调时钟及本地 TCP HTTP 端点验证单页/累计字节、记录数、分页、认证和兼容查询的共用期限。流式上限覆盖 chunked、无长度和虚报长度；超限时设备工厂与凭据解析器均未调用。阻塞读取场景断言关闭自有传输并回收观察线程，不靠固定 sleep 判断竞态。注入 requester 只验证返回后的预算，不声称能强制中止任意回调。
 
 `test/netdisco_settings_test.rb` 验证批内 ENV 策略变化被隔离、逐设备凭据轮换、后续批次刷新、批准计划不重抓清单、CLI/ENV/YAML 优先级及离线导出。策略快照的序列化和 inspect 不含秘密；非法枚举、采样范围及预算在创建 Fleet 或设备前拒绝。默认预算没有经过生产容量压测，真实 Netdisco 及多平台远端矩阵仍需单独验收。
 

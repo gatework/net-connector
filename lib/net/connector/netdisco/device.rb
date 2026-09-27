@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "ipaddr"
-require_relative "../operations/saved_config"
+require_relative "../storage/saved_config"
 
 module Net
   module Connector
@@ -44,7 +44,7 @@ module Net
         def ready? = issue.nil?
 
         # 生成不随名称或厂商信息改变的本地文本文件名。
-        def backup_filename = Operations::SavedConfig.filename(host)
+        def backup_filename = Storage::SavedConfig.filename(host)
 
         # 生成设备 CLI 可用的 ASCII 远端文件名。
         def tftp_filename
@@ -53,13 +53,12 @@ module Net
                       .gsub(/\A[._-]+|[._-]+\z/, "")
           label = vendor&.to_s || "device" if label.empty?
           strategy = Net::Connector.vendor_class(vendor).profile.tftp_strategy if vendor
-          # 旧版自定义策略只需实现实例接口，缺少命名接口时沿用通用 cfg 名称。
-          strategy = Operations::Tftp::Strategy unless strategy.respond_to?(:filename)
+          raise UnsupportedOperation, "device has no TFTP strategy" unless strategy
           TftpTarget.validate_path!(strategy.filename(host, label: label))
         end
 
         # 按厂商及设备地址实例化连接器。
-        def connector(**settings)
+        def build_connector(**settings)
           raise ArgumentError, "device is not ready: #{issue}" unless ready?
           raise ArgumentError, "host cannot be overridden" if settings.key?(:host)
 

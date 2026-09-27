@@ -55,7 +55,7 @@ class OutputSensitiveTest < Minitest::Test
         assert_equal Digest::SHA256.hexdigest(@body), backup.sha256
         assert_equal @body.bytesize, backup.bytes
 
-        ordinary = @device.execute("show status") { raise "ordinary callback failed" }
+        ordinary = @device.execute_command("show status") { raise "ordinary callback failed" }
         assert_equal "ordinary callback failed", ordinary.error.underlying.message
         refute_empty ordinary.error.underlying.backtrace
         @device.close
@@ -161,7 +161,7 @@ class OutputSensitiveTest < Minitest::Test
         build(*events, **options)
         @device.define_singleton_method(hook) do |*args|
           execution = args.last
-          response = execution.query("show additional config")
+          response = execution.execute_command("show additional config")
           raise "followup failed #{response.output}"
         end
         result = @device.running_config
@@ -188,7 +188,7 @@ class OutputSensitiveTest < Minitest::Test
 
   def test_custom_strategy_response_check_is_private_and_keeps_completed_step
     strategy = Class.new(Connector::RunningConfig::Strategy) do
-      def check_response(_command, response, _execution)
+      def validate_response!(_command, response, _execution)
         raise "rejected #{response.output}"
       end
     end
@@ -250,7 +250,7 @@ class OutputSensitiveTest < Minitest::Test
     with_log(:debug) do |options, contents, _|
       build(@body, **options)
       secret = @secret
-      result = @device.execute("show config", output_sensitive: true) { raise "callback #{secret}" }
+      result = @device.execute_command("show config", output_sensitive: true) { raise "callback #{secret}" }
       assert_private_failure(result, contents.call)
       assert_equal "show config", result.error.command
       assert_equal @body, result.output
@@ -265,7 +265,7 @@ class OutputSensitiveTest < Minitest::Test
         Connector::Command.new(command.text, output_sensitive: true)
       end
       @device.define_singleton_method(:after_command) { |_, response, _| raise response.output }
-      result = @device.execute("show config")
+      result = @device.execute_command("show config")
       assert_private_failure(result, contents.call)
       assert_equal 1, result.steps.size
     end
@@ -288,7 +288,7 @@ class OutputSensitiveTest < Minitest::Test
   def test_unmarked_commands_keep_existing_diagnostics
     with_log(:external) do |options, contents, _|
       build(@body, **options)
-      result = @device.execute("show config")
+      result = @device.execute_command("show config")
       assert result.success?, result.error.inspect
       assert_equal @body, result.output
       assert_includes contents.call, @secret
@@ -313,7 +313,7 @@ class OutputSensitiveTest < Minitest::Test
     build
     secret = @secret
     @device.define_singleton_method(:prepare_command) { |_, _| raise "rejected #{secret}" }
-    result = @device.execute("show config", output_sensitive: true)
+    result = @device.execute_command("show config", output_sensitive: true)
     assert_private_failure(result)
     assert_equal "show config", result.error.command
     assert_empty @transport.writes
@@ -324,8 +324,8 @@ class OutputSensitiveTest < Minitest::Test
     logger = Logger.new(stream)
     secret = @secret
     bytes = @body.bytesize
-    logger.define_singleton_method(:debug) do |message|
-      if message.include?("收到 #{bytes} 字节回显")
+    logger.define_singleton_method(:info) do |message|
+      if message.to_h[:event] == "command_complete" && message.to_h[:response_bytes] == bytes
         failure = IOError.new("sink failed #{secret}")
         failure.set_backtrace(["#{secret}:42"])
         raise failure
@@ -348,7 +348,7 @@ class OutputSensitiveTest < Minitest::Test
     @device.define_singleton_method(:clean_config) { |_| raise secret }
     result = @device.running_config
     assert_private_failure(result)
-    ordinary = @device.execute("show status") { raise "ordinary callback failed" }
+    ordinary = @device.execute_command("show status") { raise "ordinary callback failed" }
     assert_equal "ordinary callback failed", ordinary.error.underlying.message
     assert_equal 2, @transport.opens
     assert_equal ["terminal length 0\n", "show running-config\n", "show status\n"], @transport.writes
@@ -362,12 +362,12 @@ class OutputSensitiveTest < Minitest::Test
     session = @device.instance_variable_get(:@session)
     refute session.redactor.sensitive?
     refute session.redactor.output_sensitive?
-    ordinary = @device.execute("show status") { raise "ordinary callback failed" }
+    ordinary = @device.execute_command("show status") { raise "ordinary callback failed" }
     assert_equal "ordinary callback failed", ordinary.error.underlying.message
 
-    session.redactor.scope do
+    session.redactor.with_scope do
       session.redactor.sensitive!
-      session.output_scope(true) { assert session.redactor.output_sensitive? }
+      session.with_sensitive_output(true) { assert session.redactor.output_sensitive? }
       assert session.redactor.sensitive?
       refute session.redactor.output_sensitive?
     end

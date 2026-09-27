@@ -64,7 +64,7 @@ class CapabilitiesTest < Minitest::Test
         Net::Connector::Script.new(["custom upload"])
       end
 
-      def complete?(result) = result.output.include?("custom upload complete")
+      def device_reported_complete?(result) = result.output.include?("custom upload complete")
     end
     custom_topology = Class.new(original.profile.topology_strategy) do
       def initialize(device)

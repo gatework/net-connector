@@ -35,6 +35,9 @@ module Net
               server_sha256: server_sha256&.dup&.freeze)
       end
 
+      # Ruby 3.2 的 Data#with 不调用 initialize；所有更新都重新校验并冻结字段。
+      def with(**attributes) = self.class.new(**to_h.merge(attributes))
+
       def inspect = "#<#{self.class} kind=#{configuration_kind} format=#{format} verification=#{verification}>"
     end
 

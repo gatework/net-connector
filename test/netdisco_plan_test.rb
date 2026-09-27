@@ -86,7 +86,7 @@ class NetdiscoPlanTest < Minitest::Test
   end
 
   def test_strategy_must_declare_its_filename_contract
-    strategy = Class.new(Net::Connector::H3c::TftpBackup)
+    strategy = Class.new(Net::Connector.vendor_class(:h3c).profile.tftp_strategy)
     strategy.singleton_class.undef_method(:filename)
     assert_raises(ArgumentError) { Net::Connector::Profile.new(tftp_strategy: strategy) }
   end

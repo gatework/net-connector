@@ -350,7 +350,7 @@ module Net
           redactor.reset
           @log.open(transport)
           @log.log_event("connect", host: configuration.host, username: configuration.username,
-                     phase: :connect, protocol: transport.respond_to?(:protocol) ? transport.protocol : configuration.protocol)
+                         phase: :connect, protocol: transport.respond_to?(:protocol) ? transport.protocol : configuration.protocol)
           transport.open
           @state = :authenticating
           @log.log_event("login_start", level: :debug, phase: :login)

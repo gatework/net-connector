@@ -106,11 +106,13 @@ class ModuleLoadingTest < Minitest::Test
         saved = Net::Connector::Storage::SavedConfig.new(directory: directory)
         rows = saved.parse(host: "192.0.2.1", template: "cisco_ios_running_config_interfaces.textfsm")
         puts JSON.generate(entry: loaded_at_entry, exported: loaded_after_export, parsed: parser_loaded.call,
+                           postgres_loaded: $LOADED_FEATURES.any? { |path| path.end_with?("/pg.rb") },
                            status: status, errors: errors.string, exact_export: output.string == config, rows: rows)
       end
     RUBY
     refute result.fetch("entry")
     refute result.fetch("exported")
+    refute result.fetch("postgres_loaded")
     assert result.fetch("parsed")
     assert_equal 0, result.fetch("status")
     assert_empty result.fetch("errors")

@@ -90,8 +90,8 @@ module Net
         return unless @output_limit && (completed ? @output_bytes > @output_limit : @output_bytes >= @output_limit)
 
         raise @session.build_error(ScriptOutputLimitExceeded,
-                             "script output reached max_script_output_bytes; commands already sent may have executed",
-                             phase: :script, command: command), cause: nil
+                                   "script output reached max_script_output_bytes; commands already sent may have executed",
+                                   phase: :script, command: command), cause: nil
       end
     end
   end

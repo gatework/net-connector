@@ -2,6 +2,7 @@
 
 require_relative "../connector"
 require_relative "netdisco/client"
+require_relative "netdisco/database_client"
 require_relative "netdisco/rules"
 require_relative "netdisco/device"
 require_relative "netdisco/config_file"

@@ -33,7 +33,7 @@ class TopologyTest < Minitest::Test
     def profile
       original = Net::Connector.vendor_class(vendor).profile
       Struct.new(:save_commands, :topology_strategy, :config_commands).new(original.save_commands, original.topology_strategy,
-                                                                         original.config_commands)
+                                                                           original.config_commands)
     end
 
     def config_commands = profile.config_commands

@@ -70,9 +70,6 @@ class BackupIdentityTest < Minitest::Test
     end
   end
 
-
-
-
   def test_noncanonical_names_are_not_read_or_used_as_a_change_baseline
     Dir.mktmpdir do |directory|
       other = File.join(directory, "old-name-192.0.2.1.txt")
@@ -131,7 +128,6 @@ class BackupIdentityTest < Minitest::Test
       end
     end
   end
-
 
   def test_failed_collection_preserves_unrelated_files_and_creates_no_backup
     Dir.mktmpdir do |directory|

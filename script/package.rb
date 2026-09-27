@@ -21,7 +21,7 @@ module PackageCheck
     path.match?(%r{\Alib/.+\.rb\z}) ||
       path.match?(%r{\Alib/net/connector/templates/(?:[^/]+\.textfsm|index)\z}) ||
       path.match?(%r{\Adocs/[^/]+\.md\z}) ||
-      %w[exe/net-connector-backup README.md LICENSE CHANGELOG.md SECURITY.md CONTRIBUTING.md].include?(path)
+      %w[exe/net-connector-backup examples/netdisco_database.yml README.md LICENSE CHANGELOG.md SECURITY.md CONTRIBUTING.md].include?(path)
   end
 
   def self.build(root: Dir.pwd)

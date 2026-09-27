@@ -9,7 +9,10 @@ module Net
       # 命令行使用的无凭据 YAML 配置，环境变量优先。
       class ConfigFile
         FIELDS = {
-          "netdisco" => { "url" => ["NETDISCO_URL", :string],
+          "netdisco" => { "source" => ["NETDISCO_SOURCE", :string],
+                          "query" => ["NETDISCO_QUERY", :string],
+                          "query_params" => ["NETDISCO_QUERY_PARAMS", :json_array],
+                          "url" => ["NETDISCO_URL", :string],
                           "page_size" => ["NETDISCO_PAGE_SIZE", :integer],
                           "max_pages" => ["NETDISCO_MAX_PAGES", :integer],
                           "max_response_bytes" => ["NETDISCO_MAX_RESPONSE_BYTES", :integer],
@@ -94,8 +97,8 @@ module Net
             end
 
             value.join(",")
-          when :json
-            expected = name == "device_rules" ? Array : Hash
+          when :json, :json_array
+            expected = type == :json_array || name == "device_rules" ? Array : Hash
             raise ArgumentError, "#{section}.#{name} must be a #{expected}" unless value.is_a?(expected)
 
             JSON.generate(value)

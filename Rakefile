@@ -9,6 +9,13 @@ Rake::TestTask.new(:test) do |task|
   task.ruby_opts << "-r#{File.expand_path("script/coverage.rb", __dir__)}"
 end
 
+namespace :test do
+  desc "在临时 PostgreSQL 中验证 Netdisco 联机查询（需要 PostgreSQL 服务端工具）"
+  task :postgres do
+    ruby "test/integration/netdisco_database.rb"
+  end
+end
+
 desc "检查 Ruby 代码和 gem 声明"
 task :lint do
   ruby "-S", "rubocop"

@@ -14,7 +14,9 @@ module MemoryBenchmark
     attr_reader :bytes
 
     def initialize = @bytes = 0
+
     def write(text) = @bytes += text.bytesize
+
     def close; end
   end
 

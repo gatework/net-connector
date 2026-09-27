@@ -63,6 +63,13 @@ module Net
 
         def client(policy: snapshot(mode: :inventory))
           options = policy.client_options
+          if policy.inventory_source == :postgres
+            connection = DatabaseClient::CONNECTION_ENV.each_with_object({}) do |(key, name), values|
+              item = secret_value(name)
+              values[key] = item if item
+            end
+            return DatabaseClient.new(connection_options: connection, **options)
+          end
           raise ArgumentError, "NETDISCO_URL is required" unless options.fetch(:url)
 
           authentication = if (token = secret_value("NETDISCO_API_KEY"))
@@ -73,9 +80,17 @@ module Net
           Client.new(**options, **authentication)
         end
 
-        # 原生客户端和 --show-config 共享同一预算、地址与 HTTP 策略校验。
+        def inventory_source
+          source = value("NETDISCO_SOURCE") || "http"
+          raise ArgumentError, "NETDISCO_SOURCE must be http or postgres" unless %w[http postgres].include?(source)
+
+          source.to_sym
+        end
+
+        # 原生客户端和 --show-config 共享预算校验；只验证所选来源的查询设置。
         def client_options
-          options = Client::DEFAULTS.to_h do |name, default|
+          defaults = inventory_source == :postgres ? DatabaseClient::DEFAULTS : Client::DEFAULTS
+          options = defaults.to_h do |name, default|
             key = "NETDISCO_#{name.to_s.upcase}"
             parsed = case name
                      when :inventory_timeout then number(key, default)
@@ -83,6 +98,13 @@ module Net
                      else integer(key, default)
                      end
             [name, parsed]
+          end
+          if inventory_source == :postgres
+            query = value("NETDISCO_QUERY") || (raise ArgumentError, "NETDISCO_QUERY is required for postgres")
+            return DatabaseClient.options(query: query, query_params: json("NETDISCO_QUERY_PARAMS", []), **options)
+          end
+          if value("NETDISCO_QUERY") || value("NETDISCO_QUERY_PARAMS")
+            raise ArgumentError, "SQL query settings require NETDISCO_SOURCE=postgres"
           end
           options = Client.options(**options)
           url = value("NETDISCO_URL")
@@ -189,7 +211,7 @@ module Net
 
         def config_hash
           {
-            netdisco: client_options,
+            netdisco: client_options.merge(source: inventory_source),
             backup: { directory: backup_directory, concurrency: concurrency, limit_per_vendor: limit_per_vendor },
             inventory: { include_hosts: list("NET_CONNECTOR_INCLUDE_HOSTS"),
                          exclude_hosts: list("NET_CONNECTOR_EXCLUDE_HOSTS"),
@@ -279,6 +301,7 @@ module Net
         end
 
         def required_secret(key) = secret_value(key) || (raise ArgumentError, "#{key} is required")
+
         def present?(value) = value.is_a?(String) && !value.strip.empty?
       end
     end

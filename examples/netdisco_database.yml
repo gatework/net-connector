@@ -1,0 +1,16 @@
+# 数据库连接只从 NETDISCO_DB_* 环境变量读取；此文件可直接编辑并纳入版本控制。
+netdisco:
+  source: postgres
+  query: |
+    SELECT host(ip) AS ip, name, dns, vendor, os, model, os_ver, serial
+    FROM device
+    WHERE vendor = $1
+    ORDER BY ip
+  query_params: [H3C]
+  page_size: 500
+  max_devices: 100000
+  inventory_timeout: 300
+
+backup:
+  directory: ./backups
+  concurrency: 4

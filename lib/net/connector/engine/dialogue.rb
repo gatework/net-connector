@@ -172,7 +172,7 @@ module Net
       def validate_event!(event, bytes, raw, phase, command)
         if bytes > @session.configuration.max_output_bytes
           raise @session.build_error(OutputLimitExceeded, "device output exceeded max_output_bytes",
-                               phase: phase, command: command, output: (raw + [event.match]).join), cause: nil
+                                     phase: phase, command: command, output: (raw + [event.match]).join), cause: nil
         end
         raise build_read_error(event, phase, command, raw.join), cause: nil unless event.matched?
       end
@@ -181,7 +181,7 @@ module Net
       def finish_response(prompt, raw, output, phase, command)
         if prompt.empty?
           raise @session.build_error(PromptError, "prompt pattern did not consume any output",
-                               phase: phase, command: command, output: raw.join), cause: nil
+                                     phase: phase, command: command, output: raw.join), cause: nil
         end
 
         raw << prompt
@@ -229,7 +229,7 @@ module Net
       def build_read_error(event, phase, command, output)
         if event&.error.is_a?(Exception)
           return @session.build_error(TransportError, "transport read failed", phase: phase, command: command,
-                                underlying: event.error, output: output)
+                                      underlying: event.error, output: output)
         end
         klass = if event&.error == :eof
                   ConnectionClosed
@@ -241,7 +241,7 @@ module Net
                   CommandTimeout
                 end
         @session.build_error(klass, "device response #{event&.error || :timeout}", phase: phase,
-                       command: command, output: output)
+                             command: command, output: output)
       end
     end
   end

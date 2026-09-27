@@ -112,6 +112,12 @@ Diagnostic 只保存固定词表中的码、类型、阶段和受控产物状态
 
 注入的 `requester` 接收 URI 和 request。它返回后才接受长度和期限检查，不在任意用户 Ruby 回调中注入异步异常。解析和集合操作完成后也检查期限，但这不构成任意 CPU 回调的抢占保证。预算失败仅报告错误码与安全类型，没有部分清单、响应正文或底层 cause。HTTPS 的标准证书检查不变；默认允许明文 HTTP，可通过显式策略禁止。
 
+`Settings#inventory_source` 选择 HTTP `Client` 或 PostgreSQL `DatabaseClient`，两者只向 Fleet 提供 `devices`，不改变设备映射、计划和执行接口。数据库 SQL 与标量参数由用户配置，不内置业务表名或筛选；结果用列别名适配 `Client::FIELDS`，只保留这份现有字段白名单。连接参数由 `DatabaseClient::CONNECTION_ENV` 集中映射到 Netdisco 的 `NETDISCO_DB_*` 环境变量，全部排除在纯策略快照外；每次新建清单客户端时读取最新值。
+
+`DatabaseClient` 每次调用独占 PostgreSQL 连接，在只读事务中用扩展查询协议声明游标，原生解析器拒绝多语句和非查询输入。FETCH 大小及次数复用清单预算，单行模式使 libpq 不缓存整页；每行在追加前计数，额外列也消耗字节预算。驱动必须先解码单行，所以单个超大字段仍可超过 Ruby 预算的瞬时内存。总 deadline 覆盖连接和所有语句，每次 FETCH 前缩短 statement_timeout；正常完成回滚只读事务，异常关闭连接，任何失败均不交付部分清单。NOTICE、原始数据库异常及 cause 不进入日志或 CLI；稳定错误码区分连接失败、查询失败、无效清单和预算超限。SQL/参数可在 show-config 中查看，不能用于传递凭据。
+
+数据库集成测试运行 `bundle exec rake test:postgres`，通过 `pg_config --bindir`（或 `NET_CONNECTOR_TEST_PG_BINDIR`）定位服务端工具。测试只创建临时 SCRAM 数据库和私有 Unix socket，退出时停止并删除；不会读取真实 Netdisco 凭据或连接已有服务。覆盖 SQL/参数、只读限制、真实认证失败、查询中途失败、各项预算、连接回收以及 CLI 计划。
+
 ## 迁移与尚未启用的能力
 
 | 变化 | 调用方需要保留的约定 |

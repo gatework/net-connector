@@ -52,6 +52,19 @@ class SecurityTest < Minitest::Test
     end
   end
 
+  def test_netdisco_database_password_is_scanned_without_reporting_the_value
+    with_source do |directory|
+      secret = %w[fixture database credential 18379].join("-")
+      File.write(File.join(directory, "README.md"), "export NETDISCO_DB_PASS=#{secret}\n")
+      output, errors = capture_io do
+        assert_raises(RuntimeError) { SecretScan.source(root: directory, history: false) }
+      end
+      report = File.read(File.join(directory, "tmp", "security", "source.json"))
+      assert_includes JSON.parse(report).map { |finding| finding.fetch("rule") }, "environment-credential"
+      refute_includes [output, errors, report].join, secret
+    end
+  end
+
   def test_gitignore_protects_local_data_but_keeps_templates_source_and_workflows
     with_source do |directory|
       git(directory, "init", "--quiet")

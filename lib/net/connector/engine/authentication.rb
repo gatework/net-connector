@@ -62,7 +62,7 @@ module Net
         host_key = Interaction.new(SSH_CONFIRMATION, lambda { |_prompt|
           if @config.host_key_policy == :strict
             raise @session.build_error(ConnectionError, "host key confirmation rejected",
-                                 phase: :login, code: :host_key_untrusted), cause: nil
+                                       phase: :login, code: :host_key_untrusted), cause: nil
           end
           "yes\n"
         }, limit: 1)

@@ -31,7 +31,7 @@ class CoverageTest < Minitest::Test
       result.values.last[:branches] = { branch: { covered: 1, missed: 0, hit2: 1, hit3: 1, hit4: 1 } }
       baseline = { "ruby" => RUBY_DESCRIPTION,
                    "groups" => { "批量并发" => { "lines" => { "hit" => 1, "total" => 1 },
-                                            "branches" => { "hit" => 9, "total" => 10 } } } }
+                                                 "branches" => { "hit" => 9, "total" => 10 } } } }
       output = StringIO.new
       report = CoverageReport.new(result, library: library, output: output, baseline: baseline)
       refute report.passed?

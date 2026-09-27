@@ -96,7 +96,7 @@ module Net
           @options.fetch(:max_pages).times do |index|
             uri = endpoint("api/v1/search/device")
             uri.query = URI.encode_www_form(fields: FIELDS.join(","), limit: @options.fetch(:page_size),
-                                           offset: index * @options.fetch(:page_size))
+                                            offset: index * @options.fetch(:page_size))
             page = request_json(uri, authorized_get(uri, token), budget, allow_empty: true, query_fallback: true)
             validate_rows!(page, budget)
             return rows.uniq if page.empty?
@@ -274,6 +274,7 @@ module Net
         end
 
         def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+
         def present?(value) = value.is_a?(String) && !value.strip.empty?
       end
     end

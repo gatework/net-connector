@@ -69,6 +69,9 @@ module Net
         def settings_for(options)
           defaults = options[:config] ? ConfigFile.load(options[:config]) : {}
           values = {}
+          values["NETDISCO_SOURCE"] = options[:source] if options[:source]
+          values["NETDISCO_QUERY"] = options[:query] if options[:query]
+          values["NETDISCO_QUERY_PARAMS"] = options[:query_params] if options[:query_params]
           values["NET_CONNECTOR_BACKUP_DIRECTORY"] = options[:directory] if options[:directory]
           values["NET_CONNECTOR_CONCURRENCY"] = options[:concurrency].to_s if options[:concurrency]
           values["NET_CONNECTOR_MAX_SCRIPT_OUTPUT_BYTES"] = options[:max_script_output_bytes].to_s if options[:max_script_output_bytes]
@@ -81,7 +84,7 @@ module Net
         # 导出已有配置不创建清单或设备连接。
         def export_config(settings, options)
           path = Storage::SavedConfig.new(directory: settings.backup_directory)
-                                        .export(host: options[:export], output: options[:output], io: @output)
+                                     .export(host: options[:export], output: options[:output], io: @output)
           @output.puts JSON.generate(host: options[:export], output: path) if path
         end
 
@@ -120,6 +123,9 @@ module Net
           parser = OptionParser.new do |args|
             args.banner = "用法：net-connector-backup [--config FILE] [--plan | --show-config | --export IP] [--tftp]"
             args.on("--config FILE", "读取不含凭据的 YAML 设置") { |value| options[:config] = value }
+            args.on("--source SOURCE", %w[http postgres], "清单来源：http（默认）或 postgres") { |value| options[:source] = value }
+            args.on("--query SQL", "PostgreSQL 清单查询，使用 $1、$2 绑定参数") { |value| options[:query] = value }
+            args.on("--query-params JSON", "查询参数的 JSON 数组") { |value| options[:query_params] = value }
             args.on("--show-config", "显示生效的非敏感设置") { options[:show_config] = true }
             args.on("--plan", "预览设备清单，不连接设备") { options[:plan] = true }
             args.on("--tftp", "由设备发起 TFTP 备份") { options[:tftp] = true }
@@ -158,8 +164,11 @@ module Net
           raise ArgumentError, "--show-config、--plan 和 --export 只能选择一项" if modes > 1
           raise ArgumentError, "--output 需要同时指定 --export" if options[:output] && !options[:export]
           raise ArgumentError, "--all 不能与 --limit-per-vendor 同时使用" if options[:all] && options[:limit]
+          if options[:export] && (options[:source] || options[:query] || options[:query_params])
+            raise ArgumentError, "--export 不能与清单查询选项同时使用"
+          end
           if options[:export] && (options[:tftp] || options[:all] || options[:limit] || options[:concurrency] || options[:host] ||
-                                  options[:success_policy] || options[:max_script_output_bytes])
+            options[:success_policy] || options[:max_script_output_bytes])
             raise ArgumentError, "--export 不能与备份选项同时使用"
           end
         end

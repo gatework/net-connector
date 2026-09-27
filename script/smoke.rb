@@ -56,7 +56,7 @@ end
 
 session_log = StringIO.new
 configuration = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit", command_timeout: 5,
-                                                   logger: Logger.new(session_log), log_level: :debug)
+                                                  logger: Logger.new(session_log), log_level: :debug)
 transport = InstalledTransport.new(configuration)
 device = Net::Connector.build(:cisco_ios, configuration: configuration, transport: transport)
 begin
@@ -104,7 +104,7 @@ ensure
 end
 
 budget_configuration = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit", command_timeout: 5,
-                                                          max_script_output_bytes: 32)
+                                                         max_script_output_bytes: 32)
 budget_transport = InstalledTransport.new(budget_configuration)
 budget_device = Net::Connector.build(:cisco_ios, configuration: budget_configuration, transport: budget_transport)
 begin
@@ -127,9 +127,17 @@ cli = Net::Connector::Netdisco::CLI.new(argv: ["--show-config", "--max-script-ou
 raise "Installed offline settings failed" unless cli.run.zero? && JSON.parse(output.string).fetch("netdisco").fetch("inventory_timeout") == 300
 raise "Installed script budget setting missing" unless JSON.parse(output.string).fetch("ssh").fetch("max_script_output_bytes") == 64
 
+# 安装包独立提供数据库驱动与配置示例；这里只做离线校验，真实查询由 test:postgres 验证。
+require "pg"
+database_example = File.join(spec.full_gem_path, "examples/netdisco_database.yml")
+database_settings = Net::Connector::Netdisco::Settings.from_file(database_example, env: {})
+raise "Installed PostgreSQL settings missing" unless database_settings.inventory_source == :postgres
+raise "Installed PostgreSQL query missing" unless database_settings.client_options.fetch(:query).include?("$1")
+raise "Installed PostgreSQL driver unavailable" unless PG.library_version.positive?
+
 # 不连接设备即可检查安装包中的统一报告和成功策略。
 inventory_device = Net::Connector::Netdisco::Device.from_row({ "ip" => "192.0.2.1", "vendor" => "Cisco" },
-                                                            rules: Net::Connector::Netdisco::Rules.new)
+                                                             rules: Net::Connector::Netdisco::Rules.new)
 outcomes = %i[backed_up filtered].map do |status|
   Net::Connector::Netdisco::Outcome.new(device: inventory_device, status: status, backup: nil, error_code: nil, error_type: nil)
 end

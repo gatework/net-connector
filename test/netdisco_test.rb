@@ -249,7 +249,7 @@ class NetdiscoTest < Minitest::Test
         connector.define_singleton_method(:tftp_backup) do |**options|
           calls << [device.host, options]
           Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
-                                         completed_at: Time.now.utc)
+                                          completed_at: Time.now.utc)
         end
         connector.define_singleton_method(:close) {}
       end
@@ -287,7 +287,7 @@ class NetdiscoTest < Minitest::Test
         connector.define_singleton_method(:tftp_backup) do |**options|
           calls << device.host
           Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
-                                         completed_at: Time.now.utc)
+                                          completed_at: Time.now.utc)
         end
         connector.define_singleton_method(:close) {}
       end
@@ -308,7 +308,7 @@ class NetdiscoTest < Minitest::Test
     connector.define_singleton_method(:tftp_backup) do |**options|
       received = options
       Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
-                                     completed_at: Time.now.utc)
+                                      completed_at: Time.now.utc)
     end
     connector.define_singleton_method(:close) {}
     fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new([row]),
@@ -325,7 +325,7 @@ class NetdiscoTest < Minitest::Test
     connector.define_singleton_method(:tftp_backup) do |**options|
       received = options
       Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
-                                     completed_at: Time.now.utc)
+                                      completed_at: Time.now.utc)
     end
     connector.define_singleton_method(:close) {}
     fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new([row]),
@@ -347,7 +347,7 @@ class NetdiscoTest < Minitest::Test
         connector.define_singleton_method(:tftp_backup) do |**options|
           received[device.vendor] = options
           Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
-                                         completed_at: Time.now.utc)
+                                          completed_at: Time.now.utc)
         end
         connector.define_singleton_method(:close) do
           raise IOError, "close failed" if device.vendor == :hillstone
@@ -376,7 +376,7 @@ class NetdiscoTest < Minitest::Test
         connector.define_singleton_method(:tftp_backup) do |**options|
           calls << device.host
           Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
-                                         completed_at: Time.now.utc)
+                                          completed_at: Time.now.utc)
         end
         connector.define_singleton_method(:close) {}
       end
@@ -480,7 +480,7 @@ class NetdiscoTest < Minitest::Test
             nil
           else
             Net::Connector::TftpReceipt.new(server: settings.fetch(:host), path: settings.fetch(:path),
-                                           completed_at: Time.now.utc)
+                                            completed_at: Time.now.utc)
           end
         end
         connector.define_singleton_method(:close) {}
@@ -573,7 +573,7 @@ class NetdiscoTest < Minitest::Test
     connector = Object.new
     connector.define_singleton_method(:tftp_backup) do |**options|
       Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
-                                     completed_at: Time.now.utc)
+                                      completed_at: Time.now.utc)
     end
     connector.define_singleton_method(:close) {}
     fleet = Fleet.new(client: Struct.new(:devices).new([row]),
@@ -701,7 +701,7 @@ class NetdiscoTest < Minitest::Test
           connector.define_singleton_method(:tftp_backup) do |**options|
             calls << [device.host, options]
             Net::Connector::TftpReceipt.new(server: options.fetch(:host), path: options.fetch(:path),
-                                           completed_at: Time.now.utc)
+                                            completed_at: Time.now.utc)
           end
           connector.define_singleton_method(:close) {}
         end

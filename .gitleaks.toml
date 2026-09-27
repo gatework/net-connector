@@ -20,7 +20,7 @@ regexes = ['''(?i)^(?:\[REDACTED\]|<redacted>|replace-me|example-only)$''']
 [[rules]]
 id = "environment-credential"
 description = "Environment credential contains a literal value"
-regex = '''(?im)^[\t ]*(?:export[\t ]+)?[A-Z][A-Z0-9_]*(?:PASSWORD|TOKEN|API_KEY|SECRET)[\t ]*=[\t ]*["']?([^\s"']{4,})'''
+regex = '''(?im)^[\t ]*(?:export[\t ]+)?[A-Z][A-Z0-9_]*(?:PASSWORD|PASS|TOKEN|API_KEY|SECRET)[\t ]*=[\t ]*["']?([^\s"']{4,})'''
 secretGroup = 1
 [[rules.allowlists]]
 regexTarget = "secret"

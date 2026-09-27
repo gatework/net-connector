@@ -274,6 +274,47 @@ net-connector-backup --config config.yml --tftp --all
 net-connector-backup --config config.yml --export 192.0.2.7 --output ./exports/device.cfg
 ```
 
+### PostgreSQL 联机查询
+
+设置 `netdisco.source: postgres` 可以直接从数据库查询清单，继续使用同一套 Fleet、规则、计划和备份流程。库不内置表名、SQL 或业务筛选条件；必须提供查询，可直接修改 [YAML 示例](examples/netdisco_database.yml)：
+
+```yaml
+netdisco:
+  source: postgres
+  query: |
+    SELECT host(ip) AS ip, name, dns, vendor, os, model, os_ver, serial
+    FROM device
+    WHERE vendor = $1
+    ORDER BY ip
+  query_params: [H3C]
+```
+
+查询必须返回唯一命名的 `ip` 列；可选列为 `name`、`dns`、`vendor`、`os`、`model`、`os_ver`、`serial`，其他列会丢弃。自定义表、视图、JOIN 和只读 CTE 均可用列别名适配这一契约。PostgreSQL 的 `inet` 字段建议用 `host(ip) AS ip` 去除前缀长度；筛选及排序由 SQL 决定。参数按数组顺序绑定 `$1`、`$2`，支持字符串、数字、布尔和 null，不做字符串插值或环境变量展开。
+
+数据库连接信息只从进程环境读取，沿用 [Netdisco 官方环境变量命名](https://github.com/netdisco/netdisco/wiki/Environment-Variables)。`HOST`、`NAME`、`USER`、`PASS` 必填；HTTP 地址、API key 和设备登录凭据不是清单查询的前置条件：
+
+```sh
+export NETDISCO_DB_HOST=database.example
+export NETDISCO_DB_NAME=netdisco
+export NETDISCO_DB_USER=inventory-reader
+export NETDISCO_DB_PASS='replace-me'
+export NETDISCO_DB_SSLMODE=verify-full
+export NETDISCO_DB_SSLROOTCERT=/etc/net-connector/database-ca.crt
+
+net-connector-backup --config examples/netdisco_database.yml --show-config
+net-connector-backup --config examples/netdisco_database.yml --plan
+# 覆盖查询参数；实际备份仍需设置 NET_CONNECTOR_DEVICE_* 凭据。
+net-connector-backup --config examples/netdisco_database.yml --plan --query-params '["Cisco"]'
+```
+
+SQL 也可通过 `NETDISCO_QUERY` / `--query SQL` 提供，参数通过 `NETDISCO_QUERY_PARAMS` / `--query-params JSON` 提供；来源对应 `NETDISCO_SOURCE` / `--source postgres`。优先级均为 CLI > ENV > YAML。SQL 和参数属于可公开配置，会出现在 `--show-config` 中；数据库密码只放在连接环境变量中。连接信息不进入策略快照、计划、报告或 `inspect`。已有 Fleet 每次重新查询时读取最新连接凭据；传入已有 `plan:` 执行时不会重新查询。
+
+客户端通过 `pg` 驱动执行只读事务，使用参数化游标分批取数，并在每批启用单行读取。PostgreSQL 原生解析拒绝多条语句，写入和锁定查询会失败；查询账户应仅授予所需表/视图的 SELECT 权限，只读事务不能替代账户权限隔离。驱动只在实际查询时加载，HTTP 和离线导出路径不加载它。
+
+数据库查询复用现有清单预算：`page_size` 控制每次 FETCH 的行数，`max_pages` 限制 FETCH 次数，`max_devices` 在去重前计数；字节预算统计返回列名与文本值，包含最终丢弃的列。字节检查发生在 libpq 解码一行之后，不能限制单个超大字段在驱动内部的瞬时内存。连接、查询和全部 FETCH 共用总期限，同时设置数据库 statement_timeout。任一查询错误、超时或超限均关闭连接并丢弃整份清单，不连接设备；错误消息不输出原始 SQL、参数或数据库响应。建议只选所需字段，并提供明确的 ORDER BY 保持采样顺序稳定。
+
+### 计划与执行
+
 `--plan` 只拉取并验证清单；`--host` 选择一个管理地址；`--tftp` 默认每厂商最多选择五台，`--all` 选择所有就绪设备。本地备份默认选择所有就绪设备，可用 `--limit-per-vendor` 限制。`--show-config` 只输出有效的非敏感设置，不访问 Netdisco。CLI 会拒绝未知 YAML 字段、Ruby 对象标签及配置中的凭据。`--export IP` 只离线读取规范化管理地址对应的 `<IP>.txt`；默认原样写到标准输出，指定 `--output` 后以 `0600` 权限原子写文件。导出的配置仍是敏感数据。
 
 CLI 的计划与批次摘要使用 JSON。默认 `--success-policy strict` 使用严格规则：非空清单且全部成功、回调及报告正常时为 `0`；空清单或有跳过、部分成功、失败时为 `1`；清单或配置错误为 `2`。`--host` 未在清单中找到也返回 `2`。由于其他清单记录会标记为过滤，默认单主机备份成功时批次退出码仍可能是 `1`；应查看 JSON 中的 `succeeded`、`skipped` 和逐台 `status`。
@@ -291,10 +332,18 @@ CLI 的计划与批次摘要使用 JSON。默认 `--success-policy strict` 使�
 
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
-| `NETDISCO_URL` | 必填 | Netdisco 服务根地址，可包含租户路径 |
+| `NETDISCO_SOURCE` | `http` | 清单来源，支持 `http`、`postgres` |
+| `NETDISCO_URL` | HTTP 模式必填 | Netdisco 服务根地址，可包含租户路径 |
 | `NET_CONNECTOR_CONFIG` | 未设置 | CLI 的非敏感 YAML 配置文件 |
 | `NETDISCO_USERNAME`, `NETDISCO_PASSWORD` | 未提供 API 密钥时必填 | 清单 API 登录 |
 | `NETDISCO_API_KEY` | 未设置 | 直接使用已有 API 密钥 |
+| `NETDISCO_QUERY` | PostgreSQL 模式必填 | 用户提供的单条清单 SQL |
+| `NETDISCO_QUERY_PARAMS` | `[]` | SQL 参数的 JSON 标量数组 |
+| `NETDISCO_DB_HOST`, `NETDISCO_DB_NAME` | PostgreSQL 模式必填 | 数据库主机或 Unix socket 目录、数据库名 |
+| `NETDISCO_DB_USER`, `NETDISCO_DB_PASS` | PostgreSQL 模式必填 | 仅从环境注入的数据库用户名、密码 |
+| `NETDISCO_DB_PORT` | libpq 默认 `5432` | PostgreSQL 端口 |
+| `NETDISCO_DB_SSLMODE`, `NETDISCO_DB_SSLROOTCERT` | libpq 默认 | TLS 模式、CA 文件；远程连接建议 `verify-full` |
+| `NETDISCO_DB_CONNECT_TIMEOUT` | 未单独设置 | 可选正整数秒；连接始终受清单总期限限制 |
 | `NETDISCO_PAGE_SIZE` | `500` | 清单分页大小 |
 | `NETDISCO_MAX_PAGES` | `10000` | 最大分页次数 |
 | `NETDISCO_MAX_RESPONSE_BYTES` | `16777216` | 单次响应正文上限，认证和错误正文也计数 |

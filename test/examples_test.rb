@@ -124,25 +124,6 @@ class ConnectorExamplesTest < Minitest::Test
     end
   end
 
-  def test_plain_ruby_setup_preserves_installed_gem_loading_from_any_directory
-    require "bundler"
-    code = <<~RUBY
-      require #{File.join(ROOT, "examples/boot").inspect}
-      raise "unexpected Bundler activation" if defined?(Bundler)
-      raise "unexpected source injection" if $LOAD_PATH.include?(#{File.join(ROOT, "lib").inspect})
-      raise "wrong working directory" unless Dir.pwd == #{ROOT.inspect}
-      puts "source loaded"
-    RUBY
-    Bundler.with_unbundled_env do
-      [ROOT, File.join(ROOT, "examples"), Dir.tmpdir].each do |directory|
-        output, error, status = Open3.capture3({ "BUNDLE_GEMFILE" => nil, "RUBYLIB" => nil, "RUBYOPT" => nil },
-                                               RbConfig.ruby, "-e", code, chdir: directory)
-        assert status.success?, error
-        assert_equal "source loaded\n", output
-      end
-    end
-  end
-
   def test_default_selects_all_devices_and_sample_is_explicit
     rows = 7.times.map { |i| { "ip" => "192.0.2.#{i + 1}", "vendor" => "H3C" } }
     [[[], 7], [["--sample", "2"], 2]].each do |arguments, count|

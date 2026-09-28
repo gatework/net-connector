@@ -44,7 +44,17 @@ module Net
         def ready? = issue.nil?
 
         # 生成不随名称或厂商信息改变的本地文本文件名。
-        def backup_filename = Storage::SavedConfig.filename(host)
+        def backup_filename(style: :ip)
+          address = Storage::SavedConfig.filename(host)
+          return address if style == :ip
+          raise ArgumentError, "filename style must be ip or hostname_ip" unless style == :hostname_ip
+
+          label = name.to_s.encode("UTF-8", invalid: :replace, undef: :replace, replace: "-")
+                      .gsub(/[^\p{L}\p{N}._-]+/, "-").byteslice(0, 160).scrub("")
+                      .gsub(/\A[._-]+|[._-]+\z/, "")
+          label = "unnamed" if label.empty?
+          "#{label}-#{address}"
+        end
 
         # 生成设备 CLI 可用的 ASCII 远端文件名。
         def tftp_filename

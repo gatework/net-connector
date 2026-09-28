@@ -37,7 +37,7 @@ module Net
 
         def initialize(connection_options:, **options)
           @options = self.class.options(**options)
-          @connection_options = validate_connection_options(connection_options)
+          @connection_options = validate_connection_options!(connection_options)
         end
 
         # 每次查询独占连接和游标；只有全部结果验证成功后才把清单交给 Fleet。
@@ -103,7 +103,7 @@ module Net
           end
         end
 
-        def validate_connection_options(options)
+        def validate_connection_options!(options)
           unless options.is_a?(Hash) && (options.keys - CONNECTION_ENV.keys).empty?
             raise ArgumentError, "connection_options must contain supported PostgreSQL connection keys"
           end

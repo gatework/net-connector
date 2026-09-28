@@ -12,7 +12,7 @@ module Net
 
         # 声明运行配置和保存配置命令。
         def commands(&definition)
-          check_block!(:commands, definition)
+          validate_block!(:commands, definition)
           commands = Commands.new(
             @values[:config_commands], @values[:save_commands]
           )
@@ -24,28 +24,28 @@ module Net
 
         # 声明登录、命令、凭据和提权提示符。
         def prompts(&definition)
-          check_block!(:prompts, definition)
+          validate_block!(:prompts, definition)
           Prompts.new(@values).instance_eval(&definition)
           self
         end
 
         # 声明分页模式及自动翻页响应。
         def pager(&definition)
-          check_block!(:pager, definition)
+          validate_block!(:pager, definition)
           Pager.new(@values).instance_eval(&definition)
           self
         end
 
         # 声明认证失败和命令失败的输出模式。
         def errors(&definition)
-          check_block!(:errors, definition)
+          validate_block!(:errors, definition)
           Errors.new(@values).instance_eval(&definition)
           self
         end
 
         # 声明登录挑战和命令确认交互。
         def interactions(&definition)
-          check_block!(:interactions, definition)
+          validate_block!(:interactions, definition)
           interactions = Interactions.new(@values)
           interactions.instance_eval(&definition)
           @values[:login_interactions] = interactions.login_interactions
@@ -55,14 +55,14 @@ module Net
 
         # 声明进入特权模式所需的命令和提示符。
         def privilege(&definition)
-          check_block!(:privilege, definition)
+          validate_block!(:privilege, definition)
           Privilege.new(@values).instance_eval(&definition)
           self
         end
 
         # 声明旧版 SSH 协商参数。
         def ssh(&definition)
-          check_block!(:ssh, definition)
+          validate_block!(:ssh, definition)
           Ssh.new(@values).instance_eval(&definition)
           self
         end
@@ -103,7 +103,7 @@ module Net
         private
 
         # 块式声明入口必须有明确的子 DSL，避免静默忽略配置。
-        def check_block!(name, definition)
+        def validate_block!(name, definition)
           raise ArgumentError, "#{name} requires a block" unless definition
         end
 

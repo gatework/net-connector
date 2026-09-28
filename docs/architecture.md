@@ -116,7 +116,7 @@ Diagnostic 只保存固定词表中的码、类型、阶段和受控产物状态
 
 `DatabaseClient` 每次调用独占 PostgreSQL 连接，在只读事务中用扩展查询协议声明游标，原生解析器拒绝多语句和非查询输入。FETCH 大小及次数复用清单预算，单行模式使 libpq 不缓存整页；每行在追加前计数，额外列也消耗字节预算。驱动必须先解码单行，所以单个超大字段仍可超过 Ruby 预算的瞬时内存。总 deadline 覆盖连接和所有语句，每次 FETCH 前缩短 statement_timeout；正常完成回滚只读事务，异常关闭连接，任何失败均不交付部分清单。NOTICE、原始数据库异常及 cause 不进入日志或 CLI；稳定错误码区分连接失败、查询失败、无效清单和预算超限。SQL/参数可在 show-config 中查看，不能用于传递凭据。
 
-数据库集成测试运行 `bundle exec rake test:postgres`，通过 `pg_config --bindir`（或 `NET_CONNECTOR_TEST_PG_BINDIR`）定位服务端工具。测试只创建临时 SCRAM 数据库和私有 Unix socket，退出时停止并删除；不会读取真实 Netdisco 凭据或连接已有服务。覆盖 SQL/参数、只读限制、真实认证失败、查询中途失败、各项预算、连接回收以及 CLI 计划。
+数据库集成测试运行 `bundle exec rake test:postgres`，通过 `pg_config --bindir`（或 `NC_TEST_PG_BINDIR`）定位服务端工具。测试只创建临时 SCRAM 数据库和私有 Unix socket，退出时停止并删除；不会读取真实 Netdisco 凭据或连接已有服务。覆盖 SQL/参数、只读限制、真实认证失败、查询中途失败、各项预算、连接回收以及 CLI 计划。
 
 ## 迁移与尚未启用的能力
 
@@ -166,7 +166,7 @@ NC-07C（TFTP 服务端验证适配器）同为可选扩展，本轮 **deferred*
 
 累计等于上限时当前脚本可正常结束，但下一条查询在发送前失败；超过上限的完整主响应先进入 steps，再返回 `ScriptOutputLimitExceeded`，后处理和下一命令不会继续。追加查询不进入主脚本的公开 steps，但计入预算并在错误中保留实际查询命令。吞掉查询预算异常的钩子不能让超额脚本报告成功。已执行命令不重放；确认的 TFTP 完成行仍可构造带收尾错误的回执。
 
-累计检查不在读取中途切断当前命令，最多还会接收一个受 `max_output_bytes` 限制的响应；已完成步骤不截断或丢弃。配置清理、解析、用户回调和反复 `Result#output` 的副本不计入该字节预算，因此它不是 RSS 或整批内存硬上限。合成基准不足以确定适合所有设备的默认阈值，因此默认不限制累计值。设置通过 YAML `ssh.max_script_output_bytes`、`NET_CONNECTOR_MAX_SCRIPT_OUTPUT_BYTES` 和 CLI 同名选项进入批次策略快照，优先级为 CLI > ENV > YAML；未配置时不传递该可选键，显式凭据 resolver 可覆盖连接参数。
+累计检查不在读取中途切断当前命令，最多还会接收一个受 `max_output_bytes` 限制的响应；已完成步骤不截断或丢弃。配置清理、解析、用户回调和反复 `Result#output` 的副本不计入该字节预算，因此它不是 RSS 或整批内存硬上限。合成基准不足以确定适合所有设备的默认阈值，因此默认不限制累计值。设置通过 YAML `ssh.max_script_output_bytes`、`NC_MAX_SCRIPT_OUTPUT_BYTES` 和 CLI 同名选项进入批次策略快照，优先级为 CLI > ENV > YAML；未配置时不传递该可选键，显式凭据 resolver 可覆盖连接参数。
 
 Ruby 对象显式拥有资源并使用关键字参数。`Profile` 提供有限声明入口，厂商策略负责差异行为。公开方法、厂商钩子、结果对象和 CLI JSON 字段以当前文档为准；内部不做运行时方法注入，也没有工作流 DSL。
 
@@ -288,12 +288,25 @@ TFTP 策略必须实现 `validate_options!(target, source_file:, vrf:)`、`recei
 
 `TerminalText.utf8` 在副本上验证设备或文件的原始字节，`TerminalText.render` 再使用严格终端渲染。Ruby 源码默认 UTF-8 不决定 PTY 或 `File.binread` 返回的编码。非法原始字节不能因控制符擦除而通过检查；渲染损坏多字节字符时同样拒绝，错误为不含正文或 cause 的 `invalid_output_encoding`。拓扑在表头匹配和计数前复用验证，TextFSM 每次解析创建独立 Parser。日志允许转义非法字节，原始备份不转码。
 
+### Ruby 实现与扩展边界
+
+Base 的 protected `login_interactions`、`confirmation_interactions` 与 Profile 同名，子类可覆盖并调用 `super`；其他档案转发和脚本钩子继续保留。
+脚本执行器构造与结果收尾分别由私有方法实现，finalize 始终位于原会话锁和敏感输出作用域内。
+Session 的私有方法统一放在 private 段；`login_once` 处理一次登录，外层连接流程拥有计时起点、失败清理及最多一次恢复。
+
+Settings 的 `raw`、`config_hash` 是 protected 同类协作接口，快照和运行设置通过显式接收者调用；应用层使用 `public_config`。
+客户端预算、HTTP 与 PostgreSQL 选项分别解析，默认值和来源规则仍由原有定义提供，不重复声明一套配置 schema。
+RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protected 结果选择；不扩大策略生命周期接口。
+具体语法与异常约束见 [开发约定](../CONTRIBUTING.md#ruby-范式与语法边界)。
+
 ### 当前命名与接口调整
 
 项目在开发阶段只维护当前接口，不保留旧路径转发或旧方法别名。
 
 | 原名称或入口 | 当前入口 |
 | --- | --- |
+| `Base#login_dialogues` / `confirmation_dialogues` | protected `login_interactions` / `confirmation_interactions`；子类覆盖同步改名，继续支持 `super` |
+| `Fleet#backup_one` / `tftp_backup_one` / `run_one` | private `backup_device` / `tftp_backup_device` / `run_device`；公开批次入口不变 |
 | `engine`、`engine/base`、`engine/profile` | `net/connector`；底层分别为 `engine/core`、`device/base`、`device/profile` |
 | `Operations::*`、`operations/` | 设备流程为 `device/`；文件为 `Storage` / `storage/`；解析为 `TextFSM` / `textfsm.rb` |
 | 公共层中的厂商策略别名 | `Net::Connector::<Vendor>::RunningConfig` / `TftpBackup` / `Topology`，位于 `vendor/<厂商>/` |

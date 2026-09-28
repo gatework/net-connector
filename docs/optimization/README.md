@@ -221,7 +221,7 @@ expect 仓库的命令为 `zsh -ic 'script/ci'`，包括全量 lint/测试、示
 
 默认上限为 16 MiB/响应、128 MiB/调用、100000 条记录、10000 页、300 秒。
 这是设计起点，尚未做真实清单容量压测。HTTP 明文默认仍允许，以免静默破坏旧部署；
-建议 HTTPS，显式 `allow_insecure_http: false` / `NETDISCO_ALLOW_INSECURE_HTTP=false`
+建议 HTTPS，显式 `allow_insecure_http: false` / YAML `netdisco.allow_insecure_http: false`
 可在请求前拒绝 HTTP。既有 HTTPS 证书验证未关闭。
 
 `Settings#snapshot` 固定每次执行策略，不负责约束调用方注入的任意 client 或

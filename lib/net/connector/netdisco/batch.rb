@@ -45,7 +45,7 @@ module Net
       Batch = Data.define(:mode, :outcomes, :started_at, :finished_at, :callback_errors,
                           :report_location, :report_error) do
         # 按设备最终状态统计数量。
-        def counts = outcomes.group_by(&:status).transform_values(&:size)
+        def counts = outcomes.map(&:status).tally
 
         # 仅在所有设备成功且回调、报告均正常时判定整批成功。
         def success? = !outcomes.empty? && outcomes.all?(&:success?) && callback_errors.empty? && report_error.nil?

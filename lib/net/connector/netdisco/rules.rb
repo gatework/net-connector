@@ -109,11 +109,14 @@ module Net
           return match[:connector] if match
           return @vendor_overrides[label] if @vendor_overrides.key?(label)
 
+          # 厂商标签可能陈旧；仅在操作系统和带品牌型号同时确认时纠正。
+          return h3c_connector(os, model) if os == "comware" && model.match?(/\Ah3c\s+\S/)
+
           case label
-          when /\bh3c\b/ then (os.match?(/wireless|wlan/) || model.match?(/\A(?:wx|ac)\s*\d/)) ? :h3c_wireless : :h3c
+          when /\bh3c\b/ then h3c_connector(os, model)
           when /\bcisco\b/
             return :cisco_nxos if os.match?(/nx\s*os|nexus/) || model.match?(/\bnexus\b|\bn\s*[3579]k\b/)
-            return :cisco_ios if os.match?(/\bios\b|\bios\s*xe\b/)
+            :cisco_ios if os.match?(/\bios\b|\bios\s*xe\b/)
           when /\bradware\b/ then :radware
           when /palo\s*alto|paloalto/ then :palo_alto
           when /\bhuawei\b/ then :huawei
@@ -131,6 +134,11 @@ module Net
         end
 
         private
+
+        def h3c_connector(os, model)
+          wireless = os.match?(/wireless|wlan/) || model.match?(/\A(?:h3c\s+)?(?:wx|ac)\s*\d/)
+          wireless ? :h3c_wireless : :h3c
+        end
 
         # 校验并标准化管理地址列表。
         def string_list(values)

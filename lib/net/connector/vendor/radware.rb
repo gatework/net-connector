@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../device/base"
+require_relative "radware/running_config"
 require_relative "radware/tftp_backup"
 require_relative "radware/topology"
 
@@ -12,7 +13,7 @@ module Net
         vendor :radware
         # 声明菜单式 CLI 的命令、提示、超时、诊断和确认规则。
         profile do
-          running_config_strategy Net::Connector::RunningConfig::Rendered
+          running_config_strategy Net::Connector::Radware::RunningConfig
           tftp_strategy Net::Connector::Radware::TftpBackup
           topology_strategy Net::Connector::Radware::Topology
           commands do
@@ -21,8 +22,8 @@ module Net
           end
 
           prompts do
-            login(/(?:\A|(?<=[\r\n]))(?:>>[^\r\n]*|[^\r\n]+[>#])\s*\z/)
-            command(/(?:\A|(?<=[\r\n]))(?:>>[^\r\n]*|[^\r\n]+#)\s*\z/)
+            login(/(?:\A|(?<=[\r\n]))(?:>>[^\r\n]*#|(?!>>)[^\r\n]+[>#])\s*\z/)
+            command(/(?:\A|(?<=[\r\n]))[^\r\n]+#\s*\z/)
           end
 
           errors do

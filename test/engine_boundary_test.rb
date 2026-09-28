@@ -10,6 +10,80 @@ require_relative "support/fake_transport"
 class EngineBoundaryTest < Minitest::Test
   Connector = Net::Connector
 
+  def test_open_block_forwarding_preserves_break_and_closes_transport
+    transport = ConnectorFake.new("router#")
+    returned = Connector.open(:cisco_ios, host: "192.0.2.1", username: "operator", transport: transport) do |device|
+      assert device.connected?
+      break :cancelled
+    end
+    assert_equal :cancelled, returned
+    assert_equal 1, transport.closes
+  end
+
+  def test_login_hook_failure_releases_transport_and_allows_a_fresh_connection
+    [RuntimeError, Interrupt].each do |failure_class|
+      attempts = 0
+      connector_class = Class.new(Connector::Base) do
+        profile { prompts { login(/router#\z/); command(/router#\z/) } }
+        define_method(:after_login) do |_session, _response|
+          attempts += 1
+          raise failure_class, "login hook failed" if attempts == 1
+        end
+        protected :after_login
+      end
+      transport = ConnectorFake.new("router#", "router#", "done\nrouter#")
+      device = connector_class.new(host: "192.0.2.1", username: "operator", transport: transport)
+      error = assert_raises(failure_class == Interrupt ? Interrupt : Connector::InternalError) { device.connect }
+      assert_equal :login, error.phase if error.is_a?(Connector::Error)
+      assert_nil error.cause
+      assert transport.closed?
+      assert_empty transport.writes
+      assert_equal 1, attempts
+      assert device.execute_command("show status").success?
+      assert_equal 2, attempts
+      assert_equal 2, transport.opens
+      assert_equal ["show status\n"], transport.writes
+    ensure
+      device&.close
+    end
+  end
+
+  def test_operation_finalizer_preserves_return_values_and_session_ownership
+    [nil, false, :completed].each do |value|
+      transport = ConnectorFake.new("router#", "done\nrouter#", "next\nrouter#")
+      device = Connector.build(:cisco_ios, host: "192.0.2.1", username: "operator", transport: transport)
+      script = Connector::Script.new(["show status"])
+      returned = device.execute_operation(script, name: :probe, privilege: false) do |result|
+        assert_equal ["show status"], (result.steps.map { |step| step.command.text })
+        nested = device.execute_command("must not run")
+        assert_instance_of Connector::SessionBusy, nested.error
+        value
+      end
+      assert_same value, returned
+      assert device.execute_command("show next").success?
+      assert_equal ["show status\n", "show next\n"], transport.writes
+    ensure
+      device&.close
+    end
+  end
+
+  def test_operation_finalizer_throw_closes_session_and_releases_lock
+    transport = ConnectorFake.new("router#", "done\nrouter#", "router#", "next\nrouter#")
+    device = Connector.build(:cisco_ios, host: "192.0.2.1", username: "operator", transport: transport)
+    returned = catch(:cancel) do
+      device.execute_operation(Connector::Script.new(["show status"]), name: :probe, privilege: false) do
+        throw :cancel, :cancelled
+      end
+    end
+    assert_equal :cancelled, returned
+    assert transport.closed?
+    assert device.execute_command("show next").success?
+    assert_equal 2, transport.opens
+    assert_equal ["show status\n", "show next\n"], transport.writes
+  ensure
+    device&.close
+  end
+
   def test_invalid_connection_settings_fail_before_creating_a_transport
     invalid = [
       { port: 0 }, { port: 65_536 }, { port: "22" }, { max_output_bytes: 0 },
@@ -54,25 +128,11 @@ class EngineBoundaryTest < Minitest::Test
     assert_equal "2323", direct.argv.last
   end
 
-  def test_host_key_replacement_uses_only_the_explicit_host_and_known_hosts
-    [nil, 2222].each do |port|
-      transport = Connector::Transports::Ssh.new(config(port: port, known_hosts: "tmp/known_hosts"))
-      [true, false].each do |success|
-        process_status = Struct.new(:success?).new(success)
-        run = lambda do |*arguments|
-          host = port ? "[192.0.2.1]:2222" : "192.0.2.1"
-          assert_equal ["ssh-keygen", "-f", File.expand_path("tmp/known_hosts"), "-R", host], arguments
-          ["", process_status]
-        end
-        Open3.stub(:capture2e, run) do
-          if success
-            transport.replace_host_key
-          else
-            assert_raises(IOError) { transport.replace_host_key }
-          end
-        end
-      end
-    end
+  def test_host_key_replacement_requires_explicit_policy
+    transport = Connector::Transports::Ssh.new(config(known_hosts: "tmp/known_hosts"))
+    assert_raises(IOError) { transport.replace_host_key }
+    enabled = Connector::Transports::Ssh.new(config(known_hosts: "tmp/known_hosts", host_key_policy: :replace))
+    assert enabled.replace_host_key
   end
 
   def test_recovery_requires_explicit_configuration_and_a_supported_failure

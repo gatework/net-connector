@@ -10,6 +10,8 @@ module Net
         DEFAULT_BACKUP_DIRECTORY = "backups"
         DEFAULT_CONCURRENCY = 4
         MAX_CONCURRENCY = 50
+        ENVIRONMENT_KEYS = %w[NETDISCO_URL NC_BACKUP_DIRECTORY NC_CONCURRENCY NC_SAMPLE_PER_VENDOR
+                              NC_PROTOCOL NC_KNOWN_HOSTS NC_HOST_KEY_POLICY NC_LOG_DIRECTORY NC_LOG_LEVEL TFTP_HOST].freeze
         DEFAULT_PAGE_SIZE = Client::DEFAULTS.fetch(:page_size)
         UNSET = Object.new.freeze
         private_constant :UNSET
@@ -18,9 +20,19 @@ module Net
           new(env: env, defaults: ConfigFile.load(path))
         end
 
+        def self.from_env(env: ENV)
+          path = env["NC_CONFIG"]
+          path && !path.empty? ? from_file(path, env: env) : new(env: env)
+        end
+
         def initialize(env: ENV, defaults: {}, overrides: {}, policy: nil, fixed: false)
           @env, @defaults, @overrides = env, defaults, overrides
           @policy, @fixed = policy, fixed
+        end
+
+        # 调用入口补充运行目录等非敏感覆盖，凭据仍从同一来源读取。
+        def with_overrides(values)
+          self.class.new(env: @env, defaults: @defaults, overrides: @overrides.merge(values))
         end
 
         # 快照自身不保留 ENV、凭据 resolver 或原 Settings 的引用，不能携带秘密进入摘要。
@@ -28,7 +40,9 @@ module Net
           return @policy.validate!(mode: mode) if @policy
           return validate!(mode: mode) if @fixed
 
-          keys = mode == :export ? ["NET_CONNECTOR_BACKUP_DIRECTORY"] : non_secret_keys
+          validate_environment! unless mode == :export
+
+          keys = mode == :export ? ["NC_BACKUP_DIRECTORY"] : non_secret_keys
           values = keys.each_with_object({}) do |key, result|
             item = raw(key, UNSET)
             result[key.freeze] = item.is_a?(String) ? item.dup.freeze : item unless item.equal?(UNSET)
@@ -61,18 +75,25 @@ module Net
           self
         end
 
-        def client(policy: snapshot(mode: :inventory))
+        def client(policy: snapshot(mode: :inventory), credentials: nil)
+          if credentials && (!credentials.is_a?(Hash) || credentials.keys.sort != %i[password username] ||
+            !credentials.values.all? { |value| present?(value) })
+            raise ArgumentError, "inventory credentials require nonempty username and password"
+          end
           options = policy.client_options
           if policy.inventory_source == :postgres
             connection = DatabaseClient::CONNECTION_ENV.each_with_object({}) do |(key, name), values|
               item = secret_value(name)
               values[key] = item if item
             end
+            connection.merge!(user: credentials[:username], password: credentials[:password]) if credentials
             return DatabaseClient.new(connection_options: connection, **options)
           end
           raise ArgumentError, "NETDISCO_URL is required" unless options.fetch(:url)
 
-          authentication = if (token = secret_value("NETDISCO_API_KEY"))
+          authentication = if credentials
+                             credentials
+                           elsif (token = secret_value("NETDISCO_API_KEY"))
                              { api_key: token }
                            else
                              { username: required_secret("NETDISCO_USERNAME"), password: required_secret("NETDISCO_PASSWORD") }
@@ -90,54 +111,36 @@ module Net
         # 原生客户端和 --show-config 共享预算校验；只验证所选来源的查询设置。
         def client_options
           defaults = inventory_source == :postgres ? DatabaseClient::DEFAULTS : Client::DEFAULTS
-          options = defaults.to_h do |name, default|
-            key = "NETDISCO_#{name.to_s.upcase}"
-            parsed = case name
-                     when :inventory_timeout then number(key, default)
-                     when :allow_insecure_http then boolean(key, default)
-                     else integer(key, default)
-                     end
-            [name, parsed]
-          end
-          if inventory_source == :postgres
-            query = value("NETDISCO_QUERY") || (raise ArgumentError, "NETDISCO_QUERY is required for postgres")
-            return DatabaseClient.options(query: query, query_params: json("NETDISCO_QUERY_PARAMS", []), **options)
-          end
-          if value("NETDISCO_QUERY") || value("NETDISCO_QUERY_PARAMS")
-            raise ArgumentError, "SQL query settings require NETDISCO_SOURCE=postgres"
-          end
-          options = Client.options(**options)
-          url = value("NETDISCO_URL")
-          Client.validate_url!(url, allow_insecure_http: options.fetch(:allow_insecure_http)) if url
-          options.merge(url: url).freeze
+          options = client_budget_options(defaults)
+          inventory_source == :postgres ? postgres_options(options) : http_options(options)
         end
 
         def rules
-          Rules.new(include_hosts: list("NET_CONNECTOR_INCLUDE_HOSTS"),
-                    exclude_hosts: list("NET_CONNECTOR_EXCLUDE_HOSTS"),
-                    include_vendors: list("NET_CONNECTOR_INCLUDE_VENDORS"),
-                    vendor_overrides: json("NET_CONNECTOR_VENDOR_OVERRIDES", {}),
-                    host_overrides: json("NET_CONNECTOR_HOST_OVERRIDES", {}),
-                    mappings: json("NET_CONNECTOR_DEVICE_RULES", []))
+          Rules.new(include_hosts: list("NC_INCLUDE_HOSTS"),
+                    exclude_hosts: list("NC_EXCLUDE_HOSTS"),
+                    include_vendors: list("NC_INCLUDE_VENDORS"),
+                    vendor_overrides: json("NC_VENDOR_OVERRIDES", {}),
+                    host_overrides: json("NC_HOST_OVERRIDES", {}),
+                    mappings: json("NC_DEVICE_RULES", []))
         end
 
         def backup_directory
-          path = raw("NET_CONNECTOR_BACKUP_DIRECTORY", DEFAULT_BACKUP_DIRECTORY)
-          raise ArgumentError, "NET_CONNECTOR_BACKUP_DIRECTORY must be nonempty" unless present?(path)
+          path = raw("NC_BACKUP_DIRECTORY", DEFAULT_BACKUP_DIRECTORY)
+          raise ArgumentError, "NC_BACKUP_DIRECTORY must be nonempty" unless present?(path)
 
           File.expand_path(path)
         end
 
         def concurrency
-          count = integer("NET_CONNECTOR_CONCURRENCY", DEFAULT_CONCURRENCY)
-          raise ArgumentError, "NET_CONNECTOR_CONCURRENCY must be at most #{MAX_CONCURRENCY}" if count > MAX_CONCURRENCY
+          count = integer("NC_CONCURRENCY", DEFAULT_CONCURRENCY)
+          raise ArgumentError, "NC_CONCURRENCY must be at most #{MAX_CONCURRENCY}" if count > MAX_CONCURRENCY
 
           count
         end
 
         def limit_per_vendor(tftp: false)
-          count = if configured?("NET_CONNECTOR_SAMPLE_PER_VENDOR")
-                    integer("NET_CONNECTOR_SAMPLE_PER_VENDOR", 5) unless raw("NET_CONNECTOR_SAMPLE_PER_VENDOR").nil?
+          count = if configured?("NC_SAMPLE_PER_VENDOR")
+                    integer("NC_SAMPLE_PER_VENDOR", 5) unless raw("NC_SAMPLE_PER_VENDOR").nil?
                   elsif tftp
                     5
                   end
@@ -146,17 +149,17 @@ module Net
         end
 
         def tftp_source_files
-          files = { huawei: raw("NET_CONNECTOR_HUAWEI_TFTP_SOURCE_FILE", "flash:/startup.cfg") }
+          files = { huawei: raw("NC_HUAWEI_TFTP_SOURCE_FILE", "flash:/startup.cfg") }
           %i[h3c h3c_wireless].each do |vendor|
-            key = "NET_CONNECTOR_#{vendor.to_s.upcase}_TFTP_SOURCE_FILE"
+            key = "NC_#{vendor.to_s.upcase}_TFTP_SOURCE_FILE"
             files[vendor] = raw(key) if configured?(key)
           end
           files
         end
 
         def tftp_vrfs
-          mapping = json("NET_CONNECTOR_TFTP_VRFS", {})
-          raise ArgumentError, "NET_CONNECTOR_TFTP_VRFS must be a JSON object" unless mapping.is_a?(Hash)
+          mapping = json("NC_TFTP_VRFS", {})
+          raise ArgumentError, "NC_TFTP_VRFS must be a JSON object" unless mapping.is_a?(Hash)
 
           self.class.validate_vrfs!(mapping.transform_keys(&:to_sym))
         end
@@ -174,73 +177,120 @@ module Net
         def tftp_server = value("TFTP_HOST")
 
         def connection_options(vendor = nil)
-          prefix = "NET_CONNECTOR_#{vendor.to_s.upcase}_"
           configuration = Configuration.new(
-            protocol: (vendor && value(prefix + "PROTOCOL")) || value("NET_CONNECTOR_PROTOCOL") || "ssh",
-            log_level: value("NET_CONNECTOR_LOG_LEVEL") || "info", known_hosts: value("NET_CONNECTOR_KNOWN_HOSTS"),
-            host_key_policy: value("NET_CONNECTOR_HOST_KEY_POLICY") || "strict",
-            max_script_output_bytes: optional_integer("NET_CONNECTOR_MAX_SCRIPT_OUTPUT_BYTES")
+            protocol: vendor_protocols[vendor.to_s] || value("NC_PROTOCOL") || "ssh",
+            log_level: value("NC_LOG_LEVEL") || "info", known_hosts: value("NC_KNOWN_HOSTS"),
+            host_key_policy: value("NC_HOST_KEY_POLICY") || "strict",
+            max_script_output_bytes: optional_integer("NC_MAX_SCRIPT_OUTPUT_BYTES")
           )
           options = %i[protocol log_level known_hosts host_key_policy].to_h { |key| [key, configuration.public_send(key)] }
           options[:max_script_output_bytes] = configuration.max_script_output_bytes if configuration.max_script_output_bytes
           options.freeze
         end
 
+        def vendor_protocols
+          values = json("NC_VENDOR_PROTOCOLS", {})
+          unless values.is_a?(Hash) && values.all? { |vendor, protocol| Net::Connector.vendors.map(&:to_s).include?(vendor) && %w[ssh telnet].include?(protocol) }
+            raise ArgumentError, "ssh.vendor_protocols must map supported vendors to ssh or telnet"
+          end
+          values
+        end
+
         def device_credentials_for(device)
-          prefix = "NET_CONNECTOR_#{device.vendor.to_s.upcase}_"
-          username = secret_value(prefix + "USERNAME") || secret_value("NET_CONNECTOR_DEVICE_USERNAME")
+          prefix = "NC_#{device.vendor.to_s.upcase}_"
+          username = secret_value(prefix + "USERNAME") || secret_value("NC_DEVICE_USERNAME")
           return nil unless username
 
           { username: username,
-            password: secret_value(prefix + "PASSWORD") || secret_value("NET_CONNECTOR_DEVICE_PASSWORD"),
-            enable_password: secret_value(prefix + "ENABLE_PASSWORD") || secret_value("NET_CONNECTOR_ENABLE_PASSWORD") }
+            password: secret_value(prefix + "PASSWORD") || secret_value("NC_DEVICE_PASSWORD"),
+            enable_password: secret_value(prefix + "ENABLE_PASSWORD") || secret_value("NC_ENABLE_PASSWORD") }
         end
 
         def log_directory
-          path = value("NET_CONNECTOR_LOG_DIRECTORY")
+          path = value("NC_LOG_DIRECTORY")
           File.expand_path(path) if path
         end
 
         def public_config
-          snapshot(mode: :show_config).send(:config_hash)
+          snapshot(mode: :show_config).config_hash
         end
 
         def inspect = "#<#{self.class}>"
 
-        private
+        protected
 
         def config_hash
           {
             netdisco: client_options.merge(source: inventory_source),
             backup: { directory: backup_directory, concurrency: concurrency, limit_per_vendor: limit_per_vendor },
-            inventory: { include_hosts: list("NET_CONNECTOR_INCLUDE_HOSTS"),
-                         exclude_hosts: list("NET_CONNECTOR_EXCLUDE_HOSTS"),
-                         include_vendors: list("NET_CONNECTOR_INCLUDE_VENDORS"),
-                         vendor_overrides: json("NET_CONNECTOR_VENDOR_OVERRIDES", {}),
-                         host_overrides: json("NET_CONNECTOR_HOST_OVERRIDES", {}),
-                         device_rules: json("NET_CONNECTOR_DEVICE_RULES", []) },
+            inventory: { include_hosts: list("NC_INCLUDE_HOSTS"),
+                         exclude_hosts: list("NC_EXCLUDE_HOSTS"),
+                         include_vendors: list("NC_INCLUDE_VENDORS"),
+                         vendor_overrides: json("NC_VENDOR_OVERRIDES", {}),
+                         host_overrides: json("NC_HOST_OVERRIDES", {}),
+                         device_rules: json("NC_DEVICE_RULES", []) },
             ssh: connection_options.transform_values { |item| item.is_a?(Symbol) ? item.to_s : item }.merge(
               log_directory: log_directory,
-              vendor_protocols: Net::Connector.vendors.filter_map do |vendor|
-                protocol = value("NET_CONNECTOR_#{vendor.to_s.upcase}_PROTOCOL")
-                [vendor, protocol] if protocol
-              end.to_h
+              vendor_protocols: vendor_protocols
             ),
             tftp: { server: tftp_server, vrfs: tftp_vrfs.transform_keys(&:to_s), source_files: tftp_source_files }
           }
         end
 
-        def non_secret_keys
-          keys = ConfigFile::FIELDS.values.flat_map { |section| section.values.map(&:first) }
-          keys + Net::Connector.vendors.map { |vendor| "NET_CONNECTOR_#{vendor.to_s.upcase}_PROTOCOL" }
-        end
-
         def raw(key, default = nil)
-          return @policy.send(:raw, key, default) if @policy
+          return @policy.raw(key, default) if @policy
           return @overrides.fetch(key) if @overrides.key?(key)
-          return @env.fetch(key) if @env.key?(key)
+          if @env.key?(key)
+            unless @fixed || ENVIRONMENT_KEYS.include?(key)
+              raise ArgumentError, "#{key} is no longer an environment setting; use YAML via NC_CONFIG or CLI options"
+            end
+            return @env.fetch(key)
+          end
 
           @defaults.fetch(key, default)
+        end
+
+        private
+
+        def client_budget_options(defaults)
+          defaults.to_h do |name, default|
+            key = "NETDISCO_#{name.to_s.upcase}"
+            parsed = case name
+                     when :inventory_timeout then number(key, default)
+                     when :allow_insecure_http then boolean(key, default)
+                     else integer(key, default)
+                     end
+            [name, parsed]
+          end
+        end
+
+        def postgres_options(options)
+          query = value("NETDISCO_QUERY") || (raise ArgumentError, "NETDISCO_QUERY is required for postgres")
+          DatabaseClient.options(query: query, query_params: json("NETDISCO_QUERY_PARAMS", []), **options)
+        end
+
+        def http_options(options)
+          if value("NETDISCO_QUERY") || value("NETDISCO_QUERY_PARAMS")
+            raise ArgumentError, "SQL query settings require NETDISCO_SOURCE=postgres"
+          end
+          options = Client.options(**options)
+          url = value("NETDISCO_URL")
+          Client.validate_url!(url, allow_insecure_http: options.fetch(:allow_insecure_http)) if url
+          options.merge(url: url).freeze
+        end
+
+        def non_secret_keys
+          ConfigFile::FIELDS.values.flat_map { |section| section.values.map(&:first) }
+        end
+
+        def validate_environment!
+          legacy = @env.keys.find { |key| key.start_with?("NET_CONNECTOR_") }
+          raise ArgumentError, "#{legacy} has been renamed to #{legacy.sub("NET_CONNECTOR_", "NC_")}" if legacy
+
+          removed = non_secret_keys - ENVIRONMENT_KEYS
+          removed += Net::Connector.vendors.map { |vendor| "NC_#{vendor.to_s.upcase}_PROTOCOL" }
+          key = removed.find { |name| @env.key?(name) }
+          raise ArgumentError, "#{key} is no longer an environment setting; use YAML via NC_CONFIG or CLI options" if key
         end
 
         def configured?(key) = !raw(key, UNSET).equal?(UNSET)

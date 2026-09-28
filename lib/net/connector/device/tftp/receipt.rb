@@ -7,7 +7,8 @@ module Net
   module Connector
     # 一次设备上报上传的不可变回执；path 是实际目标，未知时保持 nil。
     TftpReceipt = Data.define(:server, :path, :completed_at, :configuration_kind, :source_file,
-                             :format, :requested_path, :verification, :server_sha256)
+                             :format, :requested_path, :verification, :server_sha256, :server_bytes, :local_path,
+                             :archive_path)
 
     class TftpReceipt
       KINDS = %i[running startup saved_file native_archive unknown].freeze
@@ -15,7 +16,8 @@ module Net
       private_constant :KINDS, :FORMATS
 
       def initialize(server:, path:, completed_at:, configuration_kind: :unknown, source_file: nil,
-                     format: :unknown, requested_path: nil, verification: :device_reported, server_sha256: nil)
+                     format: :unknown, requested_path: nil, verification: :device_reported, server_sha256: nil,
+                     server_bytes: nil, local_path: nil, archive_path: nil)
         raise ArgumentError, "completed_at must be a Time" unless completed_at.is_a?(Time)
 
         TftpTarget.new(host: server, path: path.nil? ? "unconfirmed" : path)
@@ -29,10 +31,17 @@ module Net
             server_sha256.match?(/\A[0-9a-f]{64}\z/))
         raise ArgumentError, "invalid TFTP verification evidence" unless valid_verification
 
+        if (!server_bytes.nil? && (!server_bytes.is_a?(Integer) || !server_bytes.positive?)) ||
+          (!local_path.nil? && (!local_path.is_a?(String) || local_path.empty?)) ||
+          (!archive_path.nil? && (!archive_path.is_a?(String) || archive_path.empty?)) ||
+          (verification != :server_verified && (server_bytes || local_path || archive_path))
+          raise ArgumentError, "invalid server file metadata"
+        end
         super(server: server.dup.freeze, path: path&.dup&.freeze, completed_at: completed_at.dup.freeze,
               configuration_kind: configuration_kind, source_file: source_file&.dup&.freeze, format: format,
               requested_path: requested_path&.dup&.freeze, verification: verification,
-              server_sha256: server_sha256&.dup&.freeze)
+              server_sha256: server_sha256&.dup&.freeze, server_bytes: server_bytes, local_path: local_path&.dup&.freeze,
+              archive_path: archive_path&.dup&.freeze)
       end
 
       # Ruby 3.2 的 Data#with 不调用 initialize；所有更新都重新校验并冻结字段。

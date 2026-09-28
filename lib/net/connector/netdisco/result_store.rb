@@ -10,7 +10,7 @@ module Net
     module Netdisco
       module ResultStore
         # 每批保存一份私有 JSON 报告，通过重命名防止半写文件。
-        class Text
+        class Json
           # 以临时文件和重命名原子写入私有 JSON 报告。
           def write(batch, directory:)
             destination = File.expand_path(directory)
@@ -20,6 +20,8 @@ module Net
             Storage::PrivateFile.write(path, JSON.pretty_generate(batch.summary)).path
           end
         end
+
+        Text = Json # Compatibility with the former name of the JSON writer.
 
         # 数据库仓储由调用方提供，可使用 Active Record 或其他对象。
         # 仓储须实现 create!，本项目不负责数据库表结构。

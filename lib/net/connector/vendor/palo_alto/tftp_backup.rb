@@ -15,9 +15,9 @@ module Net
         def validate_options!(target, source_file:, vrf: nil)
           raise ArgumentError, "PAN-OS does not use source_file" unless source_file.nil?
           raise ArgumentError, "PAN-OS TFTP backup does not use vrf" unless vrf.nil?
-          if target.explicit_path? && target.path != FILENAME
-            raise ArgumentError, "PAN-OS TFTP export uses the fixed filename #{FILENAME}"
-          end
+          return unless target.explicit_path? && target.path != FILENAME
+
+          raise ArgumentError, "PAN-OS TFTP export uses the fixed filename #{FILENAME}"
         end
 
         def receipt_metadata(_target, **)

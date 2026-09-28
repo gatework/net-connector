@@ -25,7 +25,7 @@ module Net
           File.join(directory, ".net-connector-#{Digest::SHA256.hexdigest(filename)}.lock")
         end
 
-        def self.synchronize(path, **options, &block) = new(path, **options).synchronize(&block)
+        def self.synchronize(path, **options, &) = new(path, **options).synchronize(&)
 
         def initialize(path, timeout: 0, host: nil)
           raise ArgumentError, "path must be a nonempty String" unless path.is_a?(String) && !path.empty?

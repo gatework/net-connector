@@ -21,6 +21,8 @@ class TftpBoundaryTest < Minitest::Test
     verified = receipt.with(path: "backup.cfg", verification: :server_verified, server_sha256: "a" * 64)
     assert_equal "backup.cfg", verified.path
     assert_equal :server_verified, verified.verification
+    assert_raises(ArgumentError) { receipt.with(archive_path: "/srv/tftp/archive/backup.cfg") }
+    assert_equal "/srv/tftp/archive/backup.cfg", verified.with(archive_path: "/srv/tftp/archive/backup.cfg").archive_path
 
     [false, 0, "", "../backup.cfg"].each do |path|
       assert_raises(ArgumentError) { Net::Connector::TftpReceipt.new(**fields, path: path) }

@@ -40,6 +40,27 @@ class TopologyStagesTest < Minitest::Test
     end
   end
 
+  def test_generated_plan_freezes_evidence_and_commands
+    each_device do |fixture|
+      description = +"planned"
+      plan = fixture.device.plan_interface_descriptions { description }
+      assert plan.frozen?
+      assert plan.host.frozen?
+      assert plan.evidence.frozen?
+      plan.evidence.each do |interface, values|
+        assert interface.frozen?
+        assert values.frozen?
+        assert values.all?(&:frozen?)
+      end
+      assert plan.changes.frozen?
+      assert plan.changes.all?(&:frozen?)
+      assert plan.commands.frozen?
+      assert plan.commands.all?(&:frozen?)
+      assert description.frozen?
+      assert_raises(FrozenError) { description.replace("changed") }
+    end
+  end
+
   def test_readback_mismatch_and_partial_parse_never_save
     [:mismatch, :partial_readback].each do |fault|
       each_device do |fixture|

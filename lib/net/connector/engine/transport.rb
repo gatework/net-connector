@@ -2,6 +2,7 @@
 
 require "open3"
 require "expect/pty"
+require_relative "known_hosts"
 
 module Net
   module Connector
@@ -125,6 +126,29 @@ module Net
           @legacy_arguments = legacy_arguments.dup.freeze
         end
 
+        def open
+          configuration.validate_endpoint!
+          unless configuration.host_key_policy == :strict
+            @known_hosts = KnownHosts.new(configuration, replace: @replace_host_key)
+          end
+          super
+        rescue Exception # rubocop:disable Lint/RescueException -- Release a staged trust file on failed startup.
+          close
+          raise
+        end
+
+        def authenticated
+          @known_hosts&.commit
+          @replace_host_key = false
+        end
+
+        def close
+          super
+        ensure
+          @known_hosts&.close
+          @known_hosts = nil
+        end
+
         # 返回 SSH 协议标识。
         def protocol = :ssh
 
@@ -133,9 +157,10 @@ module Net
           configuration.validate_endpoint!
           checking = (configuration.host_key_policy == :strict) ? "yes" : "accept-new"
           arguments = ["ssh", *legacy_arguments, "-tt", "-o", "StrictHostKeyChecking=#{checking}",
-                       "-o", "NumberOfPasswordPrompts=1",
+                       "-o", "NumberOfPasswordPrompts=1", "-o", "UpdateHostKeys=no",
                        "-o", "ConnectTimeout=#{[configuration.login_timeout.ceil, 1].max}"]
-          arguments += ["-o", "UserKnownHostsFile=#{configuration.known_hosts}"] if configuration.known_hosts
+          known_hosts = @known_hosts&.path || configuration.known_hosts
+          arguments += ["-o", "UserKnownHostsFile=#{known_hosts}"] if known_hosts
           arguments += ["-p", configuration.port.to_s] if configuration.port
           arguments + ["-l", configuration.username, configuration.host]
         end
@@ -151,13 +176,13 @@ module Net
           Telnet.new(configuration, channel_factory: @channel_factory, terminal_size: @terminal_size)
         end
 
-        # 从指定 known_hosts 文件中删除当前设备的旧主机密钥。
+        # 恢复只标记下一次会话副本；共享信任文件在认证成功后才更新。
         def replace_host_key
-          host = configuration.host
-          host = "[#{host}]:#{configuration.port}" if configuration.port && configuration.port != 22
-          _output, status = Open3.capture2e("ssh-keygen", "-f", configuration.known_hosts, "-R", host)
-          raise IOError, "removing device host key failed" unless status.success?
+          raise IOError, "host key replacement is not enabled" unless configuration.host_key_policy == :replace
+
+          @replace_host_key = true
         end
+
       end
 
       # Telnet 只能显式启用；SSH 专用端口不能带入回退连接。

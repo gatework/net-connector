@@ -118,7 +118,7 @@ class DeviceReliabilityTest < Minitest::Test
 
   def test_default_tftp_filenames_accept_scoped_ipv6_addresses
     { cisco_ios: ["router#", "[OK]\nrouter#", "cfg"],
-      radware: [">> device", "Configuration uploaded successfully\n>> device", "tgz"] }.each do |vendor, (prompt, output, extension)|
+      radware: [">> device#", "Configuration uploaded successfully\n>> device#", "tgz"] }.each do |vendor, (prompt, output, extension)|
       device = Net::Connector.build(vendor, host: "fe80::1%en0", username: "admin",
                                     transport: ConnectorFake.new(prompt, output))
       result = device.tftp_backup(host: "192.0.2.10")

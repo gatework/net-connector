@@ -180,10 +180,10 @@ module Net
                                   code: :verification_plan_changed, host: @device.host, phase: :verify)
           end
         end
-        unless changes.all? { |change| updated[@strategy.interface_key(change.interface)] == change.new_description }
-          raise DeviceError.new("interface descriptions were not confirmed by readback",
-                                code: :description_unconfirmed, host: @device.host, phase: :verify)
-        end
+        return if changes.all? { |change| updated[@strategy.interface_key(change.interface)] == change.new_description }
+
+        raise DeviceError.new("interface descriptions were not confirmed by readback",
+                              code: :description_unconfirmed, host: @device.host, phase: :verify)
       end
 
       # 重验失败仍在写入前直接抛异常，保持 stale_plan 的既有契约。

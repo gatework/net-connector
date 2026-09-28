@@ -54,7 +54,10 @@ module Net
           message = Storage::PrivateFile.receipt_error?(exception) ? exception.message : exception.class.name
           @error.puts "net-connector-backup: #{message}"
           2
-        rescue OptionParser::ParseError, ArgumentError, KeyError, Errno::ENOENT,
+        rescue OptionParser::ParseError
+          @error.puts "net-connector-backup: 参数无效；使用 --help 查看参数"
+          2
+        rescue ArgumentError, KeyError, Errno::ENOENT,
           Psych::Exception, JSON::ParserError, Client::Error => exception
           @error.puts "net-connector-backup: #{exception.message}"
           2
@@ -67,18 +70,7 @@ module Net
 
         # 文件、环境变量、命令行按优先级覆盖，凭据仍只来自环境变量。
         def settings_for(options)
-          defaults = options[:config] ? ConfigFile.load(options[:config]) : {}
-          values = {}
-          values["NETDISCO_SOURCE"] = options[:source] if options[:source]
-          values["NETDISCO_QUERY"] = options[:query] if options[:query]
-          values["NETDISCO_QUERY_PARAMS"] = options[:query_params] if options[:query_params]
-          values["NET_CONNECTOR_BACKUP_DIRECTORY"] = options[:directory] if options[:directory]
-          values["NET_CONNECTOR_CONCURRENCY"] = options[:concurrency].to_s if options[:concurrency]
-          values["NET_CONNECTOR_MAX_SCRIPT_OUTPUT_BYTES"] = options[:max_script_output_bytes].to_s if options[:max_script_output_bytes]
-          values["NET_CONNECTOR_INCLUDE_HOSTS"] = options[:host] if options[:host]
-          values["NET_CONNECTOR_SAMPLE_PER_VENDOR"] = options[:limit].to_s if options[:limit]
-          values["NET_CONNECTOR_SAMPLE_PER_VENDOR"] = nil if options[:all]
-          Settings.new(env: @env, defaults: defaults, overrides: values)
+          Options.settings(options, env: @env)
         end
 
         # 导出已有配置不创建清单或设备连接。
@@ -110,7 +102,7 @@ module Net
             fleet.tftp_backup_all(plan: plan, server: settings.tftp_server,
                                   concurrency: settings.concurrency,
                                   vrfs: settings.tftp_vrfs,
-                                  source_files: settings.tftp_source_files, **reporting)
+                                  source_files: settings.tftp_source_files, verification_root: options[:tftp_root] || @env["TFTP_ROOT"], **reporting)
           else
             fleet.backup_all(plan: plan, directory: settings.backup_directory,
                              concurrency: settings.concurrency, **reporting)
@@ -119,10 +111,11 @@ module Net
 
         # 解析命令行参数并处理帮助及版本信息。
         def parse_options
-          options = { config: @env["NET_CONNECTOR_CONFIG"] }
+          options = { environment: {} }
           parser = OptionParser.new do |args|
             args.banner = "用法：net-connector-backup [--config FILE] [--plan | --show-config | --export IP] [--tftp]"
-            args.on("--config FILE", "读取不含凭据的 YAML 设置") { |value| options[:config] = value }
+            Options.add_settings(args, options)
+            Options.add_execution(args, options)
             args.on("--source SOURCE", %w[http postgres], "清单来源：http（默认）或 postgres") { |value| options[:source] = value }
             args.on("--query SQL", "PostgreSQL 清单查询，使用 $1、$2 绑定参数") { |value| options[:query] = value }
             args.on("--query-params JSON", "查询参数的 JSON 数组") { |value| options[:query_params] = value }
@@ -131,15 +124,8 @@ module Net
             args.on("--tftp", "由设备发起 TFTP 备份") { options[:tftp] = true }
             args.on("--export IP", "导出已保存的本地配置") { |value| options[:export] = value }
             args.on("--output FILE", "将导出配置写入私有文件") { |value| options[:output] = value }
-            args.on("--directory PATH", "备份和报告目录") { |value| options[:directory] = value }
             args.on("--host IP", "按管理地址选择一台设备") { |value| options[:host] = value }
-            args.on("--concurrency N", Integer, "最大并发设备数") { |value| options[:concurrency] = value }
             args.on("--max-script-output-bytes N", Integer, "每个脚本的累计响应字节上限") { |value| options[:max_script_output_bytes] = value }
-            args.on("--limit-per-vendor N", Integer, "每厂商选择 N 台设备（1 至 5）") do |value|
-              options[:limit] = value
-            end
-            args.on("--all", "选择全部就绪设备") { options[:all] = true }
-            args.on("--success-policy POLICY", %w[strict selected], "成功判定：strict（默认）或 selected") { |value| options[:success_policy] = value.to_sym }
             args.on("-v", "--version", "显示版本") do
               @output.puts Net::Connector::VERSION
               options[:done] = true
@@ -157,9 +143,10 @@ module Net
 
         # 拒绝互斥或缺少依赖的命令行选项。
         def validate_options!(options)
+          raise ArgumentError, "verified policy requires --tftp" if options[:success_policy] == :verified && !options[:tftp]
           Report.validate_policy!(options.fetch(:success_policy, :strict))
           Planner.validate_limit!(options[:limit])
-          Worker.new(concurrency: options[:concurrency]) if options[:concurrency]
+          raise ArgumentError, "--tftp-root requires --tftp" if options[:tftp_root] && !options[:tftp]
           modes = [:show_config, :plan, :export].count { |key| options[key] }
           raise ArgumentError, "--show-config、--plan 和 --export 只能选择一项" if modes > 1
           raise ArgumentError, "--output 需要同时指定 --export" if options[:output] && !options[:export]
@@ -167,8 +154,8 @@ module Net
           if options[:export] && (options[:source] || options[:query] || options[:query_params])
             raise ArgumentError, "--export 不能与清单查询选项同时使用"
           end
-          if options[:export] && (options[:tftp] || options[:all] || options[:limit] || options[:concurrency] || options[:host] ||
-            options[:success_policy] || options[:max_script_output_bytes])
+          if options[:export] && (options[:tftp] || options[:all] || options[:limit] || options[:environment].key?("NC_CONCURRENCY") || options[:host] ||
+            options[:success_policy] || options[:tftp_root] || options[:max_script_output_bytes])
             raise ArgumentError, "--export 不能与备份选项同时使用"
           end
         end

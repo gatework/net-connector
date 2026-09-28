@@ -1,9 +1,19 @@
 # frozen_string_literal: true
 
 # 由设备发起原生配置备份；运行前通过环境变量设置设备和目标服务器。
+if ARGV == ["--help"] || ARGV == ["-h"]
+  puts "用法：ruby device_tftp.rb"
+  puts "必填环境变量：DEVICE_VENDOR、DEVICE_HOST、DEVICE_USERNAME、DEVICE_PASSWORD、TFTP_HOST"
+  puts "可选环境变量：TFTP_SOURCE_FILE、TFTP_PATH、TFTP_VRF"
+  exit
+end
+abort "用法：ruby device_tftp.rb（--help 查看环境变量）" unless ARGV.empty?
+
+require_relative "boot"
+
+require "net/connector"
 require "json"
 require "time"
-require "net/connector"
 
 vendor = ENV.fetch("DEVICE_VENDOR").to_sym
 device_host = ENV.fetch("DEVICE_HOST")

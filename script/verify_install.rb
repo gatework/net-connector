@@ -46,6 +46,12 @@ module InstalledPackageCheck
       end
       FileUtils.cp(artifact, directory)
       FileUtils.cp(File.join(__dir__, "smoke.rb"), directory)
+      # JSON 2/3 矩阵必须实际安装所选版本，不能被 Ruby 默认 gem 静默替代。
+      json = dependencies.find { |spec| spec.name == "json" }
+      if json && File.file?(File.join(directory, "#{json.full_name}.gem"))
+        PackageCheck.command(environment, RbConfig.ruby, "-S", "gem", "install", "--local", "--no-document",
+                             File.join(directory, "#{json.full_name}.gem"), chdir: directory)
+      end
       PackageCheck.command(environment, RbConfig.ruby, "-S", "gem", "install", "--local", "--no-document",
                            File.join(directory, File.basename(artifact)), chdir: directory)
       PackageCheck.command(environment, RbConfig.ruby, "smoke.rb", "plain", chdir: directory)

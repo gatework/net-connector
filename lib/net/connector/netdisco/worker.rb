@@ -5,13 +5,18 @@ module Net
     module Netdisco
       # 以固定并发上限执行相互隔离的设备任务。
       class Worker
-        # 校验并保存最大设备并发数。
-        def initialize(concurrency:)
+        # 内部预检与实际执行共用规则，不为校验创建工作线程池对象。
+        def self.validate_concurrency!(concurrency)
           unless concurrency.is_a?(Integer) && (1..Settings::MAX_CONCURRENCY).cover?(concurrency)
             raise ArgumentError, "concurrency must be an Integer in 1..#{Settings::MAX_CONCURRENCY}"
           end
 
-          @concurrency = concurrency
+          concurrency
+        end
+
+        # 校验并保存最大设备并发数。
+        def initialize(concurrency:)
+          @concurrency = Worker.validate_concurrency!(concurrency)
         end
 
         # 按清单顺序收集结果，并隔离设备及回调异常。

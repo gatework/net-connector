@@ -95,3 +95,37 @@ jobs:
           path: tmp/coverage/summary.json
           if-no-files-found: error
           retention-days: 14
+
+  json3-source-compatibility:
+    name: JSON 3 / explicit textfsm metadata patch / Ruby ${{ matrix.ruby }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: ['3.2', '4.0']
+    env:
+      BUNDLE_GEMFILE: gemfiles/json3.gemfile
+    steps:
+      - name: Check out connector
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check out fixed TextFSM source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: gatework/textfsm
+          ref: 733340de378f2d7fbe530b48f2cf1dd6c30c69b0
+          path: tmp/json3/textfsm
+          persist-credentials: false
+      - name: Apply the explicit unpublished dependency declaration
+        run: git -C tmp/json3/textfsm apply "$GITHUB_WORKSPACE/script/compatibility/textfsm-json3.patch"
+      - name: Set up Ruby and JSON 3
+        uses: ruby/setup-ruby@95ef2b042f9d7a56d8268cba8559e2842e2ad01b # v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+      - name: Verify source behavior and patched-package installation
+        run: |
+          bundle exec rake test
+          bundle exec ruby script/verify_json3.rb

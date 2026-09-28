@@ -73,7 +73,8 @@ class ModuleLoadingTest < Minitest::Test
   def test_storage_entry_points_are_independent_of_devices_and_support_both_load_orders
     paths = %w[net/connector/storage
                net/connector/storage/saved_config net/connector/storage/backup_lock
-               net/connector/storage/private_file net/connector/storage/safe_file]
+               net/connector/storage/private_file net/connector/storage/safe_file
+               net/connector/storage/batch_directory]
     [paths, paths.reverse].each do |order|
       result = isolated(<<~RUBY)
         #{order.map { |path| "require #{path.inspect}" }.join("\n")}
@@ -83,6 +84,23 @@ class ModuleLoadingTest < Minitest::Test
       assert_equal "2001_db8__1.txt", result.fetch("filename")
       refute(result.fetch("features").any? { |path| path.match?(%r{/net/connector/(?:device|vendor)(?:/|\.rb)}) })
       refute(result.fetch("features").any? { |path| path.match?(%r{/lib/textfsm(?:/|\.rb)}) })
+    end
+  end
+
+  def test_netdisco_helpers_support_both_load_orders
+    paths = %w[net/connector/netdisco/cli/options net/connector/netdisco/connection
+               net/connector/netdisco/report/text net/connector/netdisco]
+    [paths, paths.reverse].each do |order|
+      result = isolated(<<~RUBY)
+        #{order.map { |path| "require #{path.inspect}" }.join("\n")}
+        values = Net::Connector::Netdisco::CLI::Options.parse(argv: ["--concurrency", "7"])
+        puts JSON.generate(concurrency: values[:environment]["NC_CONCURRENCY"],
+                           connection: Net::Connector::Netdisco::Connection.respond_to?(:build),
+                           text: Net::Connector::Netdisco::Report::Text.respond_to?(:write))
+      RUBY
+      assert_equal "7", result.fetch("concurrency")
+      assert result.fetch("connection")
+      assert result.fetch("text")
     end
   end
 
@@ -154,6 +172,7 @@ class ModuleLoadingTest < Minitest::Test
   private
 
   def isolated(script)
+    script = "preloaded_features = $LOADED_FEATURES.dup\n" + script.gsub("$LOADED_FEATURES", "($LOADED_FEATURES - preloaded_features)")
     output, errors, status = Open3.capture3(RbConfig.ruby, "-w", "-I#{LIBRARY}", "-rjson", "-e", script)
     assert status.success?, errors
     assert_empty errors

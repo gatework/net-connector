@@ -14,7 +14,7 @@ Minitest.after_run do
   baseline = JSON.parse(File.read(File.join(__dir__, "coverage-baseline.json")))
   report = CoverageReport.new(Coverage.result, baseline: baseline)
   passed = report.passed?
-  destination = File.expand_path(ENV.fetch("NET_CONNECTOR_COVERAGE_OUTPUT", "../tmp/coverage/summary.json"), __dir__)
+  destination = File.expand_path(ENV.fetch("NC_COVERAGE_OUTPUT", "../tmp/coverage/summary.json"), __dir__)
   FileUtils.mkdir_p(File.dirname(destination))
   File.write(destination, JSON.pretty_generate(report.to_h) + "\n")
   exit 1 unless passed

@@ -1,0 +1,6 @@
+# frozen_string_literal: true
+
+# 兼容实验使用固定源码及显式 metadata 补丁，不代表 RubyGems 已发布依赖支持 JSON 3。
+eval_gemfile File.expand_path("../Gemfile", __dir__)
+gem "json", "~> 3.0"
+gem "textfsm", path: File.expand_path("../tmp/json3/textfsm", __dir__)

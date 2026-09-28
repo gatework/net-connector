@@ -11,6 +11,38 @@ class NetdiscoTest < Minitest::Test
   Fleet = Net::Connector::Netdisco::Fleet
   Settings = Net::Connector::Netdisco::Settings
 
+  def test_comware_and_branded_model_correct_stale_vendor_without_overriding_explicit_rules
+    rules = Net::Connector::Netdisco::Rules.new
+    row = { "ip" => "192.0.2.1", "vendor" => "Hillstone", "os" => "Comware", "model" => "H3C WX5540X" }
+    assert_equal :h3c_wireless, rules.resolve(row)
+    assert_equal :h3c_wireless, rules.resolve(row.merge("vendor" => "H3C"))
+    assert_equal :h3c, rules.resolve(row.merge("model" => "H3C S6850"))
+    assert_equal :hillstone, rules.resolve(row.merge("model" => "WX5540X"))
+    assert_equal :hillstone, rules.resolve(row.merge("os" => "StoneOS"))
+    assert_equal :hillstone, rules.resolve(row.merge("os" => nil))
+    explicit = Net::Connector::Netdisco::Rules.new(vendor_overrides: { "Hillstone" => "hillstone" })
+    assert_equal :hillstone, explicit.resolve(row)
+    host = Net::Connector::Netdisco::Rules.new(host_overrides: { "192.0.2.1" => "hillstone" })
+    assert_equal :hillstone, host.resolve(row)
+    mapping = Net::Connector::Netdisco::Rules.new(mappings: [{ "vendor" => "Hillstone", "connector" => "hillstone" }])
+    assert_equal :hillstone, mapping.resolve(row)
+  end
+
+  def test_named_backup_filename_sanitizes_names_and_preserves_address_identity
+    rules = Net::Connector::Netdisco::Rules.new
+    row = { "ip" => "192.0.2.1", "vendor" => "H3C", "name" => "core-01" }
+    device = Net::Connector::Netdisco::Device.from_row(row, rules: rules)
+    assert_equal "core-01-192.0.2.1.txt", device.backup_filename(style: :hostname_ip)
+    assert_equal "192.0.2.1.txt", device.backup_filename
+    ["../../bad/name", "\n\e[31m", "中" * 200, nil].each do |name|
+      file = Net::Connector::Netdisco::Device.from_row(row.merge("name" => name), rules: rules).backup_filename(style: :hostname_ip)
+      assert_equal File.basename(file), file
+      assert_operator file.bytesize, :<=, 255
+      assert file.valid_encoding?
+      assert file.end_with?("-192.0.2.1.txt")
+    end
+  end
+
   def response(code, body)
     klass = code == "200" ? Net::HTTPOK : Net::HTTPBadRequest
     object = klass.new("1.1", code, "test")
@@ -66,13 +98,15 @@ class NetdiscoTest < Minitest::Test
 
   def test_settings_read_environment_defaults_and_vendor_credentials
     env = { "NETDISCO_URL" => "https://inventory.example", "NETDISCO_API_KEY" => "token",
-            "NET_CONNECTOR_DEVICE_USERNAME" => "global", "NET_CONNECTOR_DEVICE_PASSWORD" => "global-secret",
-            "NET_CONNECTOR_HUAWEI_USERNAME" => "huawei", "NET_CONNECTOR_HUAWEI_PASSWORD" => "vendor-secret",
-            "NET_CONNECTOR_CONCURRENCY" => "2", "NET_CONNECTOR_INCLUDE_VENDORS" => "huawei",
-            "NET_CONNECTOR_VENDOR_OVERRIDES" => '{"custom maker":"huawei"}',
-            "NET_CONNECTOR_HOST_OVERRIDES" => '{"192.0.2.9":"h3c_wireless"}',
-            "NET_CONNECTOR_DEVICE_RULES" => '[{"vendor":"Cisco","model_prefix":"CustomNX","connector":"cisco_nxos"}]' }
-    settings = Settings.new(env: env)
+            "NC_DEVICE_USERNAME" => "global", "NC_DEVICE_PASSWORD" => "global-secret",
+            "NC_HUAWEI_USERNAME" => "huawei", "NC_HUAWEI_PASSWORD" => "vendor-secret",
+            "NC_CONCURRENCY" => "2", "NC_INCLUDE_VENDORS" => "huawei",
+            "NC_VENDOR_OVERRIDES" => '{"custom maker":"huawei"}',
+            "NC_HOST_OVERRIDES" => '{"192.0.2.9":"h3c_wireless"}',
+            "NC_DEVICE_RULES" => '[{"vendor":"Cisco","model_prefix":"CustomNX","connector":"cisco_nxos"}]' }
+    policy_keys = %w[NC_INCLUDE_VENDORS NC_VENDOR_OVERRIDES NC_HOST_OVERRIDES NC_DEVICE_RULES]
+    defaults = policy_keys.to_h { |key| [key, env.delete(key)] }
+    settings = Settings.new(env: env, defaults: defaults)
     assert_equal 2, settings.concurrency
     assert_instance_of Client, settings.client
     device = Net::Connector::Netdisco::Device.from_row({ "ip" => "192.0.2.5", "vendor" => "custom maker" },
@@ -80,7 +114,7 @@ class NetdiscoTest < Minitest::Test
     assert_equal :huawei, device.vendor
     assert_equal "huawei", settings.device_credentials_for(device)[:username]
     assert_equal "vendor-secret", settings.device_credentials_for(device)[:password]
-    env["NET_CONNECTOR_HUAWEI_PASSWORD"] = "rotated"
+    env["NC_HUAWEI_PASSWORD"] = "rotated"
     assert_equal "rotated", settings.device_credentials_for(device)[:password]
     assert_equal :cisco_nxos, settings.rules.resolve("vendor" => "Cisco", "model" => "CustomNX-01")
     assert_equal :h3c_wireless, settings.rules.resolve("ip" => "192.0.2.9", "vendor" => "Hillstone")
@@ -96,9 +130,9 @@ class NetdiscoTest < Minitest::Test
     assert_equal({ huawei: "flash:/startup.cfg" }, settings.tftp_source_files)
     assert_equal({}, settings.tftp_vrfs)
 
-    settings = Settings.new(env: { "NET_CONNECTOR_SAMPLE_PER_VENDOR" => "2",
-                                   "NET_CONNECTOR_H3C_TFTP_SOURCE_FILE" => "flash:/saved.cfg",
-                                   "NET_CONNECTOR_TFTP_VRFS" => '{"cisco_nxos":"management"}' })
+    settings = Settings.new(env: { "NC_SAMPLE_PER_VENDOR" => "2" }, defaults: {
+                                   "NC_H3C_TFTP_SOURCE_FILE" => "flash:/saved.cfg",
+                                   "NC_TFTP_VRFS" => '{"cisco_nxos":"management"}' })
     assert_equal 2, settings.limit_per_vendor
     assert_equal 2, settings.limit_per_vendor(tftp: true)
     assert_equal "flash:/saved.cfg", settings.tftp_source_files.fetch(:h3c)
@@ -114,6 +148,37 @@ class NetdiscoTest < Minitest::Test
       directory = File.join(root, "backup")
       assert_raises(ArgumentError) { fleet.backup_all(directory: directory, concurrency: 0) }
       refute File.exist?(directory)
+    end
+  end
+
+  def test_concurrency_preflight_rejects_invalid_values_before_any_batch_side_effect
+    calls = []
+    client = Object.new
+    client.define_singleton_method(:devices) { calls << :inventory; [] }
+    Dir.mktmpdir do |root|
+      directory = File.join(root, "backup")
+      logs = File.join(root, "logs")
+      settings = Settings.new(env: { "NC_LOG_DIRECTORY" => logs })
+      fleet = Fleet.new(settings: settings, client: client, result_store: nil,
+                        credentials: ->(_) { calls << :credentials },
+                        connector_factory: ->(*) { calls << :connector })
+      [nil, false, "1", 1.0, 0, -1, Settings::MAX_CONCURRENCY + 1].each do |value|
+        [[:backup_all, { directory: directory }],
+         [:tftp_backup_all, { server: "192.0.2.10", report_directory: directory }]].each do |method, options|
+          error = assert_raises(ArgumentError) { fleet.public_send(method, **options, concurrency: value) }
+          assert_equal "concurrency must be an Integer in 1..#{Settings::MAX_CONCURRENCY}", error.message
+          assert_empty calls
+          refute File.exist?(directory)
+          refute File.exist?(logs)
+        end
+      end
+    end
+  end
+
+  def test_worker_accepts_both_concurrency_boundaries
+    [1, Settings::MAX_CONCURRENCY].each do |value|
+      worker = Net::Connector::Netdisco::Worker.new(concurrency: value)
+      assert_empty worker.run([], outcomes: [], on_error: ->(*) { flunk "unexpected failure" }) { flunk "unexpected task" }
     end
   end
 
@@ -292,7 +357,7 @@ class NetdiscoTest < Minitest::Test
         connector.define_singleton_method(:close) {}
       end
     end
-    settings = Settings.new(env: { "NET_CONNECTOR_CONCURRENCY" => "50" })
+    settings = Settings.new(env: { "NC_CONCURRENCY" => "50" })
     assert_equal 50, settings.concurrency
     fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new(rows), settings: settings,
                       credentials: ->(_) { { username: "admin" } }, connector_factory: factory)
@@ -537,7 +602,7 @@ class NetdiscoTest < Minitest::Test
       error = StringIO.new
       cli = Net::Connector::Netdisco::CLI.new(
         argv: ["--plan", "--host", "192.0.2.2"],
-        env: { "NET_CONNECTOR_BACKUP_DIRECTORY" => directory }, output: output, error: error,
+        env: { "NC_BACKUP_DIRECTORY" => directory }, output: output, error: error,
         fleet_factory: ->(_) { fleet }
       )
       assert_equal 2, cli.run
@@ -638,8 +703,8 @@ class NetdiscoTest < Minitest::Test
           vrfs:
             cisco_nxos: management
       YAML
-      env = { "NET_CONNECTOR_CONCURRENCY" => "4", "NETDISCO_PASSWORD" => "private-password",
-              "NET_CONNECTOR_DEVICE_PASSWORD" => "device-secret" }
+      env = { "NC_CONCURRENCY" => "4", "NETDISCO_PASSWORD" => "private-password",
+              "NC_DEVICE_PASSWORD" => "device-secret" }
       settings = Settings.from_file(path, env: env)
       assert_equal 4, settings.concurrency
       assert_equal File.join(directory, "saved"), settings.backup_directory
@@ -711,7 +776,7 @@ class NetdiscoTest < Minitest::Test
                 result_store: nil)
     end
     Dir.mktmpdir do |directory|
-      env = { "TFTP_HOST" => "192.0.2.10", "NET_CONNECTOR_BACKUP_DIRECTORY" => directory }
+      env = { "TFTP_HOST" => "192.0.2.10", "NC_BACKUP_DIRECTORY" => directory }
       output = StringIO.new
       error = StringIO.new
       cli = Net::Connector::Netdisco::CLI.new(

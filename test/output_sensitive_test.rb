@@ -208,7 +208,7 @@ class OutputSensitiveTest < Minitest::Test
         klass = Connector.vendor_class(vendor)
         prompt = case vendor
                  when :h3c, :h3c_wireless, :huawei then "<router>"
-                 when :radware then ">> router"
+                 when :radware then ">> Configuration#"
                  when :palo_alto then "audit@router>"
                  else "router#"
                  end

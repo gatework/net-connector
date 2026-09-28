@@ -256,7 +256,7 @@ class FilePersistenceTest < Minitest::Test
 
   def test_report_keeps_its_committed_location_when_directory_sync_fails
     Dir.mktmpdir do |directory|
-      fleet = fleet_for(local_device { "configuration" }, result_store: Netdisco::ResultStore::Text.new)
+      fleet = fleet_for(local_device { "configuration" }, result_store: Netdisco::ResultStore::Json.new)
       batch = with_directory_sync_failure(directory, fail_on: 2) { fleet.backup_all(directory: directory) }
       refute batch.success?
       assert_equal :backed_up, batch.outcomes.first.status
@@ -330,15 +330,15 @@ class FilePersistenceTest < Minitest::Test
                         credentials: ->(*) { { username: "test" } }, connector_factory: ->(*) { connector })
   end
 
-  def with_temporary_failure(operation)
+  def with_temporary_failure(operation, &block)
     failure = ->(*) { raise Errno::EIO, @secret }
-    return Tempfile.stub(:create, failure) { yield } if operation == :create
+    return Tempfile.stub(:create, failure, &block) if operation == :create
 
     original = Tempfile.method(:create)
     create = lambda do |*args, **options, &block|
       original.call(*args, **options) { |file| file.stub(operation, failure) { block.call(file) } }
     end
-    Tempfile.stub(:create, create) { yield }
+    Tempfile.stub(:create, create, &block)
   end
 
   def with_directory_sync_failure(directory, exception: Errno::EIO, fail_on: 1, &block)
@@ -352,7 +352,7 @@ class FilePersistenceTest < Minitest::Test
     with_directory_sync_probe(directory, probe, &block)
   end
 
-  def with_directory_sync_probe(directory, probe)
+  def with_directory_sync_probe(directory, probe, &block)
     original = File.method(:open)
     canonical = File.realpath(directory)
     open = lambda do |path, *args, **options, &block|
@@ -365,6 +365,6 @@ class FilePersistenceTest < Minitest::Test
         file.stub(:fsync, -> { probe.call(adapter) }) { block.call(file) }
       end
     end
-    File.stub(:open, open) { yield }
+    File.stub(:open, open, &block)
   end
 end

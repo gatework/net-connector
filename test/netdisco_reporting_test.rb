@@ -21,6 +21,15 @@ class NetdiscoReportingTest < Minitest::Test
                         callback_errors: callback_errors, report_location: nil, report_error: report_error)
   end
 
+  def test_counts_preserves_status_order_and_missing_key_semantics
+    assert_equal({}, batch.counts)
+    counts = batch(:failed, :unexpected, :failed, :backed_up, :unexpected).counts
+    assert_equal({ failed: 2, unexpected: 2, backed_up: 1 }, counts)
+    assert_equal [:failed, :unexpected, :backed_up], counts.keys
+    assert_nil counts[:missing]
+    refute counts.key?(:missing)
+  end
+
   def test_selected_policy_allows_only_filtered_or_sampled_skips_and_requires_successful_work
     [[], [:filtered], [:sample_limit], [:filtered, :sample_limit]].each do |statuses|
       refute batch(*statuses).build_report(policy: :selected).policy_success?, statuses.inspect
@@ -67,7 +76,7 @@ class NetdiscoReportingTest < Minitest::Test
         output, error = StringIO.new, StringIO.new
         factory = ->(settings) { fleet(settings: settings, calls: calls) }
         status = Netdisco::CLI.new(argv: ["--tftp", "--host", "192.0.2.1", *extra],
-                                   env: { "TFTP_HOST" => "192.0.2.10", "NET_CONNECTOR_BACKUP_DIRECTORY" => directory },
+                                   env: { "TFTP_HOST" => "192.0.2.10", "NC_BACKUP_DIRECTORY" => directory },
                                    output: output, error: error, fleet_factory: factory).run
         selected = extra.include?("selected")
         assert_equal selected ? 0 : 1, status, error.string
@@ -322,12 +331,16 @@ class NetdiscoReportingTest < Minitest::Test
     assert_equal secret, value.report_error
   end
 
+  def test_json_report_store_keeps_the_previous_constant
+    assert_same Netdisco::ResultStore::Json, Netdisco::ResultStore::Text
+  end
+
   private
 
   def row(index) = { "ip" => "192.0.2.#{index}", "vendor" => "H3C" }
 
   def fleet(settings: Netdisco::Settings.new(env: {}), calls: [], rows: [row(1), row(2)], error: nil,
-            store: Netdisco::ResultStore::Text.new)
+            store: Netdisco::ResultStore::Json.new)
     factory = lambda do |device, _options|
       connector = Object.new
       connector.define_singleton_method(:tftp_backup) do |**options|

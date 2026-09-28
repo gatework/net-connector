@@ -81,7 +81,7 @@ module Net
         raise build_incomplete_error("configuration collection has no completed configuration step") unless step
 
         content = @device.clean_config(step.output)
-        unless content.is_a?(String) && !content.strip.empty? && content?(step)
+        unless content.is_a?(String) && !content.strip.empty? && config_body?(step)
           raise build_incomplete_error("configuration collection returned empty content")
         end
         Result.new(steps: result.steps, config: content)
@@ -99,7 +99,7 @@ module Net
       end
 
       # 排除命令回显和提示符，确认响应确实包含配置正文。
-      def content?(step)
+      def config_body?(step)
         body = TerminalRenderer.render(step.output.delete_suffix(step.prompt.to_s)).strip
         lines = body.lines
         lines.shift if lines.first&.strip == step.command.text

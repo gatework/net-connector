@@ -9,13 +9,13 @@ module Net
     class Configuration
       attr_reader :host, :username, :password, :enable_password, :protocol, :port, :login_timeout,
                   :command_timeout, :write_timeout, :max_output_bytes, :max_script_output_bytes, :log_file, :log_format, :log_level,
-                  :known_hosts, :host_key_policy, :challenges, :logger
+                  :known_hosts, :host_key_policy, :challenges, :logger, :on_event
 
       # 校验端点、凭据、超时、日志、主机密钥和挑战配置，然后冻结设置。
       def initialize(host: nil, username: nil, password: nil, enable_password: nil, protocol: :ssh, port: nil,
                      login_timeout: 10, command_timeout: nil, write_timeout: 10,
                      max_output_bytes: 32 * 1024 * 1024, max_script_output_bytes: nil, log_file: nil, logger: nil,
-                     log_format: :text, log_level: :info,
+                     log_format: :text, log_level: :info, on_event: nil,
                      known_hosts: nil, host_key_policy: :strict, telnet_fallback: false, legacy_ssh: false,
                      challenges: [])
         @host = frozen_string(host)
@@ -45,6 +45,9 @@ module Net
         raise ArgumentError, "logger cannot be combined with raw logging" if logger && @log_format == :raw
 
         @logger = logger
+        raise ArgumentError, "on_event must respond to call" if on_event && !on_event.respond_to?(:call)
+
+        @on_event = on_event
         @log_level = enum_value(log_level, %i[debug info warn error], :log_level)
         @known_hosts = absolute_path(known_hosts)
         @host_key_policy = enum_value(host_key_policy, %i[strict accept_new replace], :host_key_policy)

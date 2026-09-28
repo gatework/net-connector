@@ -26,6 +26,42 @@ Lint:
 Security:
   Enabled: true
 
+Naming:
+  Enabled: true
+
+# 异常变量按角色命名（error、exception、original），不强制缩写为 e。
+Naming/RescuedExceptionsVariableName:
+  Enabled: false
+
+# 保留已发布的 require "net-connector" 入口。
+Naming/FileName:
+  Exclude:
+    - lib/net-connector.rb
+
+Style/GuardClause:
+  Enabled: true
+
+Style/SafeNavigation:
+  Enabled: true
+
+Style/RedundantSelf:
+  Enabled: true
+
+Style/RedundantReturn:
+  Enabled: true
+
+Style/ExplicitBlockArgument:
+  Enabled: true
+
+Style/HashTransformValues:
+  Enabled: true
+
+Style/MapToHash:
+  Enabled: true
+
+Style/Next:
+  Enabled: true
+
 Lint/EmptyBlock:
   Exclude:
     - test/**/*.rb
@@ -62,3 +98,9 @@ Metrics/AbcSize:
   Include:
     - lib/net/connector/engine/**/*.rb
     - lib/net/connector/netdisco/**/*.rb
+
+Layout/EmptyLineBetweenDefs:
+  Enabled: true
+
+Layout/IndentationConsistency:
+  Enabled: true

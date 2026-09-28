@@ -151,7 +151,7 @@ class NetdiscoReliabilityTest < Minitest::Test
     output = StringIO.new
     error = StringIO.new
     Dir.mktmpdir do |directory|
-      env = { "TFTP_HOST" => "192.0.2.10", "NET_CONNECTOR_BACKUP_DIRECTORY" => directory }
+      env = { "TFTP_HOST" => "192.0.2.10", "NC_BACKUP_DIRECTORY" => directory }
       cli = Netdisco::CLI.new(argv: %w[--tftp --plan], env: env, output: output, error: error, fleet_factory: factory)
       assert_equal 0, cli.run, error.string
       filename = JSON.parse(output.string).fetch("selected").first.fetch("filename")

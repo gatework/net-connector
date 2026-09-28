@@ -13,21 +13,23 @@ module Net
         end
 
         # 生成本地或 TFTP 备份计划，明确记录每台未执行设备的原因。
-        def call(mode:, limit_per_vendor:)
+        def call(mode:, limit_per_vendor:, allow_fixed_name_reuse: false)
           self.class.validate_limit!(limit_per_vendor)
-          candidates = @inventory.each_with_index.select { |device, _index| device.ready? }
-          selected = if limit_per_vendor
-                       candidates.group_by { |device, _index| device.vendor }.values.flat_map do |entries|
-                         entries.sort_by { |device, _index| device.host }.first(limit_per_vendor)
-                       end
-                     else
-                       candidates
-                     end
-          selected_indices = selected.to_h { |_device, index| [index, true] }
-          filenames = {}
+          ready_tasks = @inventory.each_with_index.filter_map do |device, index|
+            [index, device] if device.ready?
+          end
+          selected_tasks = if limit_per_vendor
+                             ready_tasks.group_by { |_index, device| device.vendor }.values.flat_map do |tasks|
+                               tasks.sort_by { |_index, device| device.host }.first(limit_per_vendor)
+                             end
+                           else
+                             ready_tasks
+                           end
+          selected_indices = selected_tasks.to_h { |index, _device| [index, true] }
+          first_index_by_filename = {}
           if mode == :tftp
             # 先按采样顺序保留每个目标的首台设备，再按清单顺序输出结果。
-            selected.each { |device, index| filenames[device.tftp_filename] ||= index }
+            selected_tasks.each { |index, device| first_index_by_filename[device.tftp_filename] ||= index }
           end
           outcomes = Array.new(@inventory.size)
           ready = @inventory.each_with_index.filter_map do |device, index|
@@ -37,14 +39,16 @@ module Net
             elsif !selected_indices.key?(index)
               outcomes[index] = skipped(device, :sample_limit)
               nil
-            elsif mode == :tftp && filenames.fetch(device.tftp_filename) != index
+            elsif mode == :tftp && first_index_by_filename.fetch(device.tftp_filename) != index &&
+                  !(allow_fixed_name_reuse && device.vendor == :palo_alto)
               outcomes[index] = skipped(device, :remote_filename_collision)
               nil
             else
               [index, device].freeze
             end
           end
-          Plan.new(mode: mode, inventory: @inventory, ready: ready.freeze, outcomes: outcomes.freeze)
+          Plan.new(mode: mode, inventory: @inventory, ready: ready.freeze, outcomes: outcomes.freeze,
+                   allow_fixed_name_reuse: allow_fixed_name_reuse)
         end
 
         # 限制单厂商采样数，空值表示选择所有就绪设备。

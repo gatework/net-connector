@@ -89,13 +89,13 @@ module Net
           raise DeviceError.new("device reported TFTP backup failure",
                                 code: :transfer_failed, host: @device.host, phase: :tftp_backup)
         end
-        unless strategy.device_reported_complete?(result)
-          result.value! if result.failure?
-          @device.log_event("tftp_backup", level: :error, status: "transfer_unconfirmed", phase: :tftp_backup,
-                                code: :transfer_unconfirmed, server: target.host)
-          raise DeviceError.new("device did not confirm TFTP backup completion",
-                                code: :transfer_unconfirmed, host: @device.host, phase: :tftp_backup)
-        end
+        return if strategy.device_reported_complete?(result)
+
+        result.value! if result.failure?
+        @device.log_event("tftp_backup", level: :error, status: "transfer_unconfirmed", phase: :tftp_backup,
+                              code: :transfer_unconfirmed, server: target.host)
+        raise DeviceError.new("device did not confirm TFTP backup completion",
+                              code: :transfer_unconfirmed, host: @device.host, phase: :tftp_backup)
       end
 
       # 识别设备回显中的传输失败信息。

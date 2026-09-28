@@ -1,5 +1,57 @@
 # 更新记录
 
+## 未发布
+
+## 0.7.0 - 2026-09-28
+
+- 统一内部参数、预算和声明校验的 `validate_*!` 命名；区分脚本发送前与响应后的预算检查，复用并发预检，简化状态计数并补充值对象复制边界测试。保持本轮增量重构的公开接口、错误及完成证据语义。
+
+- Ruby 惯用法重构：集中 Session 私有实现，拆分单次登录、脚本构造/收尾及 Settings 来源选项解析；保持连接恢复、锁、脱敏和部分结果契约。Settings 同类协作使用 protected 接口替代私有 `send`。
+- protected 钩子 `login_dialogues` / `confirmation_dialogues` 改为 `login_interactions` / `confirmation_interactions`，不保留别名；子类须同步更新。Fleet 单设备私有方法统一使用 device 命名，公开批次接口不变。
+- 启用适配项目的 Naming 与八项 Ruby Style 规则，补充输入、集合、块、资源和异常约束；新增交互钩子继承、finalize 返回值/退出与配置优先级回归测试。
+
+- 按实际职责命名 `Netdisco::TftpArchive` 与 `ResultStore::Json`，内部调用改用 `upload_filename`、`upload_and_archive` 等明确动作；会话输出预算记录最后执行的命令。规划器内部任务统一为 `[清单索引, 设备]`，报告中的状态集合和单台结果使用一致的命名；Fleet 内部区分配置快照与报告成功策略，生成 Report 后不再将其称为 Batch；公开计划与报告结构不变。保留 `TftpHistory`、`ResultStore::Text` 及旧方法作为兼容入口。TFTP 服务器根目录仅暂存上传文件，核验并归档到批次目录后清理暂存文件；原有同名文件先保存到 `previous/`。
+
+- TFTP 批量示例在可访问服务器目录时使用 hostname-ip 远端文件名，先保护旧文件，再把已核验文件保存到服务器和本地的批次归档；否则使用批次时间与序号组成的唯一远端名。PAN-OS 固定文件名上传要求可访问服务器目录，无法归档时不再将上传算作成功。
+
+- 修复并发主机密钥更新丢失：SSH 使用会话副本，认证后跨进程加锁合并，失败登录不改写共享信任。
+- 统一 BackupRun 编排、CLI 参数覆盖和 Report 成功策略；报告先保存再输出最终状态，示例摘要统一使用 devices，保存失败可见。
+- 标准输入凭据通过 Settings 客户端工厂支持 HTTP/PostgreSQL；TFTP 文件核验进入库，新增 verified 策略并修正自定义日志路径。
+- 增加明确标注 TextFSM 依赖声明补丁的 JSON 3 CI 矩阵及隔离安装，不将源码兼容结果表述为 RubyGems 已发布依赖兼容。
+
+- 按职责整理备份辅助接口：CLI::Options、Connection.build、Storage::BatchDirectory.create、Report::Text.write，移除 BackupOptions/BackupConnection/BackupFiles 旧路径与名称。
+
+- 示例公共参数、凭据连接、批次文件及报告接口迁入 Netdisco::BackupOptions / BackupConnection / BackupFiles；支持注入参数与 IO，模块不直接退出进程。示例启动设置归入 examples/boot.rb。
+
+- 整理 examples：入口改名为 backup.rb、backup_tftp.rb、device_tftp.rb、review_tftp.rb；配置为 backup.yml、inventory_sql.yml，公共启动、参数、认证、目录和报告移至 support/。旧入口移除，调用方需更新路径。
+
+- 本地备份示例使用 hostname-ip.txt，批次目录采用 UTC+8 可读时间并原子防重名；每批新增 summary.txt 汇总时间、状态计数、失败分类及失败明细，保留 JSON 报告。
+
+- 终端动态进度区增加上下分隔线，随窗口宽度收缩；失败输出与结束清理同步擦除整个进度区。
+
+- 批量进度新增耗时、平均吞吐、预计剩余时间、最久任务及失败分类；TTY 心跳每秒刷新，事件刷新限频，窄窗口避免换行残留，异常时回收显示线程。
+
+- 备份配置示例使用 accept_new 自动登记首次主机密钥，保留变更拒绝；新增脚本主机密钥策略/文件参数，标准输入凭据不再硬编码 strict，统一沿用批次策略。
+
+- Netdisco 厂商标签陈旧时，使用 Comware 操作系统与 H3C 品牌型号的联合证据纠正连接器；支持带 H3C 前缀的 WX/AC 无线型号，显式映射仍优先。
+
+- H3C/H3C Wireless 默认命令时限从 10 秒调整为 60 秒，避免慢速核心设备的正常配置采集被提前中断；显式 command_timeout 仍优先。
+
+- 批量示例新增并发、设备和 Netdisco 凭据、地址、目录、配置文件命令行参数；提供隐藏密码输入，显式参数覆盖环境与 YAML，凭据不写入计划或结果。
+
+- 批量备份示例默认全量，抽样须显式配置或使用 `--sample N`；默认终端进度原地刷新，失败单独显示，`--verbose` 打开命令明细，`--json` 打开机器输出，计划与结果始终落盘。
+
+- 统一三个备份示例的 .env 和相对路径初始化；普通 `ruby` 使用已安装 gem，源码开发使用 `bundle exec`，修改库后需重新构建并安装。
+
+- 配置迁移：`NET_CONNECTOR_*` 改为 `NC_*`；环境变量仅保留常用连接、凭据和运行参数，映射、筛选、预算、SQL 与厂商协议/TFTP 细节改用 YAML。CLI 与批量示例通过 `NC_CONFIG` 加载配置；旧前缀和已移除的环境设置会提示迁移。新增无凭据 YAML 示例。
+
+- 批量备份示例实时显示登录、命令执行、单台结果和选中任务进度；进度写入 STDERR，保留 STDOUT JSON 与私有日志。新增可选脱敏事件回调 `on_event`，沿用日志失败语义。
+- 备份示例自动从项目根目录 `.env` 读取配置，已有进程变量优先；dotenv 仅作为开发/示例依赖，不进入库的运行时依赖。
+
+- 运行时依赖统一保留所需最低版本，移除缺少不兼容依据的版本上限；支持宿主预先加载 JSON 3，移除备份示例的 JSON 2 临时指定，并在兼容矩阵保留 JSON 2 验证。
+- 修复 Radware `/cfg/dump` 切换到 Configuration 菜单后仍等待旧提示符导致的配置备份超时；保持完整提示符匹配、私钥交互和配置输出保护。
+- Radware 菜单提示符必须读到末尾 `#`，避免 SSH 分片到达时把提示符前缀误判为登录或命令完成。
+
 ## 0.6.0 - 2026-09-27
 
 - 支持直接查询 PostgreSQL 获取 Netdisco 设备清单，SQL 和绑定参数可通过 YAML、环境变量或 CLI 设置，查询结果继续使用已有的厂商映射、计划预览和批量备份流程。

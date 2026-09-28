@@ -1,0 +1,40 @@
+# Non-secret settings only. Credentials belong in environment variables.
+# Common NC_* environment variables override their YAML counterparts.
+backup:
+  directory: ./examples/backups
+  concurrency: 4
+  # limit_per_vendor: 3 # Omit for full inventory.
+netdisco:
+  source: http
+  page_size: 500
+  max_pages: 10000
+  max_response_bytes: 16777216
+  max_inventory_bytes: 134217728
+  max_devices: 100000
+  inventory_timeout: 300
+  allow_insecure_http: false
+inventory:
+  include_hosts: []
+  exclude_hosts: []
+  include_vendors: []
+  vendor_overrides: {}
+  host_overrides: {}
+  device_rules: []
+  # device_rules:
+  #   - vendor: Cisco
+  #     model_prefix: N9K
+  #     connector: cisco_nxos
+ssh:
+  protocol: ssh
+  vendor_protocols: {}
+  host_key_policy: accept_new # Persist first-seen keys; reject changed keys.
+  log_level: info
+  max_script_output_bytes: null
+tftp:
+  vrfs:
+    cisco_nxos: management
+    hillstone: mgt-vr
+  # server: 192.0.2.10
+  # h3c_source_file: flash:/startup.cfg
+  # h3c_wireless_source_file: flash:/startup.cfg
+  # huawei_source_file: flash:/startup.cfg

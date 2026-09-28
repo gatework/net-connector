@@ -50,7 +50,7 @@ class TftpEvidenceTest < Minitest::Test
   end
 
   def test_radware_success_words_in_prompt_do_not_confirm_transfer
-    with_device(:radware, ">> config complete", ">> config complete") do |device|
+    with_device(:radware, ">> config complete#", ">> config complete#") do |device|
       error = assert_raises(Net::Connector::DeviceError) { backup(device, :radware, "backup.tgz") }
       assert_equal :transfer_unconfirmed, error.code
     end

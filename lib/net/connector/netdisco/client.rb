@@ -258,9 +258,9 @@ module Net
             row.is_a?(Hash) && present?(row["ip"]) &&
               FIELDS.drop(1).all? { |field| row[field].nil? || row[field].is_a?(String) }
           end
-          unless valid
-            raise Error.new("Netdisco returned an invalid device inventory", code: :invalid_inventory), cause: nil
-          end
+          return if valid
+
+          raise Error.new("Netdisco returned an invalid device inventory", code: :invalid_inventory), cause: nil
         end
 
         def validate_credentials!(username, password, api_key)
@@ -268,9 +268,9 @@ module Net
                  (present?(api_key) && username.nil? && password.nil?)
             raise ArgumentError, "provide either username and password or api_key"
           end
-          if [username, password, api_key].compact.any? { |value| value.match?(/[\r\n\x00]/) }
-            raise ArgumentError, "credentials must be single-line strings"
-          end
+          return unless [username, password, api_key].compact.any? { |value| value.match?(/[\r\n\x00]/) }
+
+          raise ArgumentError, "credentials must be single-line strings"
         end
 
         def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)

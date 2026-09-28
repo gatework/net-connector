@@ -30,13 +30,10 @@ module Net
         @lock = Mutex.new
       end
 
-      # 判断会话状态和传输层是否都表明连接仍然有效。
       def connected? = state != :closed && !transport.closed?
 
-      # 返回当前是否已经进入特权模式。
       def privileged? = @privileged
 
-      # 标记当前会话已进入特权模式。
       def mark_privileged! = @privileged = true
 
       # 记录脚本之外的业务结果，例如设备报告的 TFTP 上传状态。
@@ -63,16 +60,16 @@ module Net
       end
 
       # 锁覆盖完整操作而不是单次写入，保证批处理命令不会交错。
-      def perform(phase)
+      def perform(phase, &)
         if @operation_owner == [Thread.current, Fiber.current] && !@performing
-          return perform_locked(phase) { yield }
+          return perform_locked(phase, &)
         end
         unless @lock.try_lock
           raise build_error(SessionBusy, "session already belongs to another operation", phase: phase), cause: nil
         end
 
         begin
-          perform_locked(phase) { yield }
+          perform_locked(phase, &)
         ensure
           @lock.unlock
         end
@@ -105,37 +102,6 @@ module Net
 
         raise build_error(SessionBusy, "backup path ownership must be acquired before a session operation", phase: phase), cause: nil
       end
-
-      # 一次操作从连接到结果处理始终持锁；异常或 throw 中断都关闭未完成会话。
-      def perform_locked(phase)
-        @performing = true
-        completed = false
-        begin
-          unless connected?
-            close_resources unless state == :closed
-            connect_session
-          end
-          @state = (phase == :connect) ? :ready : :executing
-          result = yield
-          completed = true
-          result
-        rescue => error
-          failure = normalize_error(error, phase: phase)
-          close_preserving_failure
-          raise failure, cause: nil
-        rescue Exception # rubocop:disable Lint/RescueException -- Interrupts release the transport, then propagate.
-          close_preserving_failure
-          raise
-        ensure
-          # throw/catch 也会离开此块；对话未完成时必须关闭连接，不能把
-          # 半途的设备提示符误当成下一条命令的响应。
-          close_preserving_failure unless completed || !connected?
-          @state = :ready if connected?
-          @performing = false
-        end
-      end
-
-      private :perform_locked
 
       # 独占关闭会话；已有操作占用时返回会话繁忙错误。
       def close
@@ -194,73 +160,6 @@ module Net
           yield if block_given?
         end
       end
-
-      def execute_command_with_logging(command, timeout:, prompt:)
-        started = Expect.monotonic
-        @log.log_event("command_start")
-        sensitive_dialogue = [*command.interactions, *@dialogue.command_interactions].any?(&:sensitive?)
-        private_output = command.sensitive? || redactor.output_sensitive? || sensitive_dialogue
-        @log.log_event("device_output", level: :debug) if @log.debug? && !private_output
-        response = exchange_command(command, timeout: timeout, prompt: prompt)
-        @log.log_response_output(response.raw) unless private_output
-        details = { duration_ms: elapsed_ms(started), response_bytes: response.raw.bytesize }
-        @log.log_event("command_complete", status: "response_received", **details)
-        response
-      rescue => error
-        failure = normalize_error(error, phase: :command, command: command)
-        @log.log_failure("command_complete", failure, status: "failed", duration_ms: elapsed_ms(started), phase: :command)
-        raise failure, cause: nil
-      end
-
-      def elapsed_ms(started) = ((Expect.monotonic - started) * 1000).round
-
-      def log_operation_completion(started, failure, steps: nil)
-        fields = { status: failure ? "failed" : "completed", duration_ms: elapsed_ms(started), steps: steps,
-                   phase: :script }
-        if failure
-          @log.log_failure("operation_complete", failure, **fields, failed_command: failure.command)
-        else
-          @log.log_event("operation_complete", **fields)
-        end
-      end
-
-      private :execute_command_with_logging, :elapsed_ms, :log_operation_completion
-
-      # 在用户钩子运行前标记敏感上下文，动态交互尚未返回时也能保护其异常。
-      def protect_command(command)
-        redactor.output_sensitive! if command.output_sensitive?
-        if command.sensitive? || [*command.interactions, *@dialogue.command_interactions].any?(&:sensitive?)
-          redactor.sensitive!
-        end
-        redactor.remember(command.text) if command.sensitive?
-      end
-
-      private :protect_command
-
-      # 写入命令、读取对话、识别设备诊断，并返回响应对象。
-      def exchange_command(command, timeout:, prompt: nil)
-        deadline = Expect.monotonic + (command.timeout || timeout)
-        interactions = [*command.interactions, *@dialogue.command_interactions]
-        operation = lambda do
-          write("#{command.text}\n", deadline: deadline, phase: :command, command: command)
-          response = reader.read(prompt: command.prompt || prompt || @dialogue.command_prompt,
-                                 interactions: interactions,
-                                 deadline: deadline, phase: :command, command: command)
-          @prompt = response.prompt
-          if (diagnostic = @dialogue.diagnostic(response.raw))
-            raise build_error(DeviceError, diagnostic, phase: :command, command: command, output: response.raw), cause: nil
-          end
-
-          response
-        end
-        if command.sensitive? || redactor.output_sensitive? || interactions.any?(&:sensitive?)
-          @log.pause(&operation)
-        else
-          operation.call
-        end
-      end
-
-      private :exchange_command
 
       # 按截止时间限制传输写入，并统一包装底层错误。
       def write(bytes, deadline:, phase:, command: nil)
@@ -322,24 +221,109 @@ module Net
         build_error(klass, "#{phase} failed: #{exception.class}", phase: phase, command: command, underlying: exception)
       end
 
+      def inspect = "#<#{self.class} state=#{state} host=#{configuration.host.inspect}>"
+
+      private
+
+      # 一次操作从连接到结果处理始终持锁；异常或 throw 中断都关闭未完成会话。
+      def perform_locked(phase)
+        @performing = true
+        completed = false
+        begin
+          unless connected?
+            close_resources unless state == :closed
+            connect_session
+          end
+          @state = (phase == :connect) ? :ready : :executing
+          result = yield
+          completed = true
+          result
+        rescue => error
+          failure = normalize_error(error, phase: phase)
+          close_preserving_failure
+          raise failure, cause: nil
+        rescue Exception # rubocop:disable Lint/RescueException -- Interrupts release the transport, then propagate.
+          close_preserving_failure
+          raise
+        ensure
+          # throw/catch 也会离开此块；对话未完成时必须关闭连接，不能把
+          # 半途的设备提示符误当成下一条命令的响应。
+          close_preserving_failure unless completed || !connected?
+          @state = :ready if connected?
+          @performing = false
+        end
+      end
+
+      def execute_command_with_logging(command, timeout:, prompt:)
+        started = Expect.monotonic
+        @log.log_event("command_start")
+        sensitive_dialogue = [*command.interactions, *@dialogue.command_interactions].any?(&:sensitive?)
+        private_output = command.sensitive? || redactor.output_sensitive? || sensitive_dialogue
+        @log.log_event("device_output", level: :debug) if @log.debug? && !private_output
+        response = exchange_command(command, timeout: timeout, prompt: prompt)
+        @log.log_response_output(response.raw) unless private_output
+        details = { duration_ms: elapsed_ms(started), response_bytes: response.raw.bytesize }
+        @log.log_event("command_complete", status: "response_received", **details)
+        response
+      rescue => error
+        failure = normalize_error(error, phase: :command, command: command)
+        @log.log_failure("command_complete", failure, status: "failed", duration_ms: elapsed_ms(started), phase: :command)
+        raise failure, cause: nil
+      end
+
+      def elapsed_ms(started) = ((Expect.monotonic - started) * 1000).round
+
+      def log_operation_completion(started, failure, steps: nil)
+        fields = { status: failure ? "failed" : "completed", duration_ms: elapsed_ms(started), steps: steps,
+                   phase: :script }
+        if failure
+          @log.log_failure("operation_complete", failure, **fields, failed_command: failure.command)
+        else
+          @log.log_event("operation_complete", **fields)
+        end
+      end
+
+      # 在用户钩子运行前标记敏感上下文，动态交互尚未返回时也能保护其异常。
+      def protect_command(command)
+        redactor.output_sensitive! if command.output_sensitive?
+        if command.sensitive? || [*command.interactions, *@dialogue.command_interactions].any?(&:sensitive?)
+          redactor.sensitive!
+        end
+        redactor.remember(command.text) if command.sensitive?
+      end
+
+      # 写入命令、读取对话、识别设备诊断，并返回响应对象。
+      def exchange_command(command, timeout:, prompt: nil)
+        deadline = Expect.monotonic + (command.timeout || timeout)
+        interactions = [*command.interactions, *@dialogue.command_interactions]
+        operation = lambda do
+          write("#{command.text}\n", deadline: deadline, phase: :command, command: command)
+          response = reader.read(prompt: command.prompt || prompt || @dialogue.command_prompt,
+                                 interactions: interactions,
+                                 deadline: deadline, phase: :command, command: command)
+          @prompt = response.prompt
+          if (diagnostic = @dialogue.diagnostic(response.raw))
+            raise build_error(DeviceError, diagnostic, phase: :command, command: command, output: response.raw), cause: nil
+          end
+
+          response
+        end
+        if command.sensitive? || redactor.output_sensitive? || interactions.any?(&:sensitive?)
+          @log.pause(&operation)
+        else
+          operation.call
+        end
+      end
+
       # 敏感上下文的任意异常和设备输出可能只包含局部秘密，保留类型和错误码诊断。
       def safe_error_text(text, sensitive:)
         sensitive && !text.to_s.empty? ? "[REDACTED]".b : redactor.call(text)
       end
 
-      private :safe_error_text
-
       # 必须先脱敏再截取尾部，避免截断凭据后逃过完整词匹配。
       def truncate_output(text)
         text.byteslice(-MAX_ERROR_OUTPUT_BYTES, MAX_ERROR_OUTPUT_BYTES) || text
       end
-
-      private :truncate_output
-
-      # 返回不包含凭据的会话状态摘要。
-      def inspect = "#<#{self.class} state=#{state} host=#{configuration.host.inspect}>"
-
-      private
 
       # 建立传输并登录；失败时最多执行一次连接级恢复，然后重试登录。
       def connect_session
@@ -347,22 +331,7 @@ module Net
         begin
           @state = :connecting
           started = Expect.monotonic
-          redactor.reset
-          @log.open(transport)
-          @log.log_event("connect", host: configuration.host, username: configuration.username,
-                         phase: :connect, protocol: transport.respond_to?(:protocol) ? transport.protocol : configuration.protocol)
-          transport.open
-          @state = :authenticating
-          @log.log_event("login_start", level: :debug, phase: :login)
-          response = @authentication.login
-          safe_response = Response.new(raw: redactor.call(response.raw), output: redactor.call(response.output),
-                                       prompt: response.prompt)
-          @prompt = response.prompt
-          @after_login.call(self, safe_response)
-          @log.log_authentication_output(response.raw)
-          @log.log_event("login_complete", status: "ok", prompt: response.prompt, phase: :login, duration_ms: elapsed_ms(started))
-          @log.attach
-          @state = :ready
+          login_once(started)
         rescue => error
           phase = (@state == :connecting) ? :connect : :login
           failure = normalize_error(error, phase: phase)
@@ -377,6 +346,26 @@ module Net
           end
           raise failure, cause: nil
         end
+      end
+
+      def login_once(started)
+        redactor.reset
+        @log.open(transport)
+        @log.log_event("connect", host: configuration.host, username: configuration.username,
+                       phase: :connect, protocol: transport.respond_to?(:protocol) ? transport.protocol : configuration.protocol)
+        transport.open
+        @state = :authenticating
+        @log.log_event("login_start", level: :debug, phase: :login)
+        response = @authentication.login
+        transport.authenticated if transport.respond_to?(:authenticated)
+        safe_response = Response.new(raw: redactor.call(response.raw), output: redactor.call(response.output),
+                                     prompt: response.prompt)
+        @prompt = response.prompt
+        @after_login.call(self, safe_response)
+        @log.log_authentication_output(response.raw)
+        @log.log_event("login_complete", status: "ok", prompt: response.prompt, phase: :login, duration_ms: elapsed_ms(started))
+        @log.attach
+        @state = :ready
       end
 
       # 清除会话状态并关闭传输和日志资源。

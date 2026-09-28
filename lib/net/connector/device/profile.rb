@@ -63,7 +63,7 @@ module Net
         @legacy_ssh_arguments = strings(legacy_ssh_arguments, :legacy_ssh_arguments)
         @privilege_command = optional_text(privilege_command, :privilege_command)
         @command_timeout = duration(command_timeout, :command_timeout)
-        @terminal_size = validate_terminal_size(terminal_size)
+        @terminal_size = validate_terminal_size!(terminal_size)
         @running_config_strategy = strategy_class(running_config_strategy, :running_config_strategy,
                                                   %i[clean result_step prompt_text validate_response!])
         @tftp_strategy = strategy_class(tftp_strategy, :tftp_strategy,
@@ -211,7 +211,7 @@ module Net
       end
 
       # 校验终端宽高并冻结数组。
-      def validate_terminal_size(value)
+      def validate_terminal_size!(value)
         return if value.nil?
         unless value.is_a?(Array) && value.size == 2 && value.all? { |dimension| dimension.is_a?(Integer) && dimension.positive? }
           raise ArgumentError, "terminal_size must contain two positive Integers"

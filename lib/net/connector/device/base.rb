@@ -25,13 +25,10 @@ module Net
 
       attr_reader :configuration, :command_timeout
 
-      # 将连接状态查询委托给当前设备会话。
       def_delegators :@session, :connected?, :privileged?, :state
-      # 将设备地址、账号和日志路径委托给连接配置。
       def_delegators :@configuration, :host, :username, :log_file
 
       class << self
-        # 读取或声明连接器的厂商标识。
         def vendor(key = nil)
           return @vendor = key if key
 
@@ -98,7 +95,6 @@ module Net
       # 返回当前连接器使用的不可变设备档案，便于检查厂商声明。
       def profile = self.class.profile || Profile.default
 
-      # 读取或声明连接器的厂商标识。
       def vendor = self.class.vendor
 
       # 只查询实现能力，不连接设备；不代表现场权限或固件验证成功。
@@ -141,7 +137,7 @@ module Net
       end
 
       # 多步骤业务操作独占当前会话，内部脚本仍禁止回调重入。
-      def with_operation(name, &block) = @session.with_operation(name, &block)
+      def with_operation(name, &) = @session.with_operation(name, &)
 
       # 业务层可扩展脚本准备、响应校验和最终结果，所有钩子均在会话锁内执行。
       def execute_operation(script, name:, prompt: nil, after_command: nil, privilege: true, &finalize)
@@ -168,48 +164,36 @@ module Net
         @session.interact(input: input, output: output, escape: escape, timeout: timeout)
       end
 
-      # 返回不包含凭据的连接状态摘要。
       def inspect = "#<#{self.class} host=#{host.inspect} state=#{state}>"
 
       protected
 
-      # 匹配设备分页提示，供对话层自动发送翻页响应。
       def pager_pattern = profile.pager_pattern
 
-      # 返回分页提示对应的响应字节。
       def pager_response = profile.pager_response
 
-      # 匹配密码输入提示。
       def password_prompt = profile.password_prompt
 
-      # 匹配用户名输入提示。
       def username_prompt = profile.username_prompt
 
-      # 返回认证失败的设备输出模式。
       def authentication_error_patterns = profile.authentication_error_patterns
 
-      # 返回命令失败的设备输出模式。
       def command_error_patterns = profile.command_error_patterns
 
       # 返回命令期间需要自动应答的确认对话。
-      def confirmation_dialogues = profile.confirmation_interactions
+      def confirmation_interactions = profile.confirmation_interactions
 
       # 返回登录期间需要自动应答的附加对话。
-      def login_dialogues = profile.login_interactions
+      def login_interactions = profile.login_interactions
 
-      # 返回旧版 SSH 恢复使用的协商参数。
       def legacy_ssh_arguments = profile.legacy_ssh_arguments
 
-      # 返回进入特权模式的命令；nil 表示不支持。
       def enable_command = profile.privilege_command
 
-      # 匹配特权模式提示符。
       def enable_prompt = profile.privilege_prompt
 
-      # 返回默认单条命令超时秒数。
       def default_command_timeout = profile.command_timeout
 
-      # 返回可选终端大小。
       def terminal_size = profile.terminal_size
 
       # 返回登录完成提示；厂商必须实现。
@@ -252,9 +236,9 @@ module Net
           login_prompt: login_prompt, command_prompt: command_prompt,
           password_prompt: password_prompt, username_prompt: username_prompt, enable_prompt: enable_prompt,
           authentication_errors: authentication_error_patterns, command_errors: command_error_patterns,
-          login_interactions: login_dialogues,
+          login_interactions: login_interactions,
           command_interactions: [Interaction.new(pager_pattern, pager_response, capture: false),
-                                 *confirmation_dialogues]
+                                 *confirmation_interactions]
         )
       end
 
@@ -263,6 +247,23 @@ module Net
                          finalize: nil, &on_step)
         return Result.new if script.empty?
 
+        execution = build_execution(operation: operation, prompt: prompt, after_command: after_command, privilege: privilege)
+        output_sensitive = script.any?(&:output_sensitive?)
+        @session.perform(:script) do
+          @session.log_script(operation: operation, steps: execution.steps) do
+            @session.with_sensitive_output(output_sensitive) { before_batch(execution) }
+            result = execution.execute_script(script, &on_step)
+            sensitive_result = output_sensitive || script.any?(&:sensitive?) || execution.sensitive?
+            @session.with_sensitive_output(sensitive_result) do
+              finalize_script_result(result, finalize)
+            end
+          end
+        end
+      rescue Error => error
+        Result.new(steps: execution ? execution.steps : [], error: error)
+      end
+
+      def build_execution(operation:, prompt:, after_command:, privilege:)
         finish_step = lambda do |command, response, context|
           self.after_command(command, response, context)
           after_command&.call(command, response, context)
@@ -271,25 +272,16 @@ module Net
                                   prepare: method(:prepare_command), after_command: finish_step, prompt: prompt)
         execution.context[:operation] = operation if operation
         execution.context[:privilege] = privilege
-        output_sensitive = script.any?(&:output_sensitive?)
-        @session.perform(:script) do
-          @session.log_script(operation: operation, steps: execution.steps) do
-            @session.with_sensitive_output(output_sensitive) { before_batch(execution) }
-            result = execution.execute_script(script, &on_step)
-            private_result = output_sensitive || script.any?(&:sensitive?) || execution.sensitive?
-            @session.with_sensitive_output(private_result) do
-              result = finalize ? finalize.call(result) : result
-              # 回调也可直接返回失败；与抛错共用脱敏边界，保留已完成步骤及业务配置。
-              if result.is_a?(Result) && result.failure?
-                result = Result.new(steps: result.steps, config: result.config,
-                                    error: @session.normalize_error(result.error, phase: :script))
-              end
-              result
-            end
-          end
-        end
-      rescue Error => error
-        Result.new(steps: execution ? execution.steps : [], error: error)
+        execution
+      end
+
+      # 回调也可直接返回失败；与抛错共用脱敏边界，保留已完成步骤及业务配置。
+      def finalize_script_result(result, finalize)
+        result = finalize ? finalize.call(result) : result
+        return result unless result.is_a?(Result) && result.failure?
+
+        Result.new(steps: result.steps, config: result.config,
+                   error: @session.normalize_error(result.error, phase: :script))
       end
     end
   end

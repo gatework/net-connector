@@ -34,10 +34,10 @@ module Net
     end
 
     # 在代码块内连接设备并确保会话关闭。
-    def self.open(vendor, **settings)
+    def self.open(vendor, **settings, &)
       raise ArgumentError, "open requires a block" unless block_given?
 
-      vendor_class(vendor).open(**settings) { |device| yield device }
+      vendor_class(vendor).open(**settings, &)
     end
   end
 end

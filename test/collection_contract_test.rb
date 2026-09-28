@@ -156,7 +156,7 @@ class CollectionContractTest < Minitest::Test
     klass = Net::Connector.vendor_class(vendor)
     prompt = case vendor
              when :h3c, :h3c_wireless, :huawei then "<device>"
-             when :radware then ">> device"
+             when :radware then ">> Configuration#"
              else "device#"
              end
     events = [prompt]

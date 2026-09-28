@@ -12,9 +12,9 @@ module Net
         # 在连接前拒绝源文件及远端目录；未指定文件名时仍由设备生成。
         def validate_options!(target, source_file:, **)
           raise ArgumentError, "Hillstone TFTP export does not use source_file" unless source_file.nil?
-          if target.explicit_path? && target.path.include?("/")
-            raise ArgumentError, "Hillstone TFTP filename cannot contain a directory"
-          end
+          return unless target.explicit_path? && target.path.include?("/")
+
+          raise ArgumentError, "Hillstone TFTP filename cannot contain a directory"
         end
 
         def receipt_metadata(target, **)

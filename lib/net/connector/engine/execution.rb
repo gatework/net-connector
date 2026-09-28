@@ -15,7 +15,7 @@ module Net
         @command_timeout = timeout
         @prepare_command = prepare
         @after_command = after_command
-        @prompt = prompt
+        @prompt_resolver = prompt
         @context = {}
         @steps = []
         @output_bytes = 0
@@ -28,10 +28,10 @@ module Net
 
       # 依次准备、执行和记录脚本命令；失败时保留已完成步骤并统一抛错。
       def execute_script(script)
-        script.each do |original|
-          @session.with_command_redaction(original) do
-            @current_command = original
-            command = @prepare_command.call(original, self)
+        script.each do |original_command|
+          @session.with_command_redaction(original_command) do
+            @current_command = original_command
+            command = @prepare_command.call(original_command, self)
             next unless command
 
             @current_command = command
@@ -45,31 +45,31 @@ module Net
             # 设备已经完成命令；后处理失败也不能从部分结果中抹去其副作用。
             @after_command.call(command, response, self)
             yield step if block_given?
-            check_output_budget!(@last_query_command, completed: true)
+            validate_response_budget!(@last_executed_command)
           rescue => error
             raise @session.normalize_error(error, phase: :script, command: @current_command), cause: nil
           end
         end
-        check_output_budget!(@last_query_command, completed: true)
+        validate_response_budget!(@last_executed_command)
         Result.new(steps: steps)
       end
 
       # 厂商后续查询复用同一信道和错误处理，不开启新的批处理。
       def execute_command(command)
         command = Command.new(command) unless command.is_a?(Command)
-        check_output_budget!(command, completed: false)
-        prompt = @prompt&.call(command)
+        validate_send_budget!(command)
+        prompt = @prompt_resolver&.call(command)
         # 提示符回调也可能追加查询，实际发送前重新检查它消耗的预算。
-        check_output_budget!(command, completed: false) if @prompt
+        validate_send_budget!(command) if @prompt_resolver
         response = @session.execute_command(command, timeout: @command_timeout, prompt: prompt) do
           # 必须在 Session 恢复命令词表前读取；最终处理只能继承敏感性，不长期保留秘密。
           @sensitive ||= @session.redactor.sensitive?
         end
-        @last_query_command = command
+        @last_executed_command = command
         @output_bytes += response.raw.bytesize
         # 主命令先记录完整步骤，再检查超额；追加查询同样计入预算，但不改变原 steps 结构。
         yield response if block_given?
-        check_output_budget!(command, completed: true)
+        validate_response_budget!(command)
         response
       end
 
@@ -86,9 +86,20 @@ module Net
       private
 
       # 单响应上限仍约束正在读取的命令；累计预算阻止继续发送，不承诺设备尚未执行。
-      def check_output_budget!(command, completed:)
-        return unless @output_limit && (completed ? @output_bytes > @output_limit : @output_bytes >= @output_limit)
+      def validate_send_budget!(command)
+        return unless @output_limit && @output_bytes >= @output_limit
 
+        raise_output_limit!(command)
+      end
+
+      # 恰好达到预算的已完成响应仍然有效；下一次发送由发送前检查阻止。
+      def validate_response_budget!(command)
+        return unless @output_limit && @output_bytes > @output_limit
+
+        raise_output_limit!(command)
+      end
+
+      def raise_output_limit!(command)
         raise @session.build_error(ScriptOutputLimitExceeded,
                                    "script output reached max_script_output_bytes; commands already sent may have executed",
                                    phase: :script, command: command), cause: nil

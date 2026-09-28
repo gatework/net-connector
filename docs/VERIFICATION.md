@@ -107,7 +107,7 @@ debug Logger 计数目标样本；不关闭协议检查、丢弃步骤或共享�
 
 每次完整测试同时写入 `tmp/coverage/summary.json`：Ruby 描述和平台、实际依赖版本、
 库文件总数/已加载数、逐文件及上述三个组的行/分支计数、未命中位置和未加载文件。
-`NET_CONNECTOR_COVERAGE_OUTPUT` 只改变输出位置，不改变门槛。报告不保存配置正文、
+`NC_COVERAGE_OUTPUT` 只改变输出位置，不改变门槛。报告不保存配置正文、
 环境变量值或源码片段。CI 每个 Ruby/平台和最低依赖任务分别上传报告。
 
 `script/coverage-baseline.json` 来自 NC-00 实测的初始 dirty 工作树，保存三个组及
@@ -205,3 +205,44 @@ Gitleaks 默认规则之外，还检查网络设备密码/SNMP community 配置�
 若凭据已经泄露，需在对应系统撤销或轮换；仅修改示例不能使旧凭据失效。
 扫描工具不会自动改写 Git 历史或真实设备备份。规则用于拦截常见泄露，
 发布前仍需人工确认设备名称、拓扑和业务配置等上下文信息是否适合公开。
+
+## JSON 2 发布依赖与 JSON 3 源码兼容分开验证
+
+默认及最低依赖任务验证实际发布依赖。TextFSM 0.2.0 的公开声明仍为 `json ~> 2.0`；
+本地同版本 gem 的修订不能证明普通消费者能安装 JSON 3。
+
+CI 的 `json3-source-compatibility` 在 Ruby 3.2 / 4.0 检出固定 TextFSM commit
+`733340de378f2d7fbe530b48f2cf1dd6c30c69b0`，应用仓库内
+`script/compatibility/textfsm-json3.patch`，只放宽依赖声明，再执行完整测试和真实打包隔离安装。
+该任务明确代表尚未发布依赖声明下的源码兼容性；不自动发布、替换正式依赖或修改用户的全局 gem。
+
+复现时，在 `tmp/json3/textfsm` 准备该源码并应用补丁，然后运行：
+
+```sh
+BUNDLE_GEMFILE=gemfiles/json3.gemfile bundle install
+BUNDLE_GEMFILE=gemfiles/json3.gemfile bundle exec rake test
+BUNDLE_GEMFILE=gemfiles/json3.gemfile bundle exec ruby script/verify_json3.rb
+```
+
+## 批次入口与密钥并发回归
+
+`test/known_hosts_test.rb` 使用临时密钥文件、多进程同步屏障和本地 PTY，
+验证并发替换/首次登记、不相关主机保留、登录失败不提交、非标准端口以及并发密钥冲突。
+这些测试不连接真实 SSH 服务器。
+
+`test/examples_test.rb` 验证示例进程退出码与报告策略一致、报告写入错误、统一 devices 结构、
+TFTP 远端未核验回执以及自定义日志目录；离线复核同时支持历史 outcomes 和新 devices 报告。
+`test/tftp_verification_test.rb` 验证空文件、旧文件、符号链接、目录逃逸和 verified 策略。
+
+## Ruby 惯用法重构回归
+
+`test/profile_contract_test.rb` 验证 protected 交互钩子覆盖并调用 `super` 后，登录与命令确认仍采用扩展规则。
+`test/engine_boundary_test.rb` 覆盖 finalize 的 nil/false 返回、回调重入、throw 与 open 块的 break、
+登录钩子异常/中断清理及后续重新连接；原有恢复测试继续限制最多一次连接恢复。
+`test/netdisco_settings_test.rb` 验证显式 nil/false 优先于默认值，以及预算校验先于来源查询校验。
+输出敏感性、线程/Fiber 所有权、完成步骤保留由原有输出、拓扑和批次回归共同验证。
+
+实施记录使用当前工作区文件和方法可见性快照，区别已有改动与本轮增量，不以 Git HEAD 冒充修改前基线。
+源码根目录 `RENAMES.md` 记录批准的改名与兼容边界。完整验收仍运行 `bundle exec rake ci`；
+临时 PostgreSQL 使用 `bundle exec rake test:postgres`，可通过 `NC_TEST_PG_BINDIR` 指定服务端工具目录。
+最低 Ruby 3.2 必须在对应解释器中运行 lint/test；RuboCop 的 TargetRubyVersion 和 Ruby 4.0 测试不能替代此项。

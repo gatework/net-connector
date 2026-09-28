@@ -38,7 +38,8 @@ module Net
             )
           end
 
-          command_timeout 10
+          # 核心交换机配置采集实测超过 10 秒，保留有界的整条命令预算。
+          command_timeout 60
 
           interactions do
             confirm %r{Are\s+you\s+sure\?\s*\[Y/N\]}i, response: "y\n"

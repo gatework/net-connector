@@ -1,15 +1,25 @@
 # frozen_string_literal: true
 
 # 此文件在独立安装目录执行；不得 require_relative 项目源码或测试替身。
+# 模拟宿主先加载依赖，避免仅验证连接器优先加载而漏掉版本冲突。
+require "json"
+require "logger"
+require "net/http"
+require "openssl"
 require "net/connector"
 require "net/connector/netdisco"
 require "rbconfig"
 require "stringio"
-require "logger"
 
 raise "Offline entry eagerly loaded TextFSM" if $LOADED_FEATURES.any? { |path| path.match?(%r{/lib/textfsm(?:/|\.rb)}) }
 
 spec = Gem.loaded_specs.fetch("net-connector")
+spec.runtime_dependencies.each do |dependency|
+  loaded = Gem.loaded_specs[dependency.name]
+  next unless loaded
+
+  raise "Loaded dependency violates gemspec: #{dependency.name}" unless dependency.matches_spec?(loaded)
+end
 root = File.realpath(ENV.fetch("GEM_HOME"))
 raise "Gem loaded outside isolated install" unless File.realpath(spec.full_gem_path).start_with?("#{root}/")
 raise "Bundler leaked into plain installation" if ARGV.first == "plain" && defined?(Bundler)
@@ -119,7 +129,7 @@ end
 output = StringIO.new
 cli = Net::Connector::Netdisco::CLI.new(argv: ["--version"], env: {}, output: output)
 raise "Installed CLI failed" unless cli.run.zero? && output.string.strip == spec.version.to_s
-settings = Net::Connector::Netdisco::Settings.new(env: { "NETDISCO_MAX_DEVICES" => "2" })
+settings = Net::Connector::Netdisco::Settings.new(env: {}, defaults: { "NETDISCO_MAX_DEVICES" => "2" })
 policy = settings.snapshot(mode: :show_config)
 raise "Installed inventory budget missing" unless policy.client_options.fetch(:max_devices) == 2 && policy.frozen?
 output = StringIO.new
@@ -129,7 +139,7 @@ raise "Installed script budget setting missing" unless JSON.parse(output.string)
 
 # 安装包独立提供数据库驱动与配置示例；这里只做离线校验，真实查询由 test:postgres 验证。
 require "pg"
-database_example = File.join(spec.full_gem_path, "examples/netdisco_database.yml")
+database_example = File.join(spec.full_gem_path, "examples/inventory_sql.yml")
 database_settings = Net::Connector::Netdisco::Settings.from_file(database_example, env: {})
 raise "Installed PostgreSQL settings missing" unless database_settings.inventory_source == :postgres
 raise "Installed PostgreSQL query missing" unless database_settings.client_options.fetch(:query).include?("$1")
@@ -146,4 +156,15 @@ batch = Net::Connector::Netdisco::Batch.new(mode: :backup, outcomes: outcomes, s
 report = batch.build_report(policy: :selected)
 raise "Installed selected policy failed" unless report.policy_success? && !report.success? && report.status == :incomplete
 raise "Installed v2 coverage missing" unless report.summary.fetch(:schema_version) == 2 && !report.summary.fetch(:coverage).fetch(:complete)
+options = Net::Connector::Netdisco::CLI::Options.parse(argv: ["--concurrency", "2"])
+raise "Installed backup options missing" unless options.fetch(:environment).fetch("NC_CONCURRENCY") == "2"
+Dir.mktmpdir do |root|
+  directory = Net::Connector::Storage::BatchDirectory.create(root, time: Time.utc(2026, 1, 1))
+  raise "Installed batch files missing" unless File.basename(directory) == "2026-01-01_08-00-00"
+end
+help = StringIO.new
+raise "Installed batch runner missing" unless Net::Connector::Netdisco::BackupRun.new(argv: ["--help"], output: help).run.zero?
+raise "Installed verification option missing" unless help.string.include?("verified")
+raise "Installed report writer missing" unless Net::Connector::Netdisco::Report::Files.respond_to?(:write)
+raise "Installed backup connection missing" unless Net::Connector::Netdisco::Connection.respond_to?(:build)
 puts "Installed #{spec.full_name}: #{ARGV.fetch(0)}, PTY, vendor profiles, templates and CLI passed"

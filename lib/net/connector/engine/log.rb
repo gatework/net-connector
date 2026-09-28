@@ -57,15 +57,15 @@ module Net
         end
       end
 
-      def with_operation_context(name, &block)
-        with_context(operation: name || @context[:operation] || :script, &block)
+      def with_operation_context(name, &)
+        with_context(operation: name || @context[:operation] || :script, &)
       end
 
-      def with_command_context(command, &block)
+      def with_command_context(command, &)
         @command_sequence += 1
         with_context(command_id: @command_sequence, phase: :command,
                      text: command.sensitive? ? "[REDACTED]" : command.text,
-                     source: command.source, line: command.line, &block)
+                     source: command.source, line: command.line, &)
       end
 
       # 将终端回显接入当前会话日志。
@@ -81,7 +81,7 @@ module Net
 
       # 按日志级别写入已脱敏的业务事件。
       def log_event(name, level: :info, **fields)
-        return unless @logger
+        return unless @logger || @configuration.on_event
 
         finish_output
         write_event(name, level: level, **fields)
@@ -190,7 +190,8 @@ module Net
 
       # 每次读取调用方的当前阈值，不缓存级别、不改写共享 Logger。
       def enabled?(level)
-        @logger && LEVELS.fetch(level) >= [@logger.level, LEVELS.fetch(@configuration.log_level)].max
+        LEVELS.fetch(level) >= LEVELS.fetch(@configuration.log_level) &&
+          (@configuration.on_event || (@logger && LEVELS.fetch(level) >= @logger.level))
       end
 
       def write_event(name, level:, **fields)
@@ -198,7 +199,9 @@ module Net
 
         values = @context.compact.merge(fields.reject { |key, _| CONTEXT_FIELDS.include?(key.to_s) })
         values = values.merge(host: @configuration.host, session_id: @session_id)
-        @logger.public_send(level, Event.new(name, values, redactor: @redactor))
+        event = Event.new(name, values, redactor: @redactor)
+        @logger.public_send(level, event) if @logger && LEVELS.fetch(level) >= @logger.level
+        @configuration.on_event&.call(event)
       end
 
       def open_transcript

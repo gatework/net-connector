@@ -23,21 +23,21 @@ module Net
         # 在追加正文前计数；不能靠 Content-Length 或 JSON 解析后的大小限制内存。
         def consume_bytes(size, response_bytes:)
           remaining
-          check_limit!(:max_response_bytes, response_bytes + size)
-          check_limit!(:max_inventory_bytes, @bytes + size)
+          validate_limit!(:max_response_bytes, response_bytes + size)
+          validate_limit!(:max_inventory_bytes, @bytes + size)
           @bytes += size
         end
 
         # 去重前的记录同样占用清单内存；兼容查询也使用这个累计计数。
         def consume_devices(size)
           remaining
-          check_limit!(:max_devices, @devices + size)
+          validate_limit!(:max_devices, @devices + size)
           @devices += size
         end
 
         private
 
-        def check_limit!(name, value)
+        def validate_limit!(name, value)
           return if value <= @options.fetch(name)
 
           raise Client::Error.new("Netdisco inventory exceeded #{name}", code: name), cause: nil

@@ -30,6 +30,26 @@ bundle exec rake lint
 - 使用虚构凭据和 `192.0.2.0/24` 等文档地址。不要提交设备配置、备份、私有地址或日志；扫描规则同样适用于测试和示例。
 - 行为或公开契约变更写入 `CHANGELOG.md` 的 `Unreleased`，同步修改相应文档。保留与本次任务无关的工作区改动。
 
+### Ruby 范式与语法边界
+
+- 语法保持 Ruby 3.2 兼容：双引号、两空格缩进、冻结字符串；不强制 80 列或统一尾随逗号，不以 10 行/3 参数为拆分目标。
+- 方法按公开入口、protected 扩展点、private 实现组织。步骤提取必须表达独立职责，保留原锁、脱敏、rescue/ensure 和计时范围。
+- 命名沿用领域词：`connect`/`close`、`execute_command`/`execute_script`、`running_config`。纯抛错校验统一用 `validate_*!`，不混用 `check_*`；构造用 `build_*`，资源作用域用 `with_*`；不因方法有副作用就追加 `!`。
+- 转换用 `map`、筛选用 `select`、副作用用 `each`。`filter_map` 会丢弃 false/nil；`to_h` 的重复键会覆盖；有条件累计用 `each_with_object`。替换前确认内容、顺序和返回值等价。
+- 必需键用 `fetch`，允许缺失的嵌套读取才用 `dig`。`&.` 只跳过 nil，不替代 false 或非法类型校验；`||=` 只适用于 nil/false 都等价于未设置的情形。
+- 外部输入先校验再转换，不用 `to_i`、`Array()` 等掩盖非法输入。保留缺失、显式 nil、false 的区别及必要哨兵；不扩大配置来源或改变优先级。
+- 模式匹配只用于稳定结构，并明确未知结构行为；不批量替换分支。Guard clause 保持返回值及预检顺序。完整透传可用匿名块参数，调整参数时显式传递，保留 `super` 的继承语义。
+- Data 用于稳定值对象，Hash 用于配置和外部协议；不为缩短参数列表增加对象。freeze 不会递归冻结，复制规则按对象所有权与现有契约决定。
+- 普通失败通过已有错误边界归一化；保留 `cause: nil` 和脱敏先于截断的顺序。资源清理处的 `rescue Exception` 是有理由的例外，清理后保留原中断，Worker 可抑制次级清理异常；不能转换成业务成功。
+- 不自动重放设备命令；只有现有连接恢复允许重试。路径锁在会话锁外，完成步骤和持久化回执不能因后续失败丢失。ensure 中不能新增覆盖原异常或返回值的控制流。
+
+RuboCop 启用 Naming 及 GuardClause、SafeNavigation、RedundantSelf、RedundantReturn、ExplicitBlockArgument、HashTransformValues、MapToHash、Next。
+同时启用方法间空行与缩进一致性规则。异常变量按角色使用完整名称，关闭强制 `e` 的规则；发布入口 `net-connector.rb` 和 pg 原生接口名称保留明确例外。
+自动修正仅使用 `-a` 并逐项审阅，尤其检查块、返回值和校验顺序；不使用 `-A` 或生成排除基线。
+
+保持行为的重构先补缺失的边界测试，再独立搬移方法、调整逻辑、修改名称。
+本次迁移与延后项见源码根目录 `RENAMES.md`；通用 Validation、配置 DSL 和参数对象须有真实复用收益，不能仅依据相似语法提取。
+
 ## 增加厂商或模板
 
 1. 在 `lib/net/connector/vendor/<厂商>.rb` 声明提示符、命令、交互及策略绑定，并在设备注册入口登记厂商键。已有规则可直接复用，差异逻辑放在该厂商目录中。

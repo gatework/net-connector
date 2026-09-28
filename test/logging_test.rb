@@ -382,4 +382,27 @@ class LoggingTest < Minitest::Test
     device.close
     assert_equal %w[connect login_complete], messages.map(&:name)
   end
+
+  def test_event_observer_is_independent_of_logger_threshold_and_keeps_redaction
+    events = []
+    @logger.level = Logger::ERROR
+    device = build("router#", "private-output\nrouter#", password: "private-password",
+                   on_event: ->(event) { events << event })
+    command = Net::Connector::Command.new("secret private-password", sensitive: true)
+    assert device.execute_script([command]).success?
+    assert_empty @records
+    assert events.all?(&:frozen?)
+    assert_includes events.map(&:name), "command_start"
+    refute_includes events.map(&:to_s).join, "private-password"
+    refute_includes events.map(&:to_s).join, "private-output"
+    assert_equal Logger::ERROR, @logger.level
+  end
+
+  def test_observer_failure_is_an_explicit_log_failure_without_leaking_callback_error
+    device = build("router#", logger: nil, password: "private-password", on_event: ->(_) { raise "private-password" })
+    error = assert_raises(Net::Connector::LogError) { device.connect }
+    refute_includes error.message, "private-password"
+    refute device.connected?
+    assert_raises(ArgumentError) { Net::Connector::Configuration.new(on_event: Object.new) }
+  end
 end

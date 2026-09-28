@@ -1,0 +1,12 @@
+diff --git a/textfsm.gemspec b/textfsm.gemspec
+--- a/textfsm.gemspec
++++ b/textfsm.gemspec
+@@ -19,6 +19,6 @@ Gem::Specification.new do |spec|
+   spec.bindir = "exe"
+   spec.executables = ["textfsm"]
+   spec.require_paths = ["lib"]
+-  spec.add_dependency "json", "~> 2.0"
+-  spec.add_dependency "strscan", "~> 3.0"
++  spec.add_dependency "json", ">= 2.0"
++  spec.add_dependency "strscan", ">= 3.0"
+ end

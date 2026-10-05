@@ -41,14 +41,29 @@ module Net
           @channel = if @channel_factory
                        @channel_factory.call
                      else
-                       Expect.new(raw_pty: true, reset_timeout_on_read: false, buffer_limit: nil,
+                       if defined?(Expect::Session)
+                         Expect::Session.new(buffer_limit: nil, write_timeout: configuration.write_timeout)
+                       else
+                         Expect.new(raw_pty: true, reset_timeout_on_read: false, buffer_limit: nil,
                                   preserve_buffer: false, log_stdout: false, log_listeners: false,
                                   debug_level: 0, write_timeout: configuration.write_timeout)
+                       end
                      end
           # Profile 使用宽、高；PTY 使用行数、列数。
           @channel.slave.winsize = @terminal_size.reverse if @terminal_size
-          @channel.log_output = method(:write_log_output)
-          @channel.spawn(*argv)
+          if @channel.respond_to?(:transcript=)
+            writer = Object.new
+            callback = method(:write_log_output)
+            writer.define_singleton_method(:write) do |bytes|
+              callback.call(bytes)
+              bytes.bytesize
+            end
+            @channel.transcript = writer
+            @channel.spawn(*argv, raw: true)
+          else
+            @channel.log_output = method(:write_log_output)
+            @channel.spawn(*argv)
+          end
           self
         rescue Exception # rubocop:disable Lint/RescueException -- A half-open PTY must be released on interrupts.
           begin
@@ -61,7 +76,8 @@ module Net
 
         # 从信道读取下一事件，并把字符串字段转换为字节字符串。
         def read(patterns, timeout:)
-          result = @channel.expect_result(*patterns, STREAM, timeout: timeout)
+          reader = @channel.respond_to?(:expect_result) ? :expect_result : :expect
+          result = @channel.public_send(reader, *patterns, STREAM, timeout: timeout)
           Event.new(index: result.number && (result.number - 1), before: result.before.to_s.b,
                     match: result.match.to_s.b, error: result.error)
         end

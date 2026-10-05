@@ -4,6 +4,8 @@
 
 ## 0.7.1 - 2026-10-05
 
+- 兼容 expect-pty 0.7 的 Session、expect 与 transcript 接口，保留旧版和输出限额语义。
+
 - 版本标签触发 RubyGems OIDC 可信发布，不再依赖静态 `RUBYGEMS_API_KEY` Secret；保留完整 CI 矩阵、原始产物发布、敏感信息扫描和 GitHub/RubyGems SHA256 回读校验。
 
 ## 0.7.0 - 2026-09-28

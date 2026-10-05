@@ -229,7 +229,7 @@ class Release
     verify_registry_checksum(version)
     unless version
       if ENV["GITHUB_ACTIONS"] == "true" && ENV.fetch("GEM_HOST_API_KEY", "").empty?
-        raise "Set the repository Actions secret RUBYGEMS_API_KEY, or publish locally with the existing gem login"
+        raise "Configure RubyGems Trusted Publishing for release.yml, or publish locally with the existing gem login"
       end
 
       pushed = system("gem", "push", @artifact, "--host", GEM_HOST)

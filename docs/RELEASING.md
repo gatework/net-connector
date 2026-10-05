@@ -56,16 +56,19 @@ ruby script/release.rb --artifact /path/to/verified/net-connector-X.Y.Z.gem
 
 ## GitHub Actions 发布
 
-仓库中配置 `RUBYGEMS_API_KEY` Actions Secret，并赋予发布此 gem 所需的权限。
-Runner 不继承本机 RubyGems 登录。GitHub 操作使用工作流自带的 token。
+Actions 使用 RubyGems Trusted Publishing，通过 GitHub OIDC 交换短期发布凭据，不再需要仓库的 `RUBYGEMS_API_KEY` Secret。
 
-提交和推送版本修改后，创建并推送对应的 `vX.Y.Z` 标签，在该标签上手动运行
-`Release` 工作流。只允许标签与 gem 版本一致且说明已归档的发布。
-工作流先复用完整 CI 矩阵，全部通过后下载 Ubuntu / Ruby 4.0 验证的同一个
-gem，再执行 `--artifact`；发布阶段不重新构建。
+首次在 [net-connector 的 Trusted publishers 页面](https://rubygems.org/gems/net-connector/trusted_publishers)
+创建 GitHub Actions 发布者：Repository owner 为 `gatework`，Repository name 为 `net-connector`，Workflow filename 为
+`release.yml`。可将 Environment 限定为 `release`；工作流始终使用该环境。需要审批时，在 GitHub 仓库 Settings → Environments 中配置。
 
-普通 push、PR 和标签推送只触发 CI。Release 工作流仅手动触发，避免本地
-发布创建标签时又自动开始第二次发布。
+提交和推送版本修改后，推送对应的 `vX.Y.Z` 标签会自动触发 Release。也可在 Actions → Release → Run workflow 选择同一版本标签恢复失败任务。
+只允许标签与 Gem 版本一致且说明已归档的发布。避免本地与 Actions 同时上传同一版本，优先使用标签工作流。
+
+工作流先复用完整 CI 矩阵，全部通过后下载 Ubuntu / Ruby 4.0 验证的同一个 Gem，配置 OIDC 凭据并执行 `--artifact`；
+发布阶段不重新构建，源码、历史、包的敏感信息扫描及 SHA256 回读继续生效。
+
+没有匹配的可信发布者时，OIDC 交换会失败；先补齐 RubyGems 配置再恢复原包发布。本地脚本仍使用既有 Gem 登录和 MFA。
 
 ## 失败后重试
 

@@ -1,7 +1,9 @@
 name: Release
 
-# 手动在版本标签上运行，避免本地发布创建标签时触发第二次上传。
+# 标签触发可信发布；手动选择同一标签可恢复失败的原包发布。
 on:
+  push:
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
@@ -43,8 +45,10 @@ jobs:
     needs: verify
     runs-on: ubuntu-24.04
     timeout-minutes: 10
+    environment: release
     permissions:
       contents: write
+      id-token: write
       actions: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -58,10 +62,11 @@ jobs:
         with:
           name: net-connector-${{ github.sha }}
           path: tmp/ci
+      - name: Configure RubyGems Trusted Publishing
+        uses: rubygems/configure-rubygems-credentials@dc5a8d8553e6ee01fc26761a49e99e733d17954a # v2.1.0
       - name: Recheck secrets and publish without rebuilding
         env:
           GH_TOKEN: ${{ github.token }}
-          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
         run: |
           version="$(ruby -Ilib -rnet/connector/version -e 'print Net::Connector::VERSION')"
           ruby script/release.rb --artifact "tmp/ci/net-connector-${version}.gem"

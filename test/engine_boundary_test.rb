@@ -207,26 +207,38 @@ class EngineBoundaryTest < Minitest::Test
 
   def test_terminal_rendering_handles_fragmented_cursor_and_title_sequences
     examples = {
+      "" => "",
+      "status complete  " => "status complete",
+      "device\x7f" => "device\x7f",
       "ab\a\x01\t \n" => "ab\n",
       "abc\e[2DX" => "aXc",
+      "abcdef\rXY" => "XYcdef",
+      "abc\bXYZ" => "abXYZ",
       "abc\e[GX" => "Xbc",
       "a\e[2CX" => "a  X",
       "abc\e[2G\e[K" => "a",
       "abc\e[2G\e[1KX" => " Xc",
+      "\e[1K名称" => "名称",
+      "abc\e[9G\e[1K名称" => "        名称",
+      "\e[1K\xFF".b => "\\xFF",
       "abc\e[2KX" => "X",
       "abc\e[3K" => "abc",
       "a\e]window title\aB" => "aB",
       "a\e]window\eXtitle\e\\B" => "aB",
       "a\eZB" => "aB",
       "a\e[\x01B" => "aB",
-      "\xFF\n".b => "\\xFF\n"
+      "\xFF\n".b => "\\xFF\n",
+      "名称 \t\r\nnext \t\nfinal\t" => "名称\nnext\nfinal"
     }
     examples.each do |input, expected|
-      output = StringIO.new("".b)
-      renderer = Connector::TerminalRenderer.new(output)
-      input.each_byte { |byte| renderer.write(byte.chr) }
-      renderer.finish
-      assert_equal expected.b, output.string, input.inspect
+      [1, 2, 7, [input.bytesize, 1].max].uniq.each do |chunk_size|
+        output = StringIO.new("".b)
+        renderer = Connector::TerminalRenderer.new(output)
+        input.bytes.each_slice(chunk_size) { |bytes| renderer.write(bytes.pack("C*")) }
+        renderer.finish
+        assert_equal expected.b, output.string, "#{input.inspect} / #{chunk_size} bytes"
+      end
+      assert_equal expected.b, Connector::TerminalRenderer.render(input), input.inspect
     end
   end
 
@@ -239,6 +251,42 @@ class EngineBoundaryTest < Minitest::Test
     end
     renderer = Connector::TerminalRenderer.new(StringIO.new)
     assert_raises(Connector::OutputLimitExceeded) { renderer.write("\e[" + ("1" * 65)) }
+  end
+
+  def test_terminal_line_limit_preserves_the_consumed_prefix_and_allows_recovery
+    output = StringIO.new("".b)
+    renderer = Connector::TerminalRenderer.new(output, max_line_bytes: 4)
+    assert_equal 4, renderer.write("abcd")
+    assert_raises(Connector::OutputLimitExceeded) { renderer.write("\r12345") }
+    renderer.write("\nnext")
+    renderer.finish
+    assert_equal "1234\nnext", output.string
+  end
+
+  def test_strict_terminal_rendering_validates_utf8_after_fragmented_edits
+    output = StringIO.new("".b)
+    renderer = Connector::TerminalRenderer.new(output, strict_utf8: true)
+    bytes = "名称".b
+    renderer.write(bytes.byteslice(0, 2))
+    renderer.write(bytes.byteslice(2..))
+    renderer.write(" \n")
+    renderer.finish
+    assert_equal "名称\n".b, output.string
+    assert_raises(Encoding::InvalidByteSequenceError) do
+      Connector::TerminalRenderer.render("名\bX", strict_utf8: true)
+    end
+  end
+
+  def test_plain_terminal_rendering_returns_owned_bytes_and_retains_default_validation
+    input = "status  ".freeze
+    rendered = Connector::TerminalRenderer.render(input, strict_utf8: true)
+    assert_equal "status", rendered
+    assert_equal Encoding::BINARY, rendered.encoding
+    refute rendered.frozen?
+    rendered.replace("changed")
+    assert_equal "status  ", input
+    assert_raises(ArgumentError) { Connector::TerminalRenderer.render("status", strict_utf8: nil) }
+    assert_raises(Connector::OutputLimitExceeded) { Connector::TerminalRenderer.render("a" * ((32 * 1024 * 1024) + 1)) }
   end
 
   def test_invalid_interaction_rules_are_rejected_before_execution

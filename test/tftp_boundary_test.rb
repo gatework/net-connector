@@ -31,6 +31,23 @@ class TftpBoundaryTest < Minitest::Test
     assert_raises(ArgumentError) { verified.with(path: nil) }
   end
 
+  def test_command_completion_log_failure_keeps_the_confirmed_upload_receipt
+    observer = lambda do |event|
+      raise IOError, "event sink unavailable" if event.name == "command_complete" && event.fields[:status] == "response_received"
+    end
+    transport = ConnectorFake.new("switch#", "Copy complete.\nswitch#")
+    device = Net::Connector.build(:cisco_nxos, host: "192.0.2.1", username: "audit", transport: transport, on_event: observer)
+    error = assert_raises(Net::Connector::TftpCompletionError) do
+      device.tftp_backup(host: "192.0.2.10", path: "backup.cfg")
+    end
+    assert_equal :device_reported, error.receipt.verification
+    assert_equal "backup.cfg", error.receipt.path
+    assert_equal ["copy running-config tftp://192.0.2.10/backup.cfg vrf management\n"], transport.writes
+    refute device.connected?
+  ensure
+    device&.close
+  end
+
   def test_vendor_parameter_combinations_are_rejected_before_any_device_io
     invalid = {
       h3c: [{ vrf: "management" }, { path: false }, { source_file: false }, { vrf: false }],

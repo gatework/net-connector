@@ -10,8 +10,8 @@ module Net
         # 校验并保存清单过滤和厂商映射规则。
         def initialize(include_hosts: [], exclude_hosts: [], include_vendors: [], vendor_overrides: {},
                        host_overrides: {}, mappings: [])
-          @include_hosts = string_list(include_hosts)
-          @exclude_hosts = string_list(exclude_hosts)
+          @include_hosts = host_index(include_hosts)
+          @exclude_hosts = host_index(exclude_hosts)
           @include_vendors = vendor_list(include_vendors)
           @vendor_overrides = vendor_mapping(vendor_overrides)
           @host_overrides = host_mapping(host_overrides)
@@ -126,8 +126,8 @@ module Net
 
         # 判断设备是否通过地址和厂商过滤。
         def selected?(host, vendor)
-          return false if @exclude_hosts.include?(host)
-          return false if !@include_hosts.empty? && !@include_hosts.include?(host)
+          return false if @exclude_hosts.key?(host)
+          return false if !@include_hosts.empty? && !@include_hosts.key?(host)
           return false if !@include_vendors.empty? && !@include_vendors.include?(vendor)
 
           true
@@ -140,15 +140,15 @@ module Net
           wireless ? :h3c_wireless : :h3c
         end
 
-        # 校验并标准化管理地址列表。
-        def string_list(values)
+        # 外部仍接受地址数组；内部仅做成员匹配，建索引避免逐台扫描整个清单。
+        def host_index(values)
           raise ArgumentError, "host lists must be Arrays" unless values.is_a?(Array)
 
-          values.map do |value|
+          values.to_h do |value|
             raise ArgumentError, "host list entries must be Strings" unless value.is_a?(String) && !value.empty?
             raise ArgumentError, "host list entries must be IP addresses" if value.include?("/")
 
-            IPAddr.new(value).to_s.freeze
+            [IPAddr.new(value).to_s.freeze, true]
           rescue IPAddr::Error
             raise ArgumentError, "host list entries must be IP addresses"
           end.freeze

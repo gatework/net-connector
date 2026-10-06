@@ -190,6 +190,8 @@ ruby examples/backup.rb --concurrency 10 --username backup-user --ask-password
 
 `Configuration` 支持 `protocol: :ssh`（默认）或 `:telnet`，以及端口、超时、输出大小、`log_file`、`logger`、`log_format`、`log_level` 和 `known_hosts` 等参数。文本日志使用 Ruby 标准库 `Logger`，记录毫秒时间、级别、设备、中文说明和完整事件字段。`:info` 包括连接、登录、命令响应、脚本处理和 TFTP 结果；`:debug` 增加逐行脱敏回显；`:warn`、`:error` 只保留相应级别。`:raw` 文件只写经过现有敏感保护的设备字节，不添加事件字段。
 
+`log_file` 只接受普通文件，拒绝符号链接、FIFO 和设备文件；应用管理的输出流可通过 `logger` 注入。命令已经完成后若日志或事件回调失败，失败结果仍保留完成步骤，TFTP 错误仍携带已确认的设备回执；调用方不能据此自动重放命令。
+
 每次连接生成 `session_id`，每条实际发送的命令分配 `command_id`；日志还包含 `operation`、`phase`、脚本 `source` / `line`、`duration_ms`、`response_bytes` 和失败 `code`。`command_complete` 的 `response_received` 只表示收到了提示符；`operation_complete` 覆盖脚本准备、执行及后处理，不替代 TFTP 服务端核验或设备持久化证据。普通自定义事件使用 `device.log_event("audit", level: :info, count: 2)`。
 
 可注入 `logger: Rails.logger` 或普通 `Logger`。有效级别取 `log_level` 与调用方**当前**级别中较严格的一项；连接器不修改它的级别、formatter 或 progname，也不关闭它。消息是已脱敏且冻结的 `Net::Connector::Log::Event`，`to_s` 供文本显示，`to_h` 供应用 formatter 输出 JSON：

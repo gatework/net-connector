@@ -23,22 +23,23 @@ module Net
           report.with(outcomes: outcomes.freeze)
         end
 
-        def verify_outcome(outcome)
-          return outcome unless @root && outcome.started_at && outcome.backup.is_a?(TftpReceipt) && outcome.backup.path
+        def verify_outcome(outcome, started_at: outcome.started_at, previous: nil)
+          return outcome unless @root && started_at && outcome.backup.is_a?(TftpReceipt) && outcome.backup.path
 
-          verify(outcome, outcome.backup)
+          verify(outcome, outcome.backup, started_at: started_at, previous: previous)
         end
 
         private
 
-        def verify(outcome, receipt)
+        def verify(outcome, receipt, started_at: outcome.started_at, previous: nil)
           path = File.join(@root, receipt.path)
           parent = File.realpath(File.dirname(path))
           return outcome unless parent == @root || parent.start_with?(@root + File::SEPARATOR)
 
           size = nil
           fingerprint = Storage::SafeFile.open(path, missing: true) do |file, stat|
-            next unless stat.size.positive? && stat.mtime >= outcome.started_at
+            next unless stat.size.positive? && stat.mtime >= started_at
+            next if previous && same_file_state?(previous, stat)
 
             size = stat.size
             value = Storage::SafeFile.fingerprint_io(path, file, stat)
@@ -51,6 +52,12 @@ module Net
         rescue IOError, SystemCallError, ArgumentError
           # 核验失败不抹去设备上传回执；要求服务器证据的策略仍判为未完成。
           outcome
+        end
+
+        # 内容相同的重新上传仍有效；但未变化的旧文件不能仅凭未来 mtime 冒充新上传。
+        def same_file_state?(before, after)
+          [before.dev, before.ino, before.size, before.mtime, before.ctime] ==
+            [after.dev, after.ino, after.size, after.mtime, after.ctime]
         end
       end
     end

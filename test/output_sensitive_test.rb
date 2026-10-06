@@ -338,7 +338,8 @@ class OutputSensitiveTest < Minitest::Test
     assert_equal :logging, result.error.phase
     assert_equal "IOError", result.error.underlying.type
     assert_equal ["terminal length 0\n", "show running-config\n"], @transport.writes
-    assert_equal 1, result.steps.size
+    assert_equal 2, result.steps.size
+    assert_equal @body, result.steps.last.output
     assert @transport.closed?
   end
 

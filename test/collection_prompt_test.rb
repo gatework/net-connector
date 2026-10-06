@@ -62,6 +62,48 @@ class CollectionPromptTest < Minitest::Test
     end
   end
 
+  def test_cisco_backup_preserves_command_and_progress_examples_inside_a_banner
+    %i[cisco_ios cisco_nxos].each do |vendor|
+      body = <<~CONFIG
+        hostname switch
+        banner motd @
+        switch#terminal length 0
+        switch#show running-config
+        switch#copy running-config startup-config
+        ! Last configuration change is an example
+        ! NVRAM config is an example
+        ] 100%
+        Copy complete.
+        @
+        interface Ethernet1/2
+         description final-interface
+        end
+      CONFIG
+      transport = ConnectorFake.new("switch#", "switch#", "#{body}switch#")
+      @device = Net::Connector.build(vendor, host: "192.0.2.1", username: "audit", transport: transport)
+      Dir.mktmpdir do |directory|
+        path = File.join(directory, "switch.cfg")
+        File.write(path, "previous complete configuration")
+        backup = @device.backup(path: path)
+        assert_equal :changed, backup.change
+        assert_equal "#{body}switch#", File.binread(path), vendor.to_s
+        assert_equal ["terminal length 0\n", "show running-config\n"], transport.writes
+      end
+      @device.close
+    end
+  end
+
+  def test_cisco_cleaning_only_removes_volatile_comments_from_the_response_header
+    %i[cisco_ios cisco_nxos].each do |vendor|
+      @device = Net::Connector.build(vendor, host: "192.0.2.1", username: "audit", transport: ConnectorFake.new)
+      header = "show running-config\nBuilding configuration...\n\nCurrent configuration : 123 bytes\n!\n"
+      volatile = "! Last configuration change at 12:00\n! NVRAM config last updated at 12:00\n"
+      body = "hostname switch\nbanner motd @\n#{volatile}@\nend\nswitch#"
+      assert_equal "#{header}#{body}", @device.clean_config("#{header}#{volatile}#{body}"), vendor.to_s
+      @device.close
+    end
+  end
+
   class LocalTransport < Net::Connector::Transports::Pty
     attr_reader :channel
 

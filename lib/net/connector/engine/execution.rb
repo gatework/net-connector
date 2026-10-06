@@ -61,14 +61,17 @@ module Net
         prompt = @prompt_resolver&.call(command)
         # 提示符回调也可能追加查询，实际发送前重新检查它消耗的预算。
         validate_send_budget!(command) if @prompt_resolver
-        response = @session.execute_command(command, timeout: @command_timeout, prompt: prompt) do
+        response = @session.execute_command(command, timeout: @command_timeout, prompt: prompt) do |received|
           # 必须在 Session 恢复命令词表前读取；最终处理只能继承敏感性，不长期保留秘密。
           @sensitive ||= @session.redactor.sensitive?
+          if received
+            @last_executed_command = command
+            @output_bytes += received.raw.bytesize
+            # 完成事实先进入结果；日志失败不能抹去已执行命令，也不能触发重放。
+            yield received if block_given?
+          end
         end
-        @last_executed_command = command
-        @output_bytes += response.raw.bytesize
         # 主命令先记录完整步骤，再检查超额；追加查询同样计入预算，但不改变原 steps 结构。
-        yield response if block_given?
         validate_response_budget!(command)
         response
       end

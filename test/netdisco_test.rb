@@ -11,6 +11,23 @@ class NetdiscoTest < Minitest::Test
   Fleet = Net::Connector::Netdisco::Fleet
   Settings = Net::Connector::Netdisco::Settings
 
+  def test_address_filters_keep_normalization_exclusion_precedence_and_input_ownership
+    included = ["192.0.2.1", "192.0.2.1", "2001:db8:0:0:0:0:0:1", "192.0.2.2"].map(&:dup)
+    excluded = ["192.0.2.2".dup]
+    rules = Net::Connector::Netdisco::Rules.new(include_hosts: included, exclude_hosts: excluded, include_vendors: [:h3c])
+    included.first.replace("192.0.2.99")
+    included.clear
+    excluded.first.replace("192.0.2.99")
+    excluded.clear
+
+    assert rules.selected?("192.0.2.1", :h3c)
+    assert rules.selected?("2001:db8::1", :h3c)
+    refute rules.selected?("192.0.2.2", :h3c)
+    refute rules.selected?("192.0.2.99", :h3c)
+    refute rules.selected?("192.0.2.1", :huawei)
+    assert Net::Connector::Netdisco::Rules.new.selected?("192.0.2.99", :huawei)
+  end
+
   def test_comware_and_branded_model_correct_stale_vendor_without_overriding_explicit_rules
     rules = Net::Connector::Netdisco::Rules.new
     row = { "ip" => "192.0.2.1", "vendor" => "Hillstone", "os" => "Comware", "model" => "H3C WX5540X" }

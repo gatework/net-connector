@@ -7,8 +7,17 @@ module Net
   module Connector
     # 把终端编辑控制符渲染成可读、兼容 UTF-8 和二进制的逐行日志。
     class TerminalRenderer
+      DEFAULT_MAX_LINE_BYTES = 32 * 1024 * 1024
+      private_constant :DEFAULT_MAX_LINE_BYTES
+
       # 将字节流完整渲染为字符串，供测试和一次性转换使用。
       def self.render(input, strict_utf8: false)
+        # 日志元数据通常是无控制符的 ASCII 单行；直接返回独立副本，仍受默认行限额约束。
+        if [true, false].include?(strict_utf8) && input.instance_of?(String) && input.bytesize <= DEFAULT_MAX_LINE_BYTES &&
+           input.ascii_only? && input.match?(/\A[\x20-\x7f]*\z/n)
+          return input.b.rstrip
+        end
+
         output = StringIO.new("".b)
         renderer = new(output, strict_utf8: strict_utf8)
         renderer.write(input)
@@ -17,7 +26,7 @@ module Net
       end
 
       # 初始化当前行、光标和转义序列状态。
-      def initialize(target, max_line_bytes: 32 * 1024 * 1024, strict_utf8: false)
+      def initialize(target, max_line_bytes: DEFAULT_MAX_LINE_BYTES, strict_utf8: false)
         raise ArgumentError, "target must respond to write" unless target.respond_to?(:write)
         unless max_line_bytes.is_a?(Integer) && max_line_bytes.positive?
           raise ArgumentError, "max_line_bytes must be positive"
@@ -33,10 +42,23 @@ module Net
         @strict_utf8 = strict_utf8
       end
 
-      # 逐字节消费终端输出，并返回输入字节数。
+      # 普通文本按片段写入；只有控制序列逐字节解释，避免大配置和逐行日志的 Ruby 调用开销。
       def write(input)
         bytes = input.to_s.b
-        bytes.each_byte { |byte| consume(byte) }
+        offset = 0
+        while offset < bytes.bytesize
+          if @escape_state
+            consume_escape(bytes.getbyte(offset))
+            offset += 1
+            next
+          end
+
+          control = bytes.index(/[\x00-\x08\x0a-\x1f]/n, offset)
+          ending = control || bytes.bytesize
+          write_text(bytes.byteslice(offset, ending - offset)) if ending > offset
+          consume_control(bytes.getbyte(control)) if control
+          offset = ending + 1
+        end
         bytes.bytesize
       end
 
@@ -54,16 +76,13 @@ module Net
       private
 
       # 处理普通控制字符、换行、回车和转义序列起始符。
-      def consume(byte)
-        return consume_escape(byte) if @escape_state
-
+      def consume_control(byte)
         case byte
         when 7 then nil
         when 8 then @cursor = [@cursor - 1, 0].max
         when 10 then emit_line(newline: true)
         when 13 then @cursor = 0
         when 27 then @escape_state = :escape
-        else write_byte(byte) if byte == 9 || byte >= 32
         end
       end
 
@@ -124,20 +143,23 @@ module Net
         case mode
         when 0 then @line = @line.byteslice(0, @cursor)
         when 1
-          @line = (" " * [@cursor + 1, @line.bytesize].min) + @line.byteslice((@cursor + 1)..).to_s
+          @line = (" ".b * [@cursor + 1, @line.bytesize].min) + @line.byteslice((@cursor + 1)..).to_s
         when 2
           @line.clear
           @cursor = 0
         end
       end
 
-      # 在光标位置写入字节，并限制单行缓冲大小。
-      def write_byte(byte)
-        raise OutputLimitExceeded, "terminal line exceeded max_line_bytes" if @cursor >= @max_line_bytes
+      # 覆盖光标后的同等字节数并保留余下后缀；超限时仍保留已经消费的有效前缀。
+      def write_text(bytes)
+        available = @max_line_bytes - @cursor
+        length = bytes.bytesize > available ? available : bytes.bytesize
+        raise OutputLimitExceeded, "terminal line exceeded max_line_bytes" unless length.positive?
 
         @line << (" " * (@cursor - @line.bytesize)) if @cursor > @line.bytesize
-        (@cursor < @line.bytesize) ? @line.setbyte(@cursor, byte) : @line << byte
-        @cursor += 1
+        @line[@cursor, length] = length == bytes.bytesize ? bytes : bytes.byteslice(0, length)
+        @cursor += length
+        raise OutputLimitExceeded, "terminal line exceeded max_line_bytes" if length < bytes.bytesize
       end
 
       # 删除行尾空白，写出当前行并重置光标。

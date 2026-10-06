@@ -5,6 +5,7 @@ require "logger"
 require "stringio"
 require "json"
 require "tmpdir"
+require "timeout"
 require_relative "../lib/net/connector"
 require_relative "support/fake_transport"
 
@@ -404,5 +405,73 @@ class LoggingTest < Minitest::Test
     refute_includes error.message, "private-password"
     refute device.connected?
     assert_raises(ArgumentError) { Net::Connector::Configuration.new(on_event: Object.new) }
+  end
+
+  def test_log_failure_after_a_response_keeps_the_completed_step_without_replaying_commands
+    %w[command_complete device_output].each do |name|
+      observer = lambda do |event|
+        raise IOError, "event sink unavailable" if event.name == name && event.fields[:phase] == "command" &&
+                                                 (event.fields[:status] == "response_received" || event.fields.key?(:output))
+      end
+      device = build("router#", "changed successfully\nrouter#", "unused\nrouter#",
+                     log_level: :debug, on_event: observer)
+      result = device.execute_script(["change", "next command"])
+      assert_instance_of Net::Connector::LogError, result.error
+      assert_equal ["change"], (result.steps.map { |step| step.command.text })
+      assert_equal "changed successfully\nrouter#", result.output
+      assert_equal ["change\n"], device.instance_variable_get(:@session).transport.writes
+      refute device.connected?
+    end
+  end
+
+  def test_fifo_log_path_fails_before_opening_transport_even_without_a_reader
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "session.log")
+      File.mkfifo(path, 0o640)
+      device = build("router#", logger: nil, log_file: path, login_timeout: 0.01)
+      assert_raises(Net::Connector::LogError) { Timeout.timeout(1) { device.connect } }
+      assert_equal 0, device.instance_variable_get(:@session).transport.opens
+      assert_equal 0o640, File.stat(path).mode & 0o777
+      refute device.connected?
+    end
+  end
+
+  def test_transcript_reattachment_failure_keeps_a_completed_sensitive_response
+    Dir.mktmpdir do |directory|
+      device = build("router#", "private configuration\nrouter#", logger: nil, log_level: :debug,
+                     log_file: File.join(directory, "session.log"))
+      transport = device.instance_variable_get(:@session).transport
+      attach = transport.method(:log_output=)
+      failed = false
+      transport.define_singleton_method(:log_output=) do |output|
+        if output && !writes.empty? && !failed
+          failed = true
+          raise IOError, "transcript reattachment failed"
+        end
+        attach.call(output)
+      end
+
+      result = device.execute_command("show config", output_sensitive: true)
+      assert result.failure?
+      assert_equal ["show config"], (result.steps.map { |step| step.command.text })
+      assert_equal "private configuration\nrouter#", result.output
+      assert_equal ["show config\n"], transport.writes
+      refute_includes File.read(File.join(directory, "session.log")), "private configuration"
+      refute device.connected?
+    end
+  end
+
+  def test_fifo_log_path_with_a_reader_is_rejected_without_writing_or_chmod
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "session.log")
+      File.mkfifo(path, 0o640)
+      File.open(path, File::RDONLY | File::NONBLOCK) do |reader|
+        device = build("router#", logger: nil, log_file: path)
+        assert_raises(Net::Connector::LogError) { device.connect }
+        assert_equal 0, device.instance_variable_get(:@session).transport.opens
+        assert_equal 0o640, File.stat(path).mode & 0o777
+        assert_equal "", reader.read
+      end
+    end
   end
 end

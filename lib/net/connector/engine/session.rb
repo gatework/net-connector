@@ -152,12 +152,15 @@ module Net
 
       # 复用完整命令的脱敏范围；厂商后续查询产生的秘密保留到外层回调结束。
       def execute_command(command, timeout:, prompt: nil)
+        response = nil
         redactor.with_scope(reuse: true) do
           protect_command(command)
-          @log.with_command_context(command) { execute_command_with_logging(command, timeout: timeout, prompt: prompt) }
+          @log.with_command_context(command) do
+            execute_command_with_logging(command, timeout: timeout, prompt: prompt) { |received| response = received }
+          end
         ensure
-          # 失败的敏感探测也可能被钩子捕获后继续；离开作用域前始终通知执行器。
-          yield if block_given?
+          # 日志失败也要交付已完成响应；失败的敏感探测同样必须在恢复词表前通知执行器。
+          yield response if block_given?
         end
       end
 
@@ -254,13 +257,13 @@ module Net
         end
       end
 
-      def execute_command_with_logging(command, timeout:, prompt:)
+      def execute_command_with_logging(command, timeout:, prompt:, &)
         started = Expect.monotonic
         @log.log_event("command_start")
         sensitive_dialogue = [*command.interactions, *@dialogue.command_interactions].any?(&:sensitive?)
         private_output = command.sensitive? || redactor.output_sensitive? || sensitive_dialogue
         @log.log_event("device_output", level: :debug) if @log.debug? && !private_output
-        response = exchange_command(command, timeout: timeout, prompt: prompt)
+        response = exchange_command(command, timeout: timeout, prompt: prompt, &)
         @log.log_response_output(response.raw) unless private_output
         details = { duration_ms: elapsed_ms(started), response_bytes: response.raw.bytesize }
         @log.log_event("command_complete", status: "response_received", **details)
@@ -306,6 +309,8 @@ module Net
             raise build_error(DeviceError, diagnostic, phase: :command, command: command, output: response.raw), cause: nil
           end
 
+          # 恢复敏感命令的日志接线也可能失败；在离开暂停范围前保存完成事实。
+          yield response
           response
         end
         if command.sensitive? || redactor.output_sensitive? || interactions.any?(&:sensitive?)

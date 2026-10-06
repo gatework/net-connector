@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
+require "minitest/mock"
 require "tmpdir"
 require "fileutils"
+require "timeout"
 require_relative "../lib/net/connector/netdisco"
 
 class TftpArchiveTest < Minitest::Test
@@ -107,6 +109,95 @@ class TftpArchiveTest < Minitest::Test
       assert_equal :reported_with_error, result.status
       assert_equal :tftp_archive_failed, result.error_code
       assert_nil result.backup.local_path
+    end
+  end
+
+  def test_unchanged_server_file_is_not_upload_evidence_even_with_a_future_mtime
+    Dir.mktmpdir do |root|
+      server = File.join(root, "server")
+      FileUtils.mkdir_p(server)
+      item = device("Palo Alto Networks")
+      path = File.join(server, item.tftp_filename)
+      File.write(path, "previous device configuration")
+      future = Time.now + 60
+      File.utime(future, future, path)
+      archive = N::TftpArchive.new(directory: root, root: server)
+
+      result = archive.upload_and_archive(item, started_at: Time.now.utc - 1) { |remote| outcome(item, remote) }
+
+      assert_equal :reported_with_error, result.status
+      assert_equal :device_reported, result.backup.verification
+      assert_nil result.backup.local_path
+      assert_equal "previous device configuration", File.read(path)
+    end
+  end
+
+  def test_rewriting_the_same_contents_in_a_precreated_server_file_is_a_new_upload
+    Dir.mktmpdir do |root|
+      server = File.join(root, "server")
+      FileUtils.mkdir_p(server)
+      item = device("Palo Alto Networks")
+      path = File.join(server, item.tftp_filename)
+      File.write(path, "same configuration")
+      previous = Time.now - 60
+      File.utime(previous, previous, path)
+      inode = File.stat(path).ino
+      archive = N::TftpArchive.new(directory: root, root: server)
+
+      result = archive.upload_and_archive(item, started_at: Time.now.utc - 1) do |remote|
+        assert_equal inode, File.stat(path).ino, "precreated upload targets must remain available to the server"
+        File.write(path, "same configuration")
+        outcome(item, remote)
+      end
+
+      assert_equal :reported_uploaded, result.status
+      assert_equal :server_verified, result.backup.verification
+      assert_equal "same configuration", File.read(result.backup.archive_path)
+    end
+  end
+
+  def test_queued_fixed_name_upload_cannot_archive_the_previous_partial_upload_as_its_own
+    Dir.mktmpdir do |root|
+      server = File.join(root, "server")
+      FileUtils.mkdir_p(server)
+      first = device("Palo Alto Networks")
+      second = N::Device.from_row({ "ip" => "192.0.2.2", "name" => "other", "vendor" => "Palo Alto Networks" }, rules: N::Rules.new)
+      archive = N::TftpArchive.new(directory: root, root: server)
+      entered, release, waiting = Queue.new, Queue.new, Queue.new
+      synchronize = Net::Connector::Storage::BackupLock.method(:synchronize)
+      observe_waiter = lambda do |path, **options, &block|
+        waiting << true if options[:host] == second.host
+        synchronize.call(path, **options, &block)
+      end
+      Net::Connector::Storage::BackupLock.stub(:synchronize, observe_waiter) do
+        first_thread = second_thread = nil
+        Timeout.timeout(5) do
+          first_thread = Thread.new do
+            archive.upload_and_archive(first, started_at: Time.now.utc) do |remote|
+              entered << true
+              release.pop
+              File.write(File.join(server, remote), "first device configuration")
+              outcome(first, remote).with(status: :reported_with_error, error_code: :log_error)
+            end
+          end
+          entered.pop
+          second_started = Time.now.utc
+          second_thread = Thread.new do
+            archive.upload_and_archive(second, started_at: second_started) { |remote| outcome(second, remote) }
+          end
+          waiting.pop
+          release << true
+          first_result, second_result = first_thread.value, second_thread.value
+          assert_equal :server_verified, first_result.backup.verification
+          assert_equal "first device configuration", File.read(first_result.backup.local_path)
+          assert_equal :reported_with_error, second_result.status
+          assert_equal :device_reported, second_result.backup.verification
+          assert_nil second_result.backup.local_path
+          refute File.exist?(File.join(root, "tftp", "other-192.0.2.2.xml"))
+        end
+      ensure
+        [first_thread, second_thread].compact.each { |thread| thread.kill.join if thread.alive? }
+      end
     end
   end
 

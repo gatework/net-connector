@@ -54,6 +54,8 @@
 
 采集命令匹配当前会话的完整提示符行，不以末尾单个 `#`、`>` 或 `]` 判断完成。PAN-OS 切换视图时保留已认证的设备身份。缺少最终提示符会使采集失败，旧备份保持不变；只有提示符或命令回显的响应属于 `:incomplete_configuration`，不是成功的空配置。PAN-OS 在 `show` 前后都检查候选配置差异。
 
+IOS/NX-OS 清理器处理单条配置命令的响应，不把正文当成多命令会话记录。banner 内的命令、进度及完成提示均属于配置内容；易变时间注释仅从首个配置语句之前的响应头删除。终端渲染器成段处理普通文本，控制序列仍逐字节解释；光标覆盖、行尾空白、UTF-8 校验和逐行字节限额保持一致。
+
 `LocalBackup` 在采集前取得 `BackupLock`，持有到摘要比较、替换与结果构造结束。锁名由 realpath 父目录与归一化文件名决定；Unicode NFC、大小写折叠后的摘要同时覆盖尚未创建的目标。区分大小写的文件系统也保守合并这些锁，目标名称本身不变。锁文件用 NOFOLLOW/0600 打开，再验证普通文件、所有者、单硬链接和 inode；释放仅关闭 FD，不删除锁文件。默认 `flock(LOCK_EX | LOCK_NB)`，可选等待共用有限单调期限，超时均为 `BackupBusy`。
 
 Fleet 在规范目标校验、凭据解析及连接器构造之前加同一把锁，再向下层备份授权一次同进程、同 Fiber 的借用。借用在采集前消费，回调递归备份不能重复使用；没有全局路径缓存。路径锁在外、会话锁在内，`Base#backup` 拒绝已有会话操作中的嵌套调用。独立进程必须采用同一 flock 协议；调用方保护目录及祖先，锁不约束不合作的写入者。
@@ -136,10 +138,10 @@ Diagnostic 只保存固定词表中的码、类型、阶段和受控产物状态
 任务 ensure 和 Session 超时仍保留；任意用户回调应自行保证返回，不能承诺非合作
 回调的硬期限。清单获取 deadline 只约束 Client.devices，不覆盖整个 Fleet 任务。
 
-NC-07C（TFTP 服务端验证适配器）同为可选扩展，本轮 **deferred**：尚无调用方存储、
-时间/版本关联和目标隔离协议，当前业务执行不生成 server_verified。只检查文件
-存在或只把固定名上传串行化均不足以实现验证，因此 PAN-OS 同名冲突拒绝规则不变。
-后续适配器必须关联设备、实际目标、时间/版本、摘要及本次任务；验证失败也不能重传。
+NC-07C 的本地服务器目录核验已接入 `TftpVerification`；单设备 API 仍只报告设备回执。
+Fleet 可把回执与本地普通文件的时间、稳定性、摘要及目录项身份关联，生成 server_verified。
+启用历史归档并提供服务器目录时，PAN-OS 固定名可在路径锁内顺序上传、核验和归档；
+其他场景仍拒绝同批固定名碰撞。验证失败不能重传设备命令。
 
 本地租约不阻止其他设备会话/管理员写入；flock 不隔离未合作的进程，也不能使祖先目录
 或网络文件系统成为可信事务。目录同步不等于断电恢复认证，TFTP 的同批检查不解决外部
@@ -260,7 +262,7 @@ TFTP 策略的类方法 `filename(host, label: nil)` 是必需的无 I/O 命名�
 
 TFTP 策略必须实现 `validate_options!(target, source_file:, vrf:)`、`receipt_metadata(target, source_file:, explicit_source:)`、`resolve_source_file`、`default_path`、`remote_path`、`script` 和 `device_reported_complete?`。可继承 `Tftp::Strategy` 的公共默认值；重写上传流程时必须一并审视继承的参数约束和来源声明。预检不得访问设备，元数据只允许 configuration_kind/source_file/format/requested_path。接口缺失在 Profile 构造时失败，不再动态回退到另一套行为。
 
-服务器核验适配器尚未接入；TFTP API 不会自动生成 server_verified 结果。PAN-OS 固定名仍按现有计划拒绝同批碰撞，串行运行不改变该限制，也不保证跨进程或跨批次隔离。
+单设备 TFTP API 返回 device_reported；Fleet 的本地目录核验可提升为 server_verified。`TftpArchive` 在持有目标路径锁后保存旧文件，并记录其 dev、ino、size、mtime、ctime 与本次上传开始时间。核验要求非空文件的新鲜时间及稳定读取；已有文件还必须发生状态变化。重新写入相同内容可以通过，未变化的旧文件即使 mtime 在未来也不能冒充新上传。预创建的服务器目标文件在上传前保持可用，成功归档后按原规则清理；未合作的外部写入者仍不受路径锁约束。
 
 验收入口是 `script/ci`，也可用 `bundle exec rake release:check`。它检查源码、可用 Git 历史和 gem 内容中的敏感数据，执行 Ruby 与工作流 lint、完整测试，并在隔离 gem 目录及最小 Bundler 应用中安装。真实本地 PTY 烟测覆盖厂商加载、配置采集、打包模板和 CLI，不接触网络设备。初次下载依赖和工具需要联网，详见[验证文档](VERIFICATION.md)及[发布文档](RELEASING.md)。
 
@@ -367,11 +369,15 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 
 错误归一化通过 `Error#with_diagnostics` 保留内置错误的业务回执，并新建异常的原生状态，避免复制原 cause 或调用栈。自定义错误子类使用脱敏后的参数重新构造，不能复制可能参与消息呈现的原始私有字段。会话租约退出时若日志收尾失败，已返回的 Result 仍保留步骤、配置和原业务错误；仅在原操作成功时附加日志错误。
 
+单条命令的完整响应在输出日志和完成事件之前保存；即使这些日志处理失败，Session 仍在脱敏作用域退出前把响应交给 Execution，保留已完成步骤与输出预算。TFTP 可从失败结果的完成步骤构造设备回执，再报告日志错误；不会据此重放命令。
+
 每次连接有独立 session_id，每次发送命令分配 command_id；operation、phase、source、line 贯穿命令开始、回显、完成和错误。command_complete 在 info 级别记录 duration_ms、response_bytes，status: response_received 只表示响应已完成。operation_complete 在脚本准备、执行、回调及最终处理之后记录成功或失败，不代替文件持久性或 TFTP 服务端核验。
 
 `device.log_event(name, level: :info, **fields)` 是唯一自定义事件入口。会话身份和命令上下文由引擎提供，不能从 fields 覆盖。事件名和字段值经终端渲染与脱敏后冻结；非法字段名丢弃，复杂对象和非有限浮点数隐藏，不调用任意对象的 inspect/to_s。敏感范围内自定义事件整体隐藏，包括事件名和任意字段，防止配置钩子输出未登记的秘密。
 
 注入的 logger 由调用方持有；连接器不修改级别、formatter、progname，也不关闭它。每次写入同时检查配置与 logger 当前级别。消息对象支持 to_s/inspect 和安全 to_h，应用可自行输出 JSON。自有文本日志使用毫秒时间及逐行事件；raw 文件只写经过敏感保护的字节。上下文退出前先收尾渲染与脱敏缓冲，避免上一命令尾部被标成下一条命令。
+
+`log_file` 使用 NOFOLLOW/NONBLOCK 打开，再对同一 FD 检查普通文件类型，随后才修改权限或写入。FIFO、设备文件和目录不能用作日志文件；应用拥有的输出流通过 `logger` 接入。日志打开先于登录，不能依赖登录超时为文件打开提供期限。
 
 ## 公开契约与 Rails 接入
 

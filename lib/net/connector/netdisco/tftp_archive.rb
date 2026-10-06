@@ -52,14 +52,15 @@ module Net
           remote_filename = upload_filename(device)
           return yield remote_filename unless @server_root
 
-          # The lock spans the upload and copy, including a fixed-name PAN-OS upload.
+          # 固定文件名的基线与上传时间都在锁内采集；排队期间前一设备的文件不属于本次上传。
           Storage::BackupLock.synchronize(File.join(@server_root, remote_filename), host: device.host, timeout: 240) do
-            archive_existing_file(device, remote_filename)
+            previous = archive_existing_file(device, remote_filename)
+            upload_started_at = Time.now.utc
             outcome = yield remote_filename
             receipt = outcome.backup
             return outcome unless receipt.is_a?(TftpReceipt) && receipt.path
 
-            verified = @verifier.verify_outcome(outcome.with(started_at: started_at))
+            verified = @verifier.verify_outcome(outcome.with(started_at: started_at), started_at: upload_started_at, previous: previous)
             return outcome.success? ? archive_failure(outcome) : outcome unless verified.backup.verification == :server_verified
 
             archive_uploaded_file(verified)
@@ -74,13 +75,14 @@ module Net
         # 首次采用固定远端名时，先保留服务器上原有文件，再允许设备覆盖。
         def archive_existing_file(device, remote_filename)
           existing_path = File.join(@server_root, remote_filename)
-          bytes = Storage::SafeFile.open(existing_path, missing: true) { |file, _stat| file.read }
+          bytes, previous = Storage::SafeFile.open(existing_path, missing: true) { |file, stat| [file.read, stat] }
           return unless bytes
 
           previous_directory = File.join(@server_archive_directory, "previous")
           FileUtils.mkdir_p(previous_directory, mode: 0o700)
           archive_path = File.join(previous_directory, archive_filename(device, File.extname(remote_filename)))
           Storage::PrivateFile.write(archive_path, bytes)
+          previous
         rescue StandardError
           raise ArchiveFailed.new(host: device.host), cause: nil
         end

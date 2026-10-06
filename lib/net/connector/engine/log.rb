@@ -224,8 +224,11 @@ module Net
       # 以私有权限打开设备日志文件。
       def open_file(path)
         FileUtils.mkdir_p(File.dirname(path), mode: 0o700)
-        file = File.open(path, File::WRONLY | File::CREAT | File::APPEND | File::NOFOLLOW, 0o600)
+        file = File.open(path, File::WRONLY | File::CREAT | File::APPEND | File::NOFOLLOW | File::NONBLOCK, 0o600)
         begin
+          # FIFO 的打开不受登录截止时间约束；验证同一个 FD 后才能修改权限或写入。
+          raise ArgumentError, "session log must be a regular file" unless file.stat.file?
+
           file.chmod(0o600)
           file.binmode
           file.write("\n") if file.size.positive? && @configuration.log_format == :text

@@ -201,6 +201,30 @@ class TftpArchiveTest < Minitest::Test
     end
   end
 
+  def test_upload_freshness_uses_the_filesystem_clock_when_wall_time_is_ahead
+    Dir.mktmpdir do |root|
+      server = File.join(root, "server")
+      FileUtils.mkdir_p(server)
+      item = device("Palo Alto Networks")
+      archive = N::TftpArchive.new(directory: root, root: server)
+      wall_time = Time.now + 60
+
+      result = Time.stub(:now, wall_time) do
+        archive.upload_and_archive(item, started_at: wall_time) do |remote|
+          path = File.join(server, remote)
+          File.write(path, "new configuration")
+          assert_operator File.mtime(path), :<, wall_time
+          outcome(item, remote)
+        end
+      end
+
+      assert_equal :reported_uploaded, result.status
+      assert_equal :server_verified, result.backup.verification
+      assert_equal "new configuration", File.read(result.backup.archive_path)
+      assert_empty Dir.glob(File.join(server, ".net-connector-upload-*"))
+    end
+  end
+
   def test_fixed_name_devices_are_all_planned_only_with_archival_permission
     rows = %w[192.0.2.1 192.0.2.2].map do |ip|
       N::Device.from_row({ "ip" => ip, "vendor" => "Palo Alto Networks" }, rules: N::Rules.new)

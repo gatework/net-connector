@@ -262,7 +262,7 @@ TFTP 策略的类方法 `filename(host, label: nil)` 是必需的无 I/O 命名�
 
 TFTP 策略必须实现 `validate_options!(target, source_file:, vrf:)`、`receipt_metadata(target, source_file:, explicit_source:)`、`resolve_source_file`、`default_path`、`remote_path`、`script` 和 `device_reported_complete?`。可继承 `Tftp::Strategy` 的公共默认值；重写上传流程时必须一并审视继承的参数约束和来源声明。预检不得访问设备，元数据只允许 configuration_kind/source_file/format/requested_path。接口缺失在 Profile 构造时失败，不再动态回退到另一套行为。
 
-单设备 TFTP API 返回 device_reported；Fleet 的本地目录核验可提升为 server_verified。`TftpArchive` 在持有目标路径锁后保存旧文件，并记录其 dev、ino、size、mtime、ctime 与本次上传开始时间。核验要求非空文件的新鲜时间及稳定读取；已有文件还必须发生状态变化。重新写入相同内容可以通过，未变化的旧文件即使 mtime 在未来也不能冒充新上传。预创建的服务器目标文件在上传前保持可用，成功归档后按原规则清理；未合作的外部写入者仍不受路径锁约束。
+单设备 TFTP API 返回 device_reported；Fleet 的本地目录核验可提升为 server_verified。`TftpArchive` 在持有目标路径锁后保存旧文件，并记录其 dev、ino、size、mtime、ctime。上传时间取同一服务器目录内临时文件的 mtime，随即清理临时文件，避免文件系统时钟精度低于 Time.now 时误拒绝新上传。核验要求非空文件的新鲜时间及稳定读取；已有文件还必须发生状态变化。重新写入相同内容可以通过，未变化的旧文件即使 mtime 在未来也不能冒充新上传。预创建的服务器目标文件在上传前保持可用，成功归档后按原规则清理；未合作的外部写入者仍不受路径锁约束。
 
 验收入口是 `script/ci`，也可用 `bundle exec rake release:check`。它检查源码、可用 Git 历史和 gem 内容中的敏感数据，执行 Ruby 与工作流 lint、完整测试，并在隔离 gem 目录及最小 Bundler 应用中安装。真实本地 PTY 烟测覆盖厂商加载、配置采集、打包模板和 CLI，不接触网络设备。初次下载依赖和工具需要联网，详见[验证文档](VERIFICATION.md)及[发布文档](RELEASING.md)。
 

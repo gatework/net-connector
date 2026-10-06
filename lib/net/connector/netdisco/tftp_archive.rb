@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "tempfile"
 require_relative "../storage/backup_lock"
 require_relative "../storage/private_file"
 require_relative "../storage/safe_file"
@@ -55,7 +56,7 @@ module Net
           # 固定文件名的基线与上传时间都在锁内采集；排队期间前一设备的文件不属于本次上传。
           Storage::BackupLock.synchronize(File.join(@server_root, remote_filename), host: device.host, timeout: 240) do
             previous = archive_existing_file(device, remote_filename)
-            upload_started_at = Time.now.utc
+            upload_started_at = server_timestamp
             outcome = yield remote_filename
             receipt = outcome.backup
             return outcome unless receipt.is_a?(TftpReceipt) && receipt.path
@@ -71,6 +72,11 @@ module Net
         alias capture upload_and_archive
 
         private
+
+        # 文件系统的 mtime 可能落后于 Time.now；用同一服务器目录的时间建立上传边界。
+        def server_timestamp
+          Tempfile.create(".net-connector-upload-", @server_root) { |file| file.stat.mtime }
+        end
 
         # 首次采用固定远端名时，先保留服务器上原有文件，再允许设备覆盖。
         def archive_existing_file(device, remote_filename)

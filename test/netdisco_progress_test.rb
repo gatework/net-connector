@@ -9,6 +9,12 @@ require_relative "support/fake_transport"
 class NetdiscoProgressTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
 
+  def test_disabled_progress_does_not_read_the_report
+    output = StringIO.new
+    Netdisco::Progress.new(io: output, enabled: false).finish(Object.new)
+    assert_empty output.string
+  end
+
   def test_finish_includes_blocking_inventory_issues_and_policy_result
     device = Netdisco::Device.from_row({ "ip" => "192.0.2.1", "vendor" => "unknown" }, rules: Netdisco::Rules.new)
     outcome = Netdisco::Outcome.new(device: device, status: :unsupported_vendor, backup: nil, error_code: nil, error_type: nil)

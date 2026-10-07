@@ -16,6 +16,7 @@ module Net
         FileUtils.mkdir_p(File.dirname(destination), mode: 0o700)
         @destination = File.join(File.realpath(File.dirname(destination)), File.basename(destination))
         @host = configuration.host
+        @lock_timeout = configuration.login_timeout
         @host = "[#{@host}]:#{configuration.port}" if configuration.port && configuration.port != 22
         @replace = replace
         @original = read_shared
@@ -100,11 +101,23 @@ module Net
           unless stat.file? && stat.uid == Process.euid && stat.nlink == 1 && (stat.mode & 0o7777) == 0o600
             raise IOError, "known_hosts lock must be an owned private regular file"
           end
-          file.flock(File::LOCK_EX)
+          acquire_lock(file)
           current = File.lstat(lock_path)
           raise IOError, "known_hosts lock changed" unless current.dev == stat.dev && current.ino == stat.ino
 
           yield
+        end
+      end
+
+      # 认证后的合并另有有限等待；持锁进程卡住时保留共享信任并交由会话正常清理。
+      def acquire_lock(file)
+        deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + @lock_timeout
+        until file.flock(File::LOCK_EX | File::LOCK_NB)
+          remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
+          if remaining <= 0
+            raise ConnectionError.new("known_hosts lock wait timed out", code: :known_hosts_busy, host: @host, phase: :login)
+          end
+          sleep [remaining, 0.01].min
         end
       end
     end

@@ -61,15 +61,14 @@ module Net
                           policy: policy, duration_ms: duration_ms, report_diagnostic: diagnostic, log_directory: log_directory)
         end
 
-        # 手工构造的批次同样经过诊断白名单，不序列化任意异常内容。
-        def summary
+        # 统计不创建逐设备明细；文本与进度输出复用此入口，不缓存调用方持有的批次。
+        def statistics
           batch_data = batch_summary
           batch_data.merge(
             schema_version: 2, policy: policy, policy_success: policy_success?, duration_ms: duration_ms,
             coverage: { complete: !outcomes.empty? && outcomes.all? { |outcome| ATTEMPTED_STATUSES.include?(outcome.status) },
                         attempted: outcomes.count { |outcome| ATTEMPTED_STATUSES.include?(outcome.status) },
                         skipped: outcomes.count { |outcome| !ATTEMPTED_STATUSES.include?(outcome.status) } },
-            devices: device_summaries(batch_data.fetch(:devices)),
             callback_errors: callback_errors.map { |entry| { host: entry[:host], error_type: ErrorMetadata.type(entry[:error_type]) } },
             report_location: report_location, report_error: ErrorMetadata.type(report_error),
             verification: mode == :tftp ? { verified: outcomes.count { |outcome| server_verified?(outcome) },
@@ -77,6 +76,9 @@ module Net
             report_diagnostic: report_diagnostic&.to_h
           )
         end
+
+        # 手工构造的批次同样经过诊断白名单，不序列化任意异常内容。
+        def summary = statistics.merge(devices: device_summaries)
 
         def inspect = "#<#{self.class} policy=#{policy} status=#{status} policy_success=#{policy_success?}>"
 
@@ -92,19 +94,7 @@ module Net
             failed: outcomes.count { |outcome| outcome.status == :failed },
             skipped: outcomes.count(&:skipped?),
             counts: counts,
-            callback_errors: callback_errors,
-            devices: outcomes.map do |outcome|
-              { host: outcome.device.host || outcome.device.source_ip, name: outcome.device.name,
-                vendor: outcome.device.vendor,
-                status: outcome.status, path: outcome.backup&.path,
-                bytes: outcome.backup.is_a?(Backup) ? outcome.backup.bytes : nil,
-                sha256: outcome.backup.is_a?(Backup) ? outcome.backup.sha256 : nil,
-                change: outcome.backup.is_a?(Backup) ? outcome.backup.change : nil,
-                previous_sha256: outcome.backup.is_a?(Backup) ? outcome.backup.previous_sha256 : nil,
-                started_at: outcome.started_at&.iso8601, finished_at: outcome.finished_at&.iso8601,
-                duration_ms: outcome.duration_ms,
-                error_code: outcome.error_code, error_type: outcome.error_type }
-            end
+            callback_errors: callback_errors
           }
         end
 
@@ -122,13 +112,22 @@ module Net
             bytes: receipt&.server_bytes, sha256: receipt&.server_sha256 }
         end
 
-        def device_summaries(entries)
-          entries.zip(outcomes).map do |entry, outcome|
+        def device_summaries
+          outcomes.map do |outcome|
             diagnostic = outcome.diagnostic || Diagnostic.new(error_code: outcome.error_code, error_type: outcome.error_type)
+            entry = { host: outcome.device.host || outcome.device.source_ip, name: outcome.device.name,
+                      vendor: outcome.device.vendor, status: outcome.status, path: outcome.backup&.path,
+                      bytes: outcome.backup.is_a?(Backup) ? outcome.backup.bytes : nil,
+                      sha256: outcome.backup.is_a?(Backup) ? outcome.backup.sha256 : nil,
+                      change: outcome.backup.is_a?(Backup) ? outcome.backup.change : nil,
+                      previous_sha256: outcome.backup.is_a?(Backup) ? outcome.backup.previous_sha256 : nil,
+                      started_at: outcome.started_at&.iso8601, finished_at: outcome.finished_at&.iso8601,
+                      duration_ms: outcome.duration_ms,
+                      error_code: diagnostic.error_code, error_type: diagnostic.error_type,
+                      diagnostic: diagnostic.to_h.except(:error_code, :error_type) }
             entry = entry.merge(tftp_summary(outcome)) if mode == :tftp
             entry[:session_log] = File.join(log_directory, "#{outcome.device.host.tr(":", "_")}.log") if log_directory && outcome.device.host && outcome.started_at
-            entry.merge(error_code: diagnostic.error_code, error_type: diagnostic.error_type,
-                        diagnostic: diagnostic.to_h.except(:error_code, :error_type))
+            entry
           end
         end
       end

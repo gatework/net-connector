@@ -28,6 +28,19 @@ class ReleaseTest < Minitest::Test
     assert_equal "- New API.", Release.release_notes(changelog, "0.2.0")
   end
 
+  def test_rejects_pending_changes_under_either_language_and_any_matching_heading
+    ["未发布", "Unreleased"].each do |heading|
+      ["## #{heading}", "##\t#{heading} ##", "  ## #{heading} ###"].each do |title|
+        empty = "# 更新记录\n\n#{title} \t\n\n## 0.2.0\n\n- 已归档。\n"
+        assert_equal "- 已归档。", Release.release_notes(empty, "0.2.0")
+        ["", "## Unreleased\n\n## 未发布\n\n"].each do |prefix|
+          pending = "#{prefix}#{title} \t\n\n- 待发布。\n\n## 0.2.0\n\n- 已归档。\n"
+          assert_raises(RuntimeError) { Release.release_notes(pending, "0.2.0") }
+        end
+      end
+    end
+  end
+
   def test_rejects_unreleased_missing_empty_or_invalid_versions
     ["## Unreleased\n- Pending.\n## 0.2.0\n- Ready.", "## 0.1.1\n- Old.", "## 0.2.0\n"].each do |changelog|
       assert_raises(RuntimeError) { Release.release_notes(changelog, "0.2.0") }

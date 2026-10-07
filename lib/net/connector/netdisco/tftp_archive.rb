@@ -32,6 +32,7 @@ module Net
         def initialize(directory:, root: nil)
           @report_directory = File.expand_path(directory)
           @server_root = root && File.realpath(root)
+          FileUtils.mkdir_p(@report_directory, mode: 0o700)
           @server_archive_directory = create_server_archive_directory if @server_root
           @remote_suffix = reserve_remote_suffix unless @server_root
           @verifier = TftpVerification.new(root: @server_root)
@@ -137,7 +138,7 @@ module Net
 
         def archive_uploaded_file(outcome)
           receipt = outcome.backup
-          saved_batch_path = nil
+          saved_paths = { local_path: nil, archive_path: nil }
           batch_directory = File.join(@report_directory, "tftp")
           FileUtils.mkdir_p(batch_directory, mode: 0o700)
           extension = File.extname(receipt.path)
@@ -152,9 +153,8 @@ module Net
           end
           raise ArchiveFailed.new(host: outcome.device.host) unless Digest::SHA256.hexdigest(bytes) == receipt.server_sha256
 
-          Storage::PrivateFile.write(batch_archive_path, bytes)
-          saved_batch_path = batch_archive_path
-          Storage::PrivateFile.write(server_archive_path, bytes)
+          persist_archive(saved_paths, :local_path, batch_archive_path, bytes)
+          persist_archive(saved_paths, :archive_path, server_archive_path, bytes)
           if outcome.success?
             uploaded_fingerprint = Storage::SafeFile.fingerprint(uploaded_path)
             raise ArchiveFailed.new(host: outcome.device.host) unless uploaded_fingerprint.sha256 == receipt.server_sha256
@@ -162,16 +162,32 @@ module Net
 
             File.unlink(uploaded_path)
           end
-          outcome.with(backup: receipt.with(local_path: batch_archive_path, archive_path: server_archive_path))
-        rescue StandardError
-          retained = outcome.with(backup: receipt.with(local_path: saved_batch_path))
-          outcome.success? ? archive_failure(retained) : retained
+          outcome.with(backup: receipt.with(**saved_paths))
+        rescue StandardError => error
+          retained = outcome.with(backup: receipt.with(**saved_paths))
+          outcome.success? ? archive_failure(retained, persistence_error: error) : retained
         end
 
-        def archive_failure(outcome)
+        # 路径仅由本次写入器的可信回执确认；同步或清理失败不能抹掉已替换的文件。
+        def persist_archive(saved_paths, field, path, bytes)
+          Storage::PrivateFile.write(path, bytes)
+          saved_paths[field] = path
+        rescue StandardError => error
+          if Storage::PrivateFile.receipt_error?(error) && error.receipt.committed? && error.receipt.path == path
+            saved_paths[field] = path
+          end
+          raise
+        end
+
+        def archive_failure(outcome, persistence_error: nil)
           error = ArchiveFailed.new(host: outcome.device.host)
+          diagnostic = Diagnostic.from(error, backup: outcome.backup)
+          if Storage::PrivateFile.receipt_error?(persistence_error)
+            diagnostic = diagnostic.with(artifact_state: persistence_error.receipt.state, artifact_phase: persistence_error.receipt.phase,
+                                          underlying_type: persistence_error.underlying_type)
+          end
           outcome.with(status: :reported_with_error, error_code: error.code, error_type: error.class.name,
-                       diagnostic: Diagnostic.from(error, backup: outcome.backup))
+                       diagnostic: diagnostic)
         end
 
         def archive_filename(device, extension)

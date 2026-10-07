@@ -66,6 +66,8 @@ Fleet 在规范目标校验、凭据解析及连接器构造之前加同一把�
 
 提交后的 `BackupPersistenceError` 只携带原 `Backup` 元数据和受控写入回执，Fleet 保留产物并使用已有 saved_with_error 分类。只接受库定义的具体完成错误及匹配产物类型，第三方异常的 backup 属性或自定义 WriteError 子类不作为完成证据。报告保留已提交位置，导出错误说明 committed；设备命令不会自动重放。
 
+TFTP 归档分别保留本地批次副本与服务器归档副本的提交位置；写入器的原生回执必须与本次目标路径一致。目录同步或收尾失败仍保留已提交路径，成功上传转为 `reported_with_error`，诊断记录归档失败及持久化阶段；设备任务此前已有错误时保留原诊断。报告失败后的 JSON 补写同样保留已提交位置，不覆盖首次报告故障，也不重新执行设备任务。
+
 TFTP 只确认设备报告的上传结果：策略去掉命令、应答和提示符回显后，检查明确的完成行；文件名或表示“即将上传”的进度文字不算成功。原始输出或终端渲染文本中的失败证据优先于成功文字。
 
 TFTP 内置策略的 `validate_options!` 是纯参数校验，执行于 H3C 源文件探测之前。整个探测、脚本、证据核对、回执和事件记录由原有 `with_operation(:tftp_backup)` 独占；其他线程、Fiber 及回调重入均不能插入设备命令。租约只保护当前会话，不能隔离其他设备连接或服务器上的同名文件。
@@ -103,6 +105,8 @@ PAN-OS 使用候选配置模型。[官方提交说明](https://docs.paloaltonetw
 Fleet 始终返回 Report，委托 Batch 的执行结果及严格 success?/status，单独提供 policy 和 policy_success?。默认 strict 要求非空且全部成功；selected 必须至少包含一个成功结果，其他状态只能为 filtered/sample_limit，且 callback_errors 为空、report_error 为 nil。部分成功、任何其他跳过和未知状态都阻止策略成功。
 
 报告 summary 使用单一 schema_version: 2，包含 policy、policy_success、coverage、单调 duration_ms、逐台 diagnostic 及 report_diagnostic。coverage 仅按已尝试状态计数，失败和部分成功也算尝试。`ResultStore#write(report, directory:)` 始终接收 Report。已存文件是写入前快照；写入自身失败时，返回对象与 CLI 携带最终报告故障。`Batch#build_report` 只构造报告，不重跑任务，也不能补出未记录的总耗时。
+
+`Report#statistics` 仅计算汇总，字段等同于 `summary.except(:devices)`，供文本与进度输出使用；完整设备明细由 JSON 输出时生成。两者不缓存结果，保留调用方持有 Batch 容器的既有语义。静默进度不读取报告。
 
 Diagnostic 只保存固定词表中的码、类型、阶段和受控产物状态；不调用异常 inspect/to_h，不保留异常引用、正文、消息、回溯、命令、source 或 line。未知错误码/阶段为 nil，未知类型归为 StandardError。Report 也筛选手工构造结果中的 error_code/error_type、callback_errors 和 report_error。产物阶段仅来自与实际 Backup/TftpReceipt 匹配的库内精确错误类；通用文件回执只在报告写入边界使用，不能冒充设备备份完成。
 

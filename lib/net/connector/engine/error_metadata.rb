@@ -16,10 +16,11 @@ module Net
            Errno::ENOTSUP Errno::EOPNOTSUPP Errno::ETIMEDOUT Errno::ECONNREFUSED Errno::ECONNRESET
            Net::Connector::Storage::PrivateFile::WriteError
            Net::Connector::Storage::PrivateFile::PersistenceError
-           Net::Connector::Storage::PrivateFile::DirectorySyncUnsupported]).freeze
+           Net::Connector::Storage::PrivateFile::DirectorySyncUnsupported
+           Net::Connector::Netdisco::TftpArchive::Unavailable Net::Connector::Netdisco::TftpArchive::ArchiveFailed]).freeze
       CODES = (CONNECTOR_TYPES.map { |name| name.gsub(/([a-z])([A-Z])/, '\1_\2').downcase.to_sym } +
         %i[authentication_failed connection_failed connection_refused no_route connection_reset
-           connection_timeout host_key_changed host_key_untrusted rsa_too_small unsupported_cipher
+           connection_timeout host_key_changed host_key_untrusted known_hosts_busy rsa_too_small unsupported_cipher
            ambiguous_description ambiguous_neighbor confirmation_required description_stages_unsupported
            description_unconfirmed description_unsupported incomplete_configuration interface_missing
            neighbor_discovery_unsupported parse_failed invalid_output_encoding persistence_unconfirmed stale_plan startup_config_missing
@@ -27,7 +28,8 @@ module Net
            transfer_path_mismatch transfer_path_unconfirmed transfer_unconfirmed uncommitted_configuration
            unrecognized_output unsupported_configuration_format verification_plan_changed candidate_isolation_unavailable
            backup_durability_unsupported backup_finalize_failed backup_persistence_unconfirmed
-           file_finalize_failed file_persistence_unconfirmed file_write_failed directory_sync_unsupported]).freeze
+           file_finalize_failed file_persistence_unconfirmed file_write_failed directory_sync_unsupported
+           tftp_history_unavailable tftp_archive_failed]).freeze
       PHASES = %i[connect login enable command script read write close logging backup collect discover parse
                   plan apply verify persist save interact tftp_backup report callback].freeze
       private_constant :CONNECTOR_TYPES, :TYPES, :CODES, :PHASES

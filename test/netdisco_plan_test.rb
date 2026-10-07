@@ -1,10 +1,35 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
+require "tmpdir"
 require_relative "../lib/net/connector/netdisco"
 
 class NetdiscoPlanTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
+
+  def test_external_plans_reject_duplicate_hosts_before_credentials_or_directory_creation
+    fleet = Netdisco::Fleet.new(settings: Netdisco::Settings.new(env: {}), result_store: nil,
+                                credentials: ->(*) { flunk "invalid plan requested credentials" })
+    rows = ["2001:db8::1", "2001:0db8:0:0:0:0:0:1"].each_with_index.map do |ip, index|
+      Netdisco::Device.from_row({ "ip" => ip, "name" => "edge-#{index}", "vendor" => "H3C" }, rules: Netdisco::Rules.new)
+    end
+    Dir.mktmpdir do |root|
+      directory = File.join(root, "new")
+      %i[backup tftp].each do |mode|
+        plan = Netdisco::Plan.new(mode: mode, inventory: rows, ready: [[0, rows.first], [1, rows.last]], outcomes: [nil, nil])
+        assert_raises(ArgumentError) do
+          if mode == :backup
+            fleet.backup_all(plan: plan, directory: directory)
+          else
+            fleet.tftp_backup_all(server: "192.0.2.10", plan: plan, preserve_history: true, report_directory: directory)
+          end
+        end
+        refute File.exist?(directory)
+        skipped = Netdisco::Outcome.new(device: rows.last, status: :sample_limit, backup: nil, error_code: nil, error_type: nil)
+        assert_raises(ArgumentError) { plan.with(ready: [[0, rows.first]], outcomes: [nil, skipped]).validate! }
+      end
+    end
+  end
 
   def test_tftp_plan_rejects_collisions_between_distinct_ipv6_addresses
     rows = ["fe80::1%a", "fe80::1:a"].map do |host|

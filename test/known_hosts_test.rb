@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
+require "minitest/mock"
 require "tmpdir"
 require "open3"
 require "rbconfig"
@@ -16,6 +17,37 @@ class KnownHostsTest < Minitest::Test
 
   def teardown
     FileUtils.remove_entry(@directory)
+  end
+
+  def test_lock_wait_expires_without_changing_trust_and_can_be_retried_after_unlock
+    original = "192.0.2.9 #{@key}\n"
+    File.write(@destination, original)
+    config = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit", known_hosts: @destination,
+                                               host_key_policy: :accept_new, login_timeout: 0.01)
+    entry = Net::Connector::KnownHosts.new(config)
+    File.open(entry.path, "a") { |file| file.puts "192.0.2.1 #{@new_key}" }
+    worker = nil
+    File.open(@destination + ".nc-lock", File::RDWR | File::CREAT, 0o600) do |lock|
+      lock.flock(File::LOCK_EX)
+      worker = Thread.new do
+        entry.commit
+      rescue StandardError => error
+        error
+      end
+      assert worker.join(2), "known_hosts lock wait must be bounded"
+      error = worker.value
+      assert_instance_of Net::Connector::ConnectionError, error
+      assert_equal :known_hosts_busy, error.code
+      assert_equal :login, error.phase
+      assert_equal original, File.read(@destination)
+      lock.flock(File::LOCK_UN)
+      entry.commit
+      assert_includes File.read(@destination), "192.0.2.1 #{@new_key}"
+      assert_includes File.read(@destination), original
+    end
+  ensure
+    worker&.kill&.join if worker&.alive?
+    entry&.close
   end
 
   def test_concurrent_processes_merge_replacements_and_new_hosts_without_losing_entries

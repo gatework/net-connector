@@ -10,6 +10,90 @@ require_relative "../lib/net/connector/netdisco"
 class TftpArchiveTest < Minitest::Test
   N = Net::Connector::Netdisco
 
+  def test_first_history_run_creates_its_report_directory
+    Dir.mktmpdir do |root|
+      directory = File.join(root, "new")
+      fleet = N::Fleet.new(settings: N::Settings.new(env: {}), result_store: nil,
+                           client: Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }]),
+                           credentials: ->(*) { nil })
+      report = fleet.tftp_backup_all(server: "192.0.2.10", preserve_history: true, report_directory: directory)
+      assert_equal [:missing_credentials], report.outcomes.map(&:status)
+      assert_equal 1, Dir.glob(File.join(directory, ".tftp-run-*")).size
+      assert_equal 0o700, File.stat(directory).mode & 0o777
+    end
+  end
+
+  def test_archive_write_failures_keep_committed_paths_and_diagnostics_without_reuploading
+    writer = Net::Connector::Storage::PrivateFile.method(:write)
+    %i[local_path archive_path].product(%i[not_committed committed durable], [false, true]).each do |target, state, already_failed|
+      Dir.mktmpdir do |root|
+        server = File.join(root, "server")
+        FileUtils.mkdir_p(server)
+        item = device("H3C")
+        archive = N::TftpArchive.new(directory: root, root: server)
+        batch_path = File.join(root, "tftp", "edge-192.0.2.1.cfg")
+        failed_path = nil
+        writes = []
+        uploads = 0
+        original_diagnostic = N::Diagnostic.new(error_code: :log_error, error_type: "Net::Connector::LogError", phase: :logging)
+        failure = lambda do |path, contents|
+          writes << path
+          matches = target == :local_path ? path == batch_path : path.start_with?(File.join(File.realpath(server), "archive") + "/")
+          unless matches
+            next writer.call(path, contents)
+          end
+          failed_path = path
+          writer.call(path, contents) unless state == :not_committed
+          receipt = Net::Connector::Storage::PrivateFile::Receipt.new(path: path, state: state,
+                                                                      phase: { not_committed: :file_sync, committed: :directory_sync, durable: :cleanup }.fetch(state))
+          raise Net::Connector::Storage::PrivateFile::PersistenceError.new(receipt: receipt, underlying_type: "Errno::EIO")
+        end
+        result = Net::Connector::Storage::PrivateFile.stub(:write, failure) do
+          archive.upload_and_archive(item, started_at: Time.now.utc) do |remote|
+            uploads += 1
+            File.write(File.join(server, remote), "configuration")
+            uploaded = outcome(item, remote)
+            already_failed ? uploaded.with(status: :reported_with_error, error_code: :log_error,
+                                           error_type: "Net::Connector::LogError", diagnostic: original_diagnostic) : uploaded
+          end
+        end
+        assert_equal 1, uploads
+        assert_equal writes.uniq, writes
+        assert_equal :reported_with_error, result.status, "#{target}/#{state}"
+        assert_equal :server_verified, result.backup.verification
+        if state == :not_committed
+          assert_nil result.backup.public_send(target)
+        else
+          assert_equal failed_path, result.backup.public_send(target)
+          assert_equal "configuration", File.read(failed_path)
+        end
+        assert_equal batch_path, result.backup.local_path if target == :archive_path
+        if already_failed
+          assert_equal :log_error, result.error_code
+          assert_same original_diagnostic, result.diagnostic
+        else
+          assert_equal state, result.diagnostic.artifact_state
+          assert_equal :tftp_archive_failed, result.diagnostic.error_code
+          assert_equal "Errno::EIO", result.diagnostic.underlying_type
+        end
+        assert File.file?(File.join(server, item.tftp_filename))
+      end
+    end
+  end
+
+  def test_builtin_archive_errors_survive_report_serialization
+    [N::TftpArchive::ArchiveFailed, N::TftpArchive::Unavailable].each do |type|
+      error = type.new(host: "192.0.2.1")
+      item = N::Outcome.new(device: device("H3C"), status: :failed, backup: nil,
+                            error_code: error.code, error_type: type.name, diagnostic: N::Diagnostic.from(error))
+      batch = N::Batch.new(mode: :tftp, outcomes: [item], started_at: Time.now.utc, finished_at: Time.now.utc,
+                           callback_errors: [], report_location: nil, report_error: nil)
+      entry = batch.build_report.summary.fetch(:devices).first
+      assert_equal error.code, entry.fetch(:error_code)
+      assert_equal type.name, entry.fetch(:error_type)
+    end
+  end
+
   def device(vendor)
     N::Device.from_row({ "ip" => "192.0.2.1", "name" => "edge", "vendor" => vendor }, rules: N::Rules.new)
   end

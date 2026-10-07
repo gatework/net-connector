@@ -16,16 +16,15 @@ module Net
             Storage::PrivateFile.write(destination, JSON.pretty_generate(finalized.summary))
             finalized
           rescue StandardError => error
-            location = if Storage::PrivateFile.receipt_error?(error) && error.receipt.committed? && error.receipt.path == destination
-                         destination
-                       end
+            location = committed_location(error, destination)
             failed = report.with_report_error(error, location: location)
             begin
               saved = failed.with(report_location: destination)
               Storage::PrivateFile.write(destination, JSON.pretty_generate(saved.summary))
               failed = saved
-            rescue StandardError
-              # JSON 仍无法保存时，返回带有已知提交位置的失败报告。
+            rescue StandardError => persistence_error
+              # 补写也可能在替换后失败；保留位置，但不覆盖首次报告故障。
+              failed = saved if committed_location(persistence_error, destination)
             end
             begin
               Text.write(directory: directory, report: failed, plan: plan, concurrency: concurrency)
@@ -34,6 +33,11 @@ module Net
             end
             failed
           end
+
+          def self.committed_location(error, destination)
+            destination if Storage::PrivateFile.receipt_error?(error) && error.receipt.committed? && error.receipt.path == File.expand_path(destination)
+          end
+          private_class_method :committed_location
         end
       end
     end

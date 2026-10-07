@@ -17,6 +17,21 @@ class ReportFilesTest < Minitest::Test
     [report, plan]
   end
 
+  def test_text_and_json_generate_device_details_only_once
+    original, plan = fixture
+    summaries = []
+    report_class = Class.new(N::Report) do
+      define_method(:summary) { summaries << true; super() }
+    end
+    Dir.mktmpdir do |directory|
+      result = N::Report::Files.write(report_class.new(original.batch), directory: directory, plan: plan, concurrency: 1)
+      assert result.policy_success?
+      assert_equal 1, JSON.parse(File.read(result.report_location)).fetch("devices").size
+      assert_includes File.read(File.join(directory, "summary.txt")), "成功：1"
+      assert_equal 1, summaries.size
+    end
+  end
+
   def test_json_failure_is_reflected_in_final_text_and_returned_report
     original, plan = fixture
     assert original.policy_success?
@@ -52,6 +67,34 @@ class ReportFilesTest < Minitest::Test
         assert_equal 1, document.fetch("succeeded")
         assert_equal 0o600, File.stat(result.report_location).mode & 0o777
         refute_includes JSON.generate(document), "private failure details"
+      end
+    end
+  end
+
+  def test_fallback_json_retains_its_committed_location_when_directory_sync_fails
+    original, plan = fixture
+    writer = Net::Connector::Storage::PrivateFile.method(:write)
+    Dir.mktmpdir do |root|
+      Dir.chdir(root) do
+        Dir.mkdir("batch")
+        ["batch", File.join(root, "batch")].each do |directory|
+          destination = File.join(directory, "summary.json")
+          failure = lambda do |path, contents|
+            receipt = writer.call(path, contents)
+            raise Net::Connector::Storage::PrivateFile::PersistenceError.new(
+              receipt: receipt.with(state: :committed, phase: :directory_sync), underlying_type: "Errno::EIO"
+            )
+          end
+          N::Report::Text.stub(:write, ->(**) { raise IOError, "text unavailable" }) do
+            Net::Connector::Storage::PrivateFile.stub(:write, failure) do
+              result = N::Report::Files.write(original, directory: directory, plan: plan, concurrency: 1)
+              assert_equal destination, result.report_location
+              assert_equal "IOError", result.report_error
+              refute result.policy_success?
+              assert_equal destination, JSON.parse(File.read(destination)).fetch("report_location")
+            end
+          end
+        end
       end
     end
   end

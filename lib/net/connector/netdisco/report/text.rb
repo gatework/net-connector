@@ -10,7 +10,7 @@ module Net
         # 将批次结果写为人类可读的文本摘要。
         class Text
           def self.write(directory:, report:, plan:, concurrency:)
-            summary = report.summary
+            summary = report.statistics
             failed = report.outcomes.reject { |item| item.success? || %i[filtered sample_limit].include?(item.status) }
             groups = failed.group_by { |item| item.error_code || item.status }
             lines = ["网络设备备份报告", "=" * 72,

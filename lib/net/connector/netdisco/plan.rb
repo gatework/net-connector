@@ -27,6 +27,7 @@ module Net
           unless inventory.all?(Device) && outcomes.size == inventory.size
             raise ArgumentError, "plan inventory and outcomes must have the same device slots"
           end
+          validate_duplicate_hosts!
 
           selected_indices = {}
           selected_filenames = {}
@@ -64,6 +65,14 @@ module Net
         end
 
         private
+
+        # 外部快照也遵守清单入口的地址唯一性；采样不能把重复设备重新变为可执行。
+        def validate_duplicate_hosts!
+          groups = inventory.group_by { |device| device.host && IPAddr.new(device.host).to_s }
+          return unless groups.any? { |host, devices| host && devices.size > 1 && devices.any? { |device| device.issue != :duplicate_host } }
+
+          raise ArgumentError, "plan duplicate hosts must be marked as duplicate_host"
+        end
 
         # 跳过结果不携带执行产物；文件冲突必须有本批次实际执行的目标作为依据。
         def valid_skipped_outcome?(result, device, selected_filenames)

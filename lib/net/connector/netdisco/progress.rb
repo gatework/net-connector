@@ -101,7 +101,9 @@ module Net
         end
 
         def finish(report)
-          summary = report.summary
+          return unless @enabled
+
+          summary = report.statistics
           failures = report.outcomes.reject { |item| item.success? || %i[filtered sample_limit].include?(item.status) }
                            .group_by { |item| item.error_code || item.status }.transform_values(&:size)
           unless failures.empty?

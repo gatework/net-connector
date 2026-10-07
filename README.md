@@ -232,6 +232,8 @@ Fleet 统一返回 `Netdisco::Report`，JSON 的 `schema_version` 固定为 `2`�
 
 `success_policy: :selected` 要求至少一台设备成功，其他记录只因 `filtered` 或 `sample_limit` 跳过，而且没有部分成功、回调或报告错误。缺少凭据、重复地址、无效地址、未知厂商、目标冲突和未知状态均会阻止成功。`coverage.complete` 只表示每条清单记录都已尝试任务；失败任务也计入尝试，不能据此判断配置已保存。自定义 `ResultStore#write(report, directory:)` 始终接收 Report，并通过 `summary` 获取统一 JSON 结构。
 
+外部构造的计划也必须把同一管理地址的全部条目标记为 `duplicate_host` 并跳过，不能通过采样恢复其中一条的执行资格；IPv6 的等价写法视为同一地址。只需汇总时使用 `report.statistics`，它返回 `summary` 除 `devices` 外的字段，不生成设备明细，也不缓存调用方持有的批次容器。
+
 ```sh
 export NETDISCO_URL=https://netdisco.example/netdisco
 export NETDISCO_USERNAME=inventory-reader
@@ -456,3 +458,4 @@ TFTP 的 `verification` 汇总与设备条目的 `server_file_verified` 区分�
 
 使用 `accept_new` / `replace` 时，SSH 在每个会话的临时 known_hosts 中协商，认证后通过独立锁文件合并到共享文件。
 网络登录不占用共享锁；失败登录不删除原信任记录，`replace` 只替换当前主机。该同步协调本库进程，外部手工工具应避免同时改写同一文件。
+认证后的合并锁另有最多 `login_timeout` 秒的等待预算，超时返回 `ConnectionError`（`code: :known_hosts_busy`），关闭会话且保留共享信任记录；此预算只约束锁等待，不是整批任务的期限。

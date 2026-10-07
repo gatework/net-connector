@@ -13,7 +13,7 @@ bundle exec rake release:check
 ## 准备版本
 
 1. 在 `lib/net/connector/version.rb` 设置新的稳定 `X.Y.Z` 版本。
-2. 将 CHANGELOG 的 `Unreleased` 内容移入对应的 `## X.Y.Z` 或
+2. 将 CHANGELOG 的“未发布”或 `Unreleased` 内容移入对应的 `## X.Y.Z` 或
    `## X.Y.Z - YYYY-MM-DD` 段；版本说明不能为空。
 3. 提交最终源码，确认工作区干净，并将提交推送到目标 GitHub 仓库的 `main`。
 4. 执行 dry run，保留生成的 gem 和 SHA-256，审核后选择下面一种发布方式。
@@ -27,7 +27,7 @@ dry run 执行本地检查，创建独占的 `tmp/release/<version>/candidate-*/
 它允许未提交的工作区用于预检，但仍要求版本与发布说明已经整理完成。
 正式发布额外要求干净且未变化的 Git 提交。
 
-当前存在尚未归档的 `Unreleased` 时，发布脚本（包括 dry run）会拒绝继续；
+当前任一“未发布”或 `Unreleased` 段包含尚未归档的内容时，发布脚本（包括 dry run）会拒绝继续；
 需要先整理版本。日常使用 `release:check` 不受此限制。
 
 ## 本地发布

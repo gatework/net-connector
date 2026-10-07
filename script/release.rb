@@ -70,12 +70,11 @@ class Release
   def self.release_notes(changelog, version)
     raise "Use a stable X.Y.Z version" unless /\A\d+\.\d+\.\d+\z/.match?(version)
 
-    sections = changelog.split(/^## /).drop(1).map do |section|
+    sections = changelog.split(/^ {0,3}##[ \t]+/).drop(1).map do |section|
       heading, body = section.split("\n", 2)
-      [heading.strip, body]
+      [heading.strip.sub(/[ \t]+#+\z/, ""), body]
     end
-    unreleased = sections.find { |heading, _body| heading == "Unreleased" }
-    if unreleased && !unreleased[1].to_s.strip.empty?
+    if sections.any? { |heading, body| ["Unreleased", "未发布"].include?(heading) && !body.to_s.strip.empty? }
       raise "Move Unreleased changes into the versioned changelog before releasing"
     end
 

@@ -349,4 +349,32 @@ class NetdiscoDatabaseTest < Minitest::Test
     server&.close
     worker&.join
   end
+
+  def test_total_timeout_closes_connection_if_connect_start_finishes_after_deadline
+    server = TCPServer.new("127.0.0.1", 0)
+    accepted = Queue.new
+    worker = Thread.new { accepted << server.accept }
+    options = connection_options.merge(host: "127.0.0.1", port: server.addr[1], sslmode: "disable")
+    client = Client.new(connection_options: options, query: QUERY, inventory_timeout: 0.1)
+    connect_start = PG::Connection.method(:connect_start)
+    was_disabled = GC.disable
+    PG::Connection.stub(:connect_start, lambda { |values|
+      connection = connect_start.call(values)
+      sleep 0.2
+      connection
+    }) do
+      error = assert_raises(Netdisco::Client::InventoryTimeout) { client.devices }
+      assert_equal :inventory_timeout, error.code
+    end
+    peer = accepted.pop
+    loop do
+      assert peer.wait_readable(1), "connection acquired before timeout remained open"
+      break unless peer.read_nonblock(4096, exception: false)
+    end
+  ensure
+    GC.enable unless was_disabled
+    peer&.close
+    server&.close
+    worker&.join
+  end
 end

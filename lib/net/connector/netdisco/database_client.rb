@@ -48,8 +48,10 @@ module Net
           connected = false
           begin
             Timeout.timeout(budget.remaining, Client::InventoryTimeout) do
-              # 从握手开始持有连接；PG.connect 尚未返回时被超时中断，调用方无法负责关闭它。
-              connection = PG::Connection.connect_start(@connection_options)
+              # 先取得连接句柄再交付超时，确保异常到达时 ensure 能显式关闭连接。
+              Thread.handle_interrupt(Client::InventoryTimeout => :never) do
+                connection = PG::Connection.connect_start(@connection_options)
+              end
               # PostgreSQL NOTICE 可能包含 SQL 或数据，不交给 libpq 默认的 stderr 输出器。
               connection.set_notice_processor { |_notice| nil }
               wait_for_connection(connection, budget)

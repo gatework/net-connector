@@ -2,6 +2,12 @@
 
 require "json"
 require "socket"
+require_relative "cli/options"
+require_relative "connection"
+require_relative "fleet"
+require_relative "progress"
+require_relative "report/files"
+require_relative "../storage/batch_directory"
 
 module Net
   module Connector
@@ -38,8 +44,9 @@ module Net
 
           Storage::PrivateFile.write(File.join(batch_directory, "plan.json"), JSON.pretty_generate(preview))
           report = execute(fleet, settings, plan, batch_directory, progress, success_policy, server_root)
+          report = record_progress_error(report, progress)
           report = Report::Files.write(report, directory: batch_directory, plan: plan, concurrency: settings.concurrency)
-          finish(report, progress, options, batch_directory)
+          finish(report, progress, options, batch_directory, plan, settings.concurrency)
         rescue ArgumentError, Client::Error => exception
           @error.puts "备份参数或清单错误：#{exception.message}"
           2
@@ -95,10 +102,16 @@ module Net
           end
         end
 
-        def finish(report, progress, options, batch_directory)
+        def finish(report, progress, options, batch_directory, plan, concurrency)
           progress.finish(report)
           progress.location(report.report_location) if report.report_location
-          @error.puts "文本报告：#{File.join(batch_directory, "summary.txt")}" if @env.fetch("NC_PROGRESS", "1") != "0" && File.file?(File.join(batch_directory, "summary.txt"))
+          summary_path = File.join(batch_directory, "summary.txt")
+          progress.location(summary_path, label: "文本报告") if File.file?(summary_path)
+          updated = record_progress_error(report, progress)
+          unless updated.equal?(report)
+            # 末尾显示也可能首次失败，只补写诊断，不重复设备任务或事件。
+            report = Report::Files.write(updated, directory: batch_directory, plan: plan, concurrency: concurrency)
+          end
           if options[:json]
             @output.puts JSON.generate(directory: batch_directory, counts: report.counts,
                                        tasks_succeeded: report.policy_success?, success: report.policy_success?,
@@ -106,6 +119,12 @@ module Net
                                        report_location: report.report_location, report_error: report.report_error)
           end
           report.policy_success? ? 0 : 1
+        end
+
+        def record_progress_error(report, progress)
+          return report unless progress.output_error && !report.callback_errors.include?(progress.output_error)
+
+          report.with(callback_errors: [*report.callback_errors, progress.output_error].freeze)
         end
 
         def tftp_root(settings, options)

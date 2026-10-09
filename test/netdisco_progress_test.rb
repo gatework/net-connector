@@ -3,6 +3,7 @@
 require "minitest/autorun"
 require "stringio"
 require "tmpdir"
+require "timeout"
 require_relative "../lib/net/connector/netdisco"
 require_relative "support/fake_transport"
 
@@ -145,6 +146,60 @@ class NetdiscoProgressTest < Minitest::Test
     end
     assert_empty Thread.list - before
     assert output.string.end_with?("\r\e[2K\e[1A\r\e[2K")
+  end
+
+  def test_heartbeat_output_failure_preserves_result_and_primary_interrupt
+    # Timeout 自己的常驻计时线程不属于待回收的进度线程。
+    Timeout.timeout(1) { Thread.pass }
+    [nil, Interrupt.new("user cancellation")].each do |failure|
+      attempted = Queue.new
+      output = StringIO.new
+      output.define_singleton_method(:tty?) { true }
+      output.define_singleton_method(:write) do |*|
+        attempted << true
+        raise IOError, "private terminal diagnostic"
+      end
+      progress = Netdisco::Progress.new(io: output)
+      before = Thread.list
+      operation = lambda do
+        progress.with_updates do
+          Timeout.timeout(3) { attempted.pop }
+          raise failure if failure
+
+          :completed_report
+        end
+      end
+      if failure
+        assert_same failure, assert_raises(Interrupt, &operation)
+      else
+        assert_equal :completed_report, operation.call
+      end
+      assert_equal({ host: nil, error_type: "IOError" }, progress.output_error)
+      assert_empty Thread.list - before
+      progress.tick
+      assert_empty attempted
+    end
+  end
+
+  def test_terminal_clear_and_nonterminal_flush_failures_disable_only_progress
+    %i[clear flush].each do |stage|
+      output = StringIO.new
+      output.define_singleton_method(:tty?) { stage == :clear }
+      progress = Netdisco::Progress.new(io: output)
+      result = progress.with_updates do
+        if stage == :clear
+          progress.tick
+          output.define_singleton_method(:write) { |*| raise Errno::EIO, "private terminal diagnostic" }
+        else
+          output.define_singleton_method(:flush) { raise IOError, "private terminal diagnostic" }
+          progress.reading_inventory
+        end
+        :completed_report
+      end
+      assert_equal :completed_report, result
+      assert_equal(stage == :clear ? "Errno::EIO" : "IOError", progress.output_error.fetch(:error_type))
+      progress.location("report.json")
+    end
   end
 
   def test_compact_lines_fit_narrow_terminal

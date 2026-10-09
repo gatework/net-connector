@@ -42,6 +42,36 @@ class ModuleLoadingTest < Minitest::Test
     refute(result.fetch("features").any? { |path| path.match?(%r{/lib/textfsm(?:/|\.rb)}) })
   end
 
+  def test_protocol_objects_load_without_the_response_loop_or_redaction_runtime
+    result = isolated(<<~'RUBY')
+      require "net/connector/engine/dialogue"
+      interaction = Net::Connector::Interaction.new(/Continue:\z/, "yes\n")
+      response = Net::Connector::Response.new(raw: "router#", output: "router#", prompt: "router#")
+      error = Net::Connector::DeviceError.new("rejected", phase: :command)
+      puts JSON.generate(reply: interaction.response("Continue:"), prompt: response.prompt,
+                         error_code: error.code, features: $LOADED_FEATURES)
+    RUBY
+    assert_equal "yes\n", result.fetch("reply")
+    assert_equal "router#", result.fetch("prompt")
+    assert_equal "device_error", result.fetch("error_code")
+    refute(result.fetch("features").any? { |path| path.match?(%r{/(?:expect|net/connector/engine/(?:session|redactor|response_reader|transport))(?:/|\.rb)}) })
+  end
+
+  def test_redactor_and_response_reader_support_independent_loading
+    paths = %w[net/connector/engine/redactor net/connector/engine/response_reader net/connector/engine/core]
+    [paths, paths.reverse].each do |order|
+      result = isolated(<<~RUBY)
+        #{order.map { |path| "require #{path.inspect}" }.join("\n")}
+        redactor = Net::Connector::Redactor.new("fixture-token")
+        redactor.with_scope { redactor.remember("temporary") }
+        puts JSON.generate(redacted: redactor.call("fixture-token temporary"),
+                           reader: Net::Connector::ResponseReader.instance_methods(false).include?(:read))
+      RUBY
+      assert_equal "[REDACTED] temporary", result.fetch("redacted")
+      assert result.fetch("reader")
+    end
+  end
+
   def test_public_api_defers_vendor_rules_and_parsing_until_used
     result = isolated(<<~RUBY)
       require "net/connector"
@@ -102,6 +132,55 @@ class ModuleLoadingTest < Minitest::Test
       assert result.fetch("connection")
       assert result.fetch("text")
     end
+  end
+
+  def test_netdisco_entry_points_declare_their_dependencies
+    cases = {
+      "settings" => "N::Settings.new(env: {}).public_config.fetch(:backup).fetch(:concurrency) == 4",
+      "cli/options" => 'N::CLI::Options.settings(N::CLI::Options.parse(argv: ["--concurrency", "7"]), env: {}).concurrency == 7',
+      "planner" => "N::Planner.new([]).call(mode: :backup, limit_per_vendor: nil).validate!.selected.empty?",
+      "fleet" => "client = Object.new; def client.devices = []; N::Fleet.new(client: client, settings: N::Settings.new(env: {})).plan_backup.selected.empty?",
+      "progress" => 'require "stringio"; N::Progress.new(io: StringIO.new).event(nil).nil?',
+      "cli" => 'require "stringio"; output = StringIO.new; N::CLI.new(argv: ["--version"], env: {}, output: output).run.zero? && output.string.strip == Net::Connector::VERSION'
+    }
+    cases.each do |entry, expression|
+      result = isolated(<<~RUBY)
+        require "net/connector/netdisco/#{entry}"
+        N = Net::Connector::Netdisco
+        value = begin; #{expression}; end
+        puts JSON.generate(value: value, features: $LOADED_FEATURES)
+      RUBY
+      assert result.fetch("value"), entry
+      refute(result.fetch("features").any? { |path| path.end_with?("/net/connector/netdisco.rb") }, entry)
+    end
+  end
+
+  def test_net_backup_executable_exports_offline_without_loading_optional_drivers
+    result = isolated(<<~'RUBY')
+      require "tmpdir"
+      require "stringio"
+      Dir.mktmpdir do |directory|
+        config = "interface Ethernet1/1\n description offline\n!\n"
+        File.binwrite(File.join(directory, "192.0.2.1.txt"), config)
+        ARGV.replace(["--export", "192.0.2.1", "--directory", directory])
+        ENV.delete_if { |key, _| key.start_with?("NC_", "NETDISCO_", "TFTP_") }
+        output, errors = StringIO.new, StringIO.new
+        $stdout, $stderr = output, errors
+        begin
+          load File.expand_path("../bin/net-backup", $LOAD_PATH.first)
+        rescue SystemExit => exit_status
+          status = exit_status.status
+        ensure
+          $stdout, $stderr = STDOUT, STDERR
+        end
+        puts JSON.generate(status: status, exported: output.string == config, errors: errors.string,
+                           optional_loaded: $LOADED_FEATURES.any? { |path| path.match?(%r{/lib/(?:textfsm|pg)(?:/|\.rb)}) })
+      end
+    RUBY
+    assert_equal 0, result.fetch("status")
+    assert result.fetch("exported")
+    assert_empty result.fetch("errors")
+    refute result.fetch("optional_loaded")
   end
 
   def test_netdisco_and_offline_export_defer_textfsm_until_actual_parsing

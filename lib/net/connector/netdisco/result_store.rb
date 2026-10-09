@@ -12,16 +12,14 @@ module Net
         # 每批保存一份私有 JSON 报告，通过重命名防止半写文件。
         class Json
           # 以临时文件和重命名原子写入私有 JSON 报告。
-          def write(batch, directory:)
+          def write(report, directory:)
             destination = File.expand_path(directory)
             FileUtils.mkdir_p(destination, mode: 0o700)
-            filename = "netdisco-#{batch.mode}-#{batch.started_at.strftime("%Y%m%dT%H%M%SZ")}-#{SecureRandom.hex(4)}.json"
+            filename = "netdisco-#{report.mode}-#{report.started_at.strftime("%Y%m%dT%H%M%SZ")}-#{SecureRandom.hex(4)}.json"
             path = File.join(destination, filename)
-            Storage::PrivateFile.write(path, JSON.pretty_generate(batch.summary)).path
+            Storage::PrivateFile.write(path, JSON.pretty_generate(report.summary)).path
           end
         end
-
-        Text = Json # Compatibility with the former name of the JSON writer.
 
         # 数据库仓储由调用方提供，可使用 Active Record 或其他对象。
         # 仓储须实现 create!，本项目不负责数据库表结构。
@@ -34,8 +32,8 @@ module Net
           end
 
           # 把批量摘要写入调用方仓储并返回记录位置。
-          def write(batch, **_options)
-            record = @repository.create!(batch.summary)
+          def write(report, **_options)
+            record = @repository.create!(report.summary)
             record.respond_to?(:id) ? "database:#{record.id}" : "database"
           end
         end

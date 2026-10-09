@@ -48,19 +48,39 @@ module Net
           return false if text.empty?
 
           pending = +""
+          quote = nil
           text.each_line do |line|
             next if pending.empty? && line.strip.empty?
             return false if pending.empty? && !line.start_with?("set ")
 
             pending << line
-            begin
-              Shellwords.split(pending)
-              pending.clear
-            rescue ArgumentError
-              # 未闭合引号继续读取；末尾仍未闭合则拒绝整个采集结果。
-            end
+            quote = quote_after(line, quote)
+            next if quote
+
+            Shellwords.split(pending)
+            pending.clear
           end
           pending.empty?
+        rescue ArgumentError
+          false
+        end
+
+        # 每行只扫描新增字节，整条逻辑命令闭合后才交给 Shellwords 校验。
+        # 单引号中的反斜杠是普通字符；其他位置的转义只影响紧随的一个字节。
+        def quote_after(line, quote)
+          escaped = false
+          line.each_byte do |byte|
+            if escaped
+              escaped = false
+            elsif byte == 92 && quote != 39
+              escaped = true
+            elsif byte == quote
+              quote = nil
+            elsif quote.nil? && (byte == 34 || byte == 39)
+              quote = byte
+            end
+          end
+          quote
         end
 
         # 去掉命令回显和提示符，保留真正需要校验的设备响应。

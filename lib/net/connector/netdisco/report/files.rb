@@ -16,8 +16,9 @@ module Net
             Storage::PrivateFile.write(destination, JSON.pretty_generate(finalized.summary))
             finalized
           rescue StandardError => error
-            location = committed_location(error, destination)
-            failed = report.with_report_error(error, location: location)
+            location = committed_location(error, destination) || report.report_location
+            # 更新已有诊断时仍保留首次报告故障，以及之前已提交的报告位置。
+            failed = report.report_error ? report.with(report_location: location) : report.with_report_error(error, location: location)
             begin
               saved = failed.with(report_location: destination)
               Storage::PrivateFile.write(destination, JSON.pretty_generate(saved.summary))

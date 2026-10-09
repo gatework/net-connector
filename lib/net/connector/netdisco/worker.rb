@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "settings"
+
 module Net
   module Connector
     module Netdisco

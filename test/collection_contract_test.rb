@@ -123,6 +123,30 @@ class CollectionContractTest < Minitest::Test
     assert_equal 1, @transport.closes
   end
 
+  def test_palo_multiline_set_values_keep_quote_escape_and_command_boundaries
+    palo_device
+    valid = [
+      "set description \"first\nsecond\"\nset system host-name firewall",
+      "set description 'first\\\nsecond'\n\nset system host-name firewall",
+      "set description \"escaped \\\"quote\\\"\nsecond\"",
+      "set description 'backslash\\'\nset system host-name firewall",
+      "set description escaped\\\"quote\nset description \\\\",
+      "set description \"#{("certificate-line\n" * 400)}end\""
+    ]
+    valid.each { |text| assert_equal text, @device.clean_config("#{text}\n[edit]\nadmin@fw#") }
+    invalid = [
+      "set description \"first\nsecond",
+      "set description 'first\nsecond",
+      "set description \"first\nsecond\"\nnot-a-set-command",
+      "set description 'first\\'\nnot-a-set-command",
+      "set description escaped\\\"\nnot-a-set-command"
+    ]
+    invalid.each do |text|
+      failure = assert_raises(Net::Connector::DeviceError) { @device.clean_config(text) }
+      assert_equal :unsupported_configuration_format, failure.code
+    end
+  end
+
   def test_prompt_or_command_echo_is_not_configuration_for_any_vendor
     %i[h3c h3c_wireless cisco_ios cisco_nxos radware huawei hillstone].each do |vendor|
       [false, true].each do |echo|

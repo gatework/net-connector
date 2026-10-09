@@ -1,6 +1,12 @@
 # frozen_string_literal: true
 
 require "json"
+require_relative "../../connector"
+require_relative "client"
+require_relative "database_client"
+require_relative "config_file"
+require_relative "rules"
+require_relative "planner"
 
 module Net
   module Connector

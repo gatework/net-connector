@@ -424,6 +424,75 @@ class LoggingTest < Minitest::Test
     end
   end
 
+  def test_operation_completion_failure_retains_finalized_configuration_and_is_not_reported_twice
+    attempts = 0
+    observer = lambda do |event|
+      next unless event.name == "operation_complete"
+
+      attempts += 1
+      raise IOError, "event sink unavailable"
+    end
+    device = build("router#", "hostname sample\nrouter#", on_event: observer)
+    script = Net::Connector::Script.new([Net::Connector::Command.new("show config", output_sensitive: true)])
+    result = device.execute_operation(script, name: :collect) do |completed|
+      Net::Connector::Result.new(steps: completed.steps, config: "hostname sample\n")
+    end
+
+    assert_equal "hostname sample\n", result.config
+    assert_instance_of Net::Connector::LogError, result.error
+    assert_equal 1, attempts
+    assert_equal ["show config\n"], device.instance_variable_get(:@session).transport.writes
+    assert_equal 1, result.steps.size
+    refute device.connected?
+  end
+
+  def test_failure_reporting_preserves_returned_and_raised_business_errors
+    %i[returned raised].each do |kind|
+      attempts = 0
+      observer = lambda do |event|
+        next unless event.name == "operation_complete"
+
+        attempts += 1
+        raise IOError, "private observer failure"
+      end
+      device = build("router#", "hostname sample\nrouter#", on_event: observer)
+      result = device.execute_operation(Net::Connector::Script.new(["show config"]), name: :collect) do |completed|
+        failure = Net::Connector::DeviceError.new("configuration rejected", code: :incomplete_configuration)
+        raise failure if kind == :raised
+
+        Net::Connector::Result.new(steps: completed.steps, config: "hostname sample\n", error: failure)
+      end
+
+      assert_instance_of Net::Connector::DeviceError, result.error
+      assert_equal :incomplete_configuration, result.error.code
+      assert_equal "hostname sample\n", result.config if kind == :returned
+      assert_equal 1, attempts
+      assert_equal ["show config\n"], device.instance_variable_get(:@session).transport.writes
+      assert_equal 1, result.steps.size
+      refute_includes result.error.full_message, "private observer failure"
+    end
+  end
+
+  def test_failure_logging_does_not_replace_command_or_login_failure
+    %i[command login].each do |phase|
+      observer = lambda do |event|
+        raise IOError, "event sink unavailable" if event.fields[:status] == "failed"
+      end
+      device = build("router#", ->(*) { raise Net::Connector::CommandTimeout, "response timed out" }, on_event: observer)
+      transport = device.instance_variable_get(:@session).transport
+      if phase == :login
+        transport.define_singleton_method(:open) { raise Net::Connector::ConnectionError, "connection failed" }
+        assert_raises(Net::Connector::ConnectionError) { device.connect }
+        assert_empty transport.writes
+      else
+        result = device.execute_command("change")
+        assert_instance_of Net::Connector::CommandTimeout, result.error
+        assert_equal ["change\n"], transport.writes
+      end
+      refute device.connected?
+    end
+  end
+
   def test_fifo_log_path_fails_before_opening_transport_even_without_a_reader
     Dir.mktmpdir do |directory|
       path = File.join(directory, "session.log")

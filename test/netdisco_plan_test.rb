@@ -85,6 +85,32 @@ class NetdiscoPlanTest < Minitest::Test
     assert_same plan, plan.validate!
   end
 
+  def test_bounded_sampling_preserves_vendor_selection_inventory_order_and_skips
+    rows = %w[H3C Cisco Huawei].flat_map.with_index do |vendor, group|
+      (1..25).map { |number| { "ip" => "192.0.#{group + 2}.#{number}", "vendor" => vendor, "os" => "ios" } }
+    end.shuffle(random: Random.new(74))
+    rows << { "ip" => "192.0.2.200", "vendor" => "unknown" }
+    fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), result_store: nil)
+    [nil, 1, 3, 5].each do |limit|
+      %i[backup tftp].each do |mode|
+        plan = if mode == :backup
+                 fleet.plan_backup(limit_per_vendor: limit)
+               else
+                 fleet.plan_tftp_backup(limit_per_vendor: limit)
+               end
+        candidates = plan.inventory.select(&:ready?)
+        sampled = candidates.group_by(&:vendor).values.flat_map do |devices|
+          ordered = devices.sort_by(&:host)
+          limit ? ordered.first(limit) : ordered
+        end
+        assert_equal candidates.select { |device| sampled.include?(device) }, plan.selected
+        assert_equal candidates.size - sampled.size, (plan.outcomes.count { |outcome| outcome&.status == :sample_limit })
+        assert_equal :unsupported_vendor, plan.outcomes.last.status
+        assert_same plan, plan.validate!
+      end
+    end
+  end
+
   def test_collision_skip_requires_a_matching_selected_filename
     rows = (1..2).map { |number| { "ip" => "192.0.2.#{number}", "vendor" => "H3C" } }
     fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), result_store: nil)

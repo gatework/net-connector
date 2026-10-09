@@ -2,10 +2,12 @@
 
 require "fileutils"
 require "tempfile"
+require "digest"
 require_relative "../storage/backup_lock"
 require_relative "../storage/private_file"
 require_relative "../storage/safe_file"
 require_relative "tftp_verification"
+require_relative "diagnostic"
 
 module Net
   module Connector
@@ -68,9 +70,6 @@ module Net
             archive_uploaded_file(verified)
           end
         end
-
-        alias path_for upload_filename
-        alias capture upload_and_archive
 
         private
 

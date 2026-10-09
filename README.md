@@ -262,7 +262,9 @@ end
 exit 1 unless batch.success?
 ```
 
-命令行程序 `net-connector-backup` 的 YAML 文件只允许非敏感设置；Netdisco 和设备凭据留在环境变量中。常用环境变量优先于 YAML，复杂参数只通过 YAML 或 CLI 设置。批量示例也支持 `NC_CONFIG`，可从 [完整配置示例](examples/backup.yml) 开始。只有传入 `--config FILE` 或设置 `NC_CONFIG` 时才加载文件：
+gem 安装后的命令为 `net-backup`；源码入口为 `bin/net-backup`，可在项目目录运行 `bundle exec bin/net-backup --help`。原命令 `net-connector-backup` 已改名。
+
+命令行程序 `net-backup` 的 YAML 文件只允许非敏感设置；Netdisco 和设备凭据留在环境变量中。常用环境变量优先于 YAML，复杂参数只通过 YAML 或 CLI 设置。批量示例也支持 `NC_CONFIG`，可从 [完整配置示例](examples/backup.yml) 开始。只有传入 `--config FILE` 或设置 `NC_CONFIG` 时才加载文件：
 
 ```yaml
 netdisco:
@@ -291,12 +293,12 @@ tftp:
 ```
 
 ```sh
-net-connector-backup --config config.yml --show-config
-net-connector-backup --config config.yml --plan --host 192.0.2.7
-net-connector-backup --config config.yml --host 192.0.2.7
-net-connector-backup --config config.yml --tftp --plan
-net-connector-backup --config config.yml --tftp --all
-net-connector-backup --config config.yml --export 192.0.2.7 --output ./exports/device.cfg
+net-backup --config config.yml --show-config
+net-backup --config config.yml --plan --host 192.0.2.7
+net-backup --config config.yml --host 192.0.2.7
+net-backup --config config.yml --tftp --plan
+net-backup --config config.yml --tftp --all
+net-backup --config config.yml --export 192.0.2.7 --output ./exports/device.cfg
 ```
 
 ### PostgreSQL 联机查询
@@ -326,10 +328,10 @@ export NETDISCO_DB_PASS='replace-me'
 export NETDISCO_DB_SSLMODE=verify-full
 export NETDISCO_DB_SSLROOTCERT=/etc/net-connector/database-ca.crt
 
-net-connector-backup --config examples/inventory_sql.yml --show-config
-net-connector-backup --config examples/inventory_sql.yml --plan
+net-backup --config examples/inventory_sql.yml --show-config
+net-backup --config examples/inventory_sql.yml --plan
 # 覆盖查询参数；实际备份仍需设置 NC_DEVICE_* 凭据。
-net-connector-backup --config examples/inventory_sql.yml --plan --query-params '["Cisco"]'
+net-backup --config examples/inventory_sql.yml --plan --query-params '["Cisco"]'
 ```
 
 SQL、参数和来源也可分别通过 `--query SQL`、`--query-params JSON`、`--source postgres` 覆盖 YAML，不再从环境变量读取。SQL 和参数属于可公开配置，会出现在 `--show-config` 中；数据库密码只放在连接环境变量中。连接信息不进入策略快照、计划、报告或 `inspect`。已有 Fleet 每次重新查询时读取最新连接凭据；传入已有 `plan:` 执行时不会重新查询。
@@ -344,7 +346,7 @@ SQL、参数和来源也可分别通过 `--query SQL`、`--query-params JSON`、
 
 CLI 的计划与批次摘要使用 JSON。默认 `--success-policy strict` 使用严格规则：非空清单且全部成功、回调及报告正常时为 `0`；空清单或有跳过、部分成功、失败时为 `1`；清单或配置错误为 `2`。`--host` 未在清单中找到也返回 `2`。由于其他清单记录会标记为过滤，默认单主机备份成功时批次退出码仍可能是 `1`；应查看 JSON 中的 `succeeded`、`skipped` 和逐台 `status`。
 
-显式使用 `--success-policy selected` 后，CLI 按上述 selected 规则决定退出码，保留严格的 `status: incomplete` 与跳过计数，另列 `policy_success`。例如 `net-connector-backup --config config.yml --host 192.0.2.7 --success-policy selected`。成功策略由本次 CLI/API 参数指定，不改变已批准的清单选择，也不触发重试。
+显式使用 `--success-policy selected` 后，CLI 按上述 selected 规则决定退出码，保留严格的 `status: incomplete` 与跳过计数，另列 `policy_success`。例如 `net-backup --config config.yml --host 192.0.2.7 --success-policy selected`。成功策略由本次 CLI/API 参数指定，不改变已批准的清单选择，也不触发重试。
 
 本地批量示例和 TFTP 批量示例默认全量；显式 `--sample N`、`NC_SAMPLE_PER_VENDOR` 或 YAML `backup.limit_per_vendor` 才限制每厂商数量（示例允许 1 至 5）。优先级为命令行抽样 > 环境变量 > YAML。并发默认 4，可用 `NC_CONCURRENCY` 覆盖。两类示例在备份目录下创建唯一批次目录。TFTP 批量示例在可访问服务器目录时使用 hostname-ip 远端文件名并逐批归档；无法访问服务器目录时使用带批次标识的远端文件名，避免覆盖旧文件；上传完成与服务器文件验证是不同状态。
 

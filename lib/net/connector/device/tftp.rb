@@ -84,18 +84,24 @@ module Net
       # 失败证据优先；步骤中的明确完成行可在随后清理失败时证明设备已经报告上传。
       def confirm_transfer!(strategy, target, result)
         if transfer_failed?(result)
-          @device.log_event("tftp_backup", level: :error, status: "transfer_failed", phase: :tftp_backup,
-                                code: :transfer_failed, server: target.host)
-          raise DeviceError.new("device reported TFTP backup failure",
-                                code: :transfer_failed, host: @device.host, phase: :tftp_backup)
+          reject_transfer!(target, :transfer_failed, "device reported TFTP backup failure")
         end
         return if strategy.device_reported_complete?(result)
 
         result.value! if result.failure?
-        @device.log_event("tftp_backup", level: :error, status: "transfer_unconfirmed", phase: :tftp_backup,
-                              code: :transfer_unconfirmed, server: target.host)
-        raise DeviceError.new("device did not confirm TFTP backup completion",
-                              code: :transfer_unconfirmed, host: @device.host, phase: :tftp_backup)
+        reject_transfer!(target, :transfer_unconfirmed, "device did not confirm TFTP backup completion")
+      end
+
+      # 设备证据先决定业务失败；事件记录失败不能把明确的上传状态替换为日志故障。
+      def reject_transfer!(target, code, message)
+        failure = DeviceError.new(message, code: code, host: @device.host, phase: :tftp_backup)
+        begin
+          @device.log_event("tftp_backup", level: :error, status: code.to_s, phase: :tftp_backup,
+                            code: code, server: target.host)
+        rescue Error
+          # 主错误仍在下方抛出，不重试事件或设备命令。
+        end
+        raise failure, cause: nil
       end
 
       # 识别设备回显中的传输失败信息。

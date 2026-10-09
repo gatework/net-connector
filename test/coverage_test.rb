@@ -84,6 +84,25 @@ class CoverageTest < Minitest::Test
     end
   end
 
+  def test_uncovered_redactor_cannot_hide_inside_the_core_engine_group
+    with_library do |library, result|
+      other = File.join(library, "net/connector/engine/other.rb")
+      File.write(other, "value = 1\n")
+      result[other] = { lines: [1], branches: { branch: (1..20).to_h { |index| [index, 1] } } }
+      redactor = File.join(library, "net/connector/engine/redactor.rb")
+      File.write(redactor, "value = 1\n")
+      result[redactor] = { lines: [1], branches: { branch: { missed: 0 } } }
+      output = StringIO.new
+      report = CoverageReport.new(result, library: library, output: output)
+      refute report.passed?
+      assert_match(/核心引擎.*通过/, output.string)
+      assert_match(/脱敏与错误（含 Redactor）.*不达标/, output.string)
+      assert_equal({ hit: 1, total: 2 }, report.to_h.fetch(:groups).fetch("脱敏与错误（含 Redactor）").fetch(:branches))
+      result[redactor][:branches] = { branch: { covered: 1 } }
+      assert CoverageReport.new(result, library: library, output: StringIO.new).passed?
+    end
+  end
+
   def test_unloaded_noncritical_file_is_listed_without_failing_the_gate
     with_library do |library, result|
       File.write(File.join(library, "optional.rb"), "value = 1\n")

@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require "ipaddr"
+require_relative "../../connector"
 require_relative "../storage/saved_config"
+require_relative "client"
 
 module Net
   module Connector

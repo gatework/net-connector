@@ -1,6 +1,14 @@
 # 更新记录
 
-## 未发布
+## 0.8.0 - 2026-10-09
+
+- 破坏性变更：命令入口改为 `bin/net-backup`，gem 安装后使用 `net-backup`；移除 `TftpHistory`、`TftpArchive#path_for/#capture` 和 `ResultStore::Text` 兼容接口，调用方需更新路径与接口名称。
+- 引擎按职责拆出 `engine/redactor.rb` 与 `engine/response_reader.rb`；Netdisco 模块显式声明依赖，可独立加载并调用，聚合入口不再维护隐式加载顺序。
+- TFTP 归档与结果存储使用 `TftpArchive#upload_filename/#upload_and_archive` 与 `ResultStore::Json`。
+- 脚本日志收尾失败时保留已完成配置和原业务错误，完成事件不重复发送；登录、命令、TFTP 失败诊断及日志清理不再覆盖主错误或用户中断。
+- 进度终端写入或刷新失败后停止显示，批次继续保存设备结果、事件和报告；显示故障只记录一次安全回调诊断，末尾显示首次失败时补写诊断并更新最终退出状态。
+- PAN-OS 多行 set 配置增量跟踪引号状态，逻辑命令闭合后才进行完整语法校验，避免反复解析不断增长的证书等文本。
+- 每厂商有限采样使用 `Enumerable#min_by(n)`，减少大清单的全量排序开销，保留采样、冲突选择和清单输出顺序。
 
 ## 0.7.3 - 2026-10-07
 

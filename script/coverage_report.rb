@@ -6,7 +6,7 @@ class CoverageReport
   MINIMUM = 80
   GROUPS = {
     "核心引擎" => "net/connector/engine/**/*.rb",
-    "脱敏与错误（含 Redactor）" => "net/connector/engine/errors.rb",
+    "脱敏与错误（含 Redactor）" => "net/connector/engine/{errors,redactor}.rb",
     "批量并发" => "net/connector/netdisco/worker.rb"
   }.freeze
 

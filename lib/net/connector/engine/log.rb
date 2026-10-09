@@ -49,9 +49,14 @@ module Net
         finish_output
         @context = @context.merge(fields).freeze
         yield
+      rescue Exception # rubocop:disable Lint/RescueException -- Preserve only failures propagating from this scope, including interrupts.
+        failed = true
+        raise
       ensure
         begin
           finish_output
+        rescue Error
+          raise unless failed
         ensure
           @context = previous
         end
@@ -98,6 +103,9 @@ module Net
                   code: ErrorMetadata.code(failure.code),
                   phase: ErrorMetadata.phase(failure.phase) || ErrorMetadata.phase(phase),
                   message: failure.message)
+      rescue Error
+        # 原始失败已由调用者保留；诊断通道故障不能替换登录、命令或业务错误。
+        nil
       end
 
       # 用户钩子可能把未登记的配置片段放进事件名、字段名或值；敏感范围统一隐藏。
@@ -163,8 +171,16 @@ module Net
         finish_output
         @transport.log_output = nil if @transport
         yield
+      rescue Exception # rubocop:disable Lint/RescueException -- Restore attachment without replacing this scope's failure or interruption.
+        failed = true
+        raise
       ensure
-        @transport.log_output = self if @transport && @writer && @attached
+        begin
+          @transport.log_output = self if @transport && @writer && @attached
+        rescue StandardError
+          # 恢复接线仍须尝试，但不能盖掉设备失败或用户中断。
+          raise unless failed
+        end
       end
 
       # 断开回显记录并关闭日志资源。

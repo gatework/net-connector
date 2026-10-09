@@ -1,12 +1,16 @@
 # frozen_string_literal: true
 
 require "io/console"
+require_relative "../engine/error_metadata"
+require_relative "../engine/log/event"
 
 module Net
   module Connector
     module Netdisco
       # 共享一个实例接收并发会话事件和任务回调；人类进度不混入 JSON 输出。
       class Progress
+        attr_reader :output_error
+
         def initialize(io: $stderr, enabled: true, verbose: false)
           @io, @enabled, @verbose = io, enabled, verbose
           @tty = io.respond_to?(:tty?) && io.tty?
@@ -148,8 +152,8 @@ module Net
           @mutex.synchronize { refresh(force: true) }
         end
 
-        def location(path)
-          write(nil, "报告：#{path}")
+        def location(path, label: "报告")
+          write(nil, "#{label}：#{path}")
         end
 
         private
@@ -209,9 +213,7 @@ module Net
 
           clear_refresh
           @last_status = lines
-          @io.write(lines.join("\n"))
-          @io.flush
-          @refreshing = true
+          @refreshing = write_output(lines.join("\n"))
         end
 
         # 留一列避免终端自动换行，窄窗口也不会留下旧进度行。
@@ -231,7 +233,7 @@ module Net
         def clear_refresh
           return unless @refreshing
 
-          @io.write("\r\e[2K" + ("\e[1A\r\e[2K" * (@last_status.length - 1)))
+          write_output("\r\e[2K" + ("\e[1A\r\e[2K" * (@last_status.length - 1)))
           @refreshing = false
         end
 
@@ -246,8 +248,21 @@ module Net
           clear_refresh
           line = "[#{Time.now.strftime("%H:%M:%S")}] [#{@completed}/#{@total}#{percent} 执行中 #{@active}] [#{host || "批次"}] #{message}"
           line = "[#{Time.now.strftime("%H:%M:%S")}] #{host ? "#{host}  " : ""}#{message}" unless @verbose
-          @io.write(line.gsub(/[[:cntrl:]]/, " ") + "\n")
+          write_output(line.gsub(/[[:cntrl:]]/, " ") + "\n")
+        end
+
+        # 显示失败只停用进度输出；批次仍保存回执和事件，并记录一次受控回调诊断。
+        # 所有调用均持有 @mutex，心跳与设备线程不会重复访问已失败的输出。
+        def write_output(text)
+          return false unless @enabled
+
+          @io.write(text)
           @io.flush
+          true
+        rescue IOError, SystemCallError => error
+          @output_error = { host: nil, error_type: ErrorMetadata.type(error.class.name) }.freeze
+          @enabled = false
+          false
         end
       end
     end

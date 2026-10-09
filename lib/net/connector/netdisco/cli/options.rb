@@ -1,6 +1,9 @@
 # frozen_string_literal: true
 
 require "optparse"
+require_relative "../settings"
+require_relative "../planner"
+require_relative "../config_file"
 
 module Net
   module Connector

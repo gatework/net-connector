@@ -1,5 +1,9 @@
 # frozen_string_literal: true
 
+require "ipaddr"
+require_relative "device"
+require_relative "batch"
+
 module Net
   module Connector
     module Netdisco

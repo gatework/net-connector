@@ -3,6 +3,8 @@
 require "English"
 require_relative "authentication"
 require_relative "log"
+require_relative "redactor"
+require_relative "response_reader"
 require_relative "recovery"
 require_relative "transport"
 
@@ -45,12 +47,14 @@ module Net
           started = Expect.monotonic
           @log.log_event("operation_start", level: :debug, phase: :script)
           result = yield
-          log_operation_completion(started, result.is_a?(Result) ? result.error : nil, steps: steps.size)
-          result
         rescue => error
           failure = normalize_error(error, phase: :script)
           log_operation_completion(started, failure, steps: steps.size)
           raise failure, cause: nil
+        else
+          # 完成事件只发送一次；观察者失败由外层保留业务结果，不再次调用同一观察者。
+          log_operation_completion(started, result.is_a?(Result) ? result.error : nil, steps: steps.size)
+          result
         end
       end
 

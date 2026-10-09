@@ -93,6 +93,20 @@ class TftpEvidenceTest < Minitest::Test
     end
   end
 
+  def test_failure_event_sink_cannot_replace_transfer_evidence
+    { "Transfer failed." => :transfer_failed, "Upload starting" => :transfer_unconfirmed }.each do |response, code|
+      observer = lambda do |event|
+        raise IOError, "private event failure" if event.name == "tftp_backup"
+      end
+      with_device(:h3c, "<H3C>", "#{response}\n<H3C>", on_event: observer) do |device|
+        failure = assert_raises(Net::Connector::DeviceError) { backup(device, :h3c, "backup.cfg") }
+        assert_equal code, failure.code
+        assert_nil failure.cause
+        assert_equal 1, device.instance_variable_get(:@session).transport.writes.size
+      end
+    end
+  end
+
   private
 
   def backup(device, vendor, path)
@@ -101,8 +115,8 @@ class TftpEvidenceTest < Minitest::Test
     device.tftp_backup(**options)
   end
 
-  def with_device(vendor, *events)
-    device = Net::Connector.build(vendor, host: "192.0.2.1", username: "admin", transport: ConnectorFake.new(*events))
+  def with_device(vendor, *events, **options)
+    device = Net::Connector.build(vendor, host: "192.0.2.1", username: "admin", transport: ConnectorFake.new(*events), **options)
     yield device
   ensure
     device&.close

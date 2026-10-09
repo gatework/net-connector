@@ -5,7 +5,7 @@ AllCops:
   DisabledByDefault: true
   Include:
     - lib/**/*.rb
-    - exe/*
+    - bin/*
     - examples/**/*.rb
     - test/**/*.rb
     - script/**/*.rb

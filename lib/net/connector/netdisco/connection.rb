@@ -1,7 +1,6 @@
 # frozen_string_literal: true
 
 require "json"
-require_relative "client"
 
 # 清单连接与设备凭据来源；业务入口负责规划和执行备份。
 module Net

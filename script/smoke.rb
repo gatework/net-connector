@@ -10,6 +10,7 @@ require "net/connector"
 require "net/connector/netdisco"
 require "rbconfig"
 require "stringio"
+require "open3"
 
 raise "Offline entry eagerly loaded TextFSM" if $LOADED_FEATURES.any? { |path| path.match?(%r{/lib/textfsm(?:/|\.rb)}) }
 
@@ -129,6 +130,24 @@ end
 output = StringIO.new
 cli = Net::Connector::Netdisco::CLI.new(argv: ["--version"], env: {}, output: output)
 raise "Installed CLI failed" unless cli.run.zero? && output.string.strip == spec.version.to_s
+
+# 实际运行 RubyGems 生成的入口，覆盖打包路径、执行位和安装后的参数/退出码。
+raise "Installed executable metadata differs" unless spec.bindir == "bin" && spec.executables == ["net-backup"]
+executable = File.join(Gem.bindir, "net-backup")
+source_executable = File.join(spec.full_gem_path, "bin", "net-backup")
+raise "Installed executable is missing or not executable" unless File.executable?(executable) && File.executable?(source_executable)
+raise "Executable wrapper escaped isolated install" unless File.realpath(executable).start_with?("#{root}/")
+{
+  "--version" => [0, spec.version.to_s],
+  "--help" => [0, "用法：net-backup"],
+  "--invalid-fixture-option" => [2, "net-backup: 参数无效"]
+}.each do |argument, (exit_status, expected)|
+  stdout, stderr, status = Open3.capture3(RbConfig.ruby, executable, argument)
+  raise "Installed executable exit status differs for #{argument}" unless status.exitstatus == exit_status
+  actual, other = exit_status.zero? ? [stdout, stderr] : [stderr, stdout]
+  raise "Installed executable output differs for #{argument}" unless actual.include?(expected) && other.empty?
+end
+
 settings = Net::Connector::Netdisco::Settings.new(env: {}, defaults: { "NETDISCO_MAX_DEVICES" => "2" })
 policy = settings.snapshot(mode: :show_config)
 raise "Installed inventory budget missing" unless policy.client_options.fetch(:max_devices) == 2 && policy.frozen?

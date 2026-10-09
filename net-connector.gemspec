@@ -14,12 +14,12 @@ Gem::Specification.new do |spec|
   spec.required_ruby_version = ">= 3.2"
   # 使用明确的发布清单；本地凭据、设备备份、日志和开发产物不能进入安装包。
   spec.files = Dir["lib/**/*.rb", "lib/net/connector/templates/*.textfsm", "lib/net/connector/templates/index",
-                   "exe/net-connector-backup", "docs/architecture.md", "docs/RELEASING.md", "docs/VERIFICATION.md",
+                   "bin/net-backup", "docs/architecture.md", "docs/RELEASING.md", "docs/VERIFICATION.md",
                    "examples/backup.yml", "examples/inventory_sql.yml",
                    "README.md", "LICENSE", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md"].sort
   spec.require_paths = ["lib"]
-  spec.bindir = "exe"
-  spec.executables = ["net-connector-backup"]
+  spec.bindir = "bin"
+  spec.executables = ["net-backup"]
   # 只声明所需下限；上限须有已知不兼容依据，避免限制宿主应用的依赖。
   spec.add_dependency "expect-pty", ">= 0.5.0"
   spec.add_dependency "textfsm", ">= 0.2.0"

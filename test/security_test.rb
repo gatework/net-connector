@@ -37,6 +37,20 @@ class SecurityTest < Minitest::Test
     end
   end
 
+  def test_executable_is_scanned_without_git_and_package_allows_only_its_declared_path
+    with_source do |directory|
+      FileUtils.mkdir_p(File.join(directory, "bin"))
+      File.write(File.join(directory, "bin", "net-backup"), "host #{[10, 24, 8, 16].join(".")}\n")
+      capture_io { assert_raises(RuntimeError) { SecretScan.source(root: directory, history: false) } }
+      report = JSON.parse(File.read(File.join(directory, "tmp", "security", "source.json")))
+      assert_includes report.map { |finding| finding.fetch("file") }, "bin/net-backup"
+      assert PackageCheck.allowed_path?("bin/net-backup")
+      %w[bin/other bin/../net-backup exe/net-connector-backup].each do |path|
+        refute PackageCheck.allowed_path?(path), path
+      end
+    end
+  end
+
   def test_common_device_credential_forms_cannot_bypass_the_source_scan
     with_source do |directory|
       fixture = File.join(directory, "README.md")

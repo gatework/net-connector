@@ -632,7 +632,7 @@ class NetdiscoTest < Minitest::Test
     output = StringIO.new
     status = Net::Connector::Netdisco::CLI.new(argv: ["--help"], env: {}, output: output, error: StringIO.new).run
     assert_equal 0, status
-    assert_includes output.string, "用法：net-connector-backup"
+    assert_includes output.string, "用法：net-backup"
     assert_includes output.string, "预览设备清单，不连接设备"
     assert_includes output.string, "显示帮助"
   end

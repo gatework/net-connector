@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "plan"
+require_relative "batch"
 
 module Net
   module Connector
@@ -20,7 +21,7 @@ module Net
           end
           selected_tasks = if limit_per_vendor
                              ready_tasks.group_by { |_index, device| device.vendor }.values.flat_map do |tasks|
-                               tasks.sort_by { |_index, device| device.host }.first(limit_per_vendor)
+                               tasks.min_by(limit_per_vendor) { |_index, device| device.host }
                              end
                            else
                              ready_tasks

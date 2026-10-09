@@ -331,10 +331,6 @@ class NetdiscoReportingTest < Minitest::Test
     assert_equal secret, value.report_error
   end
 
-  def test_json_report_store_keeps_the_previous_constant
-    assert_same Netdisco::ResultStore::Json, Netdisco::ResultStore::Text
-  end
-
   private
 
   def row(index) = { "ip" => "192.0.2.#{index}", "vendor" => "H3C" }

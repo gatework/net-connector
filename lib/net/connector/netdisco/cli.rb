@@ -3,6 +3,9 @@
 require "json"
 require "ipaddr"
 require "optparse"
+require_relative "../version"
+require_relative "fleet"
+require_relative "cli/options"
 
 module Net
   module Connector
@@ -46,23 +49,23 @@ module Net
             return 0
           end
 
-          batch = backup(fleet, plan, settings, options)
-          summary = batch.summary
+          report = backup(fleet, plan, settings, options)
+          summary = report.summary
           @output.puts JSON.pretty_generate(summary)
-          batch.policy_success? ? 0 : 1
+          report.policy_success? ? 0 : 1
         rescue Storage::PrivateFile::WriteError => exception
           message = Storage::PrivateFile.receipt_error?(exception) ? exception.message : exception.class.name
-          @error.puts "net-connector-backup: #{message}"
+          @error.puts "net-backup: #{message}"
           2
         rescue OptionParser::ParseError
-          @error.puts "net-connector-backup: 参数无效；使用 --help 查看参数"
+          @error.puts "net-backup: 参数无效；使用 --help 查看参数"
           2
         rescue ArgumentError, KeyError, Errno::ENOENT,
           Psych::Exception, JSON::ParserError, Client::Error => exception
-          @error.puts "net-connector-backup: #{exception.message}"
+          @error.puts "net-backup: #{exception.message}"
           2
         rescue StandardError => exception
-          @error.puts "net-connector-backup 失败（#{exception.class}）"
+          @error.puts "net-backup 失败（#{exception.class}）"
           2
         end
 
@@ -113,7 +116,7 @@ module Net
         def parse_options
           options = { environment: {} }
           parser = OptionParser.new do |args|
-            args.banner = "用法：net-connector-backup [--config FILE] [--plan | --show-config | --export IP] [--tftp]"
+            args.banner = "用法：net-backup [--config FILE] [--plan | --show-config | --export IP] [--tftp]"
             Options.add_settings(args, options)
             Options.add_execution(args, options)
             args.on("--source SOURCE", %w[http postgres], "清单来源：http（默认）或 postgres") { |value| options[:source] = value }

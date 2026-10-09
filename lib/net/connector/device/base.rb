@@ -249,17 +249,23 @@ module Net
 
         execution = build_execution(operation: operation, prompt: prompt, after_command: after_command, privilege: privilege)
         output_sensitive = script.any?(&:output_sensitive?)
+        result = nil
         @session.perform(:script) do
           @session.log_script(operation: operation, steps: execution.steps) do
             @session.with_sensitive_output(output_sensitive) { before_batch(execution) }
             result = execution.execute_script(script, &on_step)
             sensitive_result = output_sensitive || script.any?(&:sensitive?) || execution.sensitive?
             @session.with_sensitive_output(sensitive_result) do
-              finalize_script_result(result, finalize)
+              result = finalize_script_result(result, finalize)
             end
           end
         end
       rescue Error => error
+        # 脚本完成后的日志收尾仍可能失败，已经生成的配置与主错误保持权威。
+        if result.is_a?(Result)
+          return Result.new(steps: result.steps, config: result.config, error: result.error || error)
+        end
+
         Result.new(steps: execution ? execution.steps : [], error: error)
       end
 

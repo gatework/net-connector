@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../storage/safe_file"
+require_relative "../device/tftp/receipt"
 
 module Net
   module Connector

@@ -5,6 +5,8 @@
 | 层次 | 职责 | 位置 |
 | --- | --- | --- |
 | 会话引擎 | 登录、传输、命令、脚本及资源所有权 | `engine/` |
+| 对话协议与响应读取 | 交互规则和响应值独立于有状态的读取、截止时间与输出预算 | `engine/dialogue.rb`、`engine/response_reader.rb` |
+| 错误与脱敏 | 错误类型和安全诊断；秘密作用域及 Expect 脱敏适配独立实现 | `engine/errors.rb`、`engine/redactor.rb` |
 | 日志 | 事件上下文与生命周期；安全事件、格式和字节流分别实现 | `engine/log.rb`、`engine/log/` |
 | 设备入口 | 能力组合、会话代理、通用脚本钩子 | `device/base.rb` |
 | 设备档案 | 不可变规则与策略接口校验；Builder 负责声明 DSL | `device/profile.rb`、`device/profile/` |
@@ -17,6 +19,7 @@
 | 解析 | TextFSM 模板选择、记录转换及异常映射 | `textfsm.rb`、`templates/` |
 | 终端文本 | 严格 UTF-8 字节验证和终端渲染 | `engine/terminal_text.rb`、`engine/terminal_renderer.rb` |
 | 清单与批量编排 | 清单预算、策略快照、计划校验、工作线程和报告 | `netdisco/` |
+| 命令行入口 | 转交给 CLI，参数处理与业务流程由库负责 | `bin/net-backup` |
 
 `Base` 引入 `RunningConfig::Capability`、`LocalBackup::Capability`、`Tftp::Capability`、`Topology::Capability`、`TextFSM::Capability` 及 `SaveConfig`。能力入口与实现共置，Base 不再重复业务包装。配置采集的临时策略绑定也由 RunningConfig 管理；备份与拓扑通过 `device.running_config` 复用同一流程。
 
@@ -53,6 +56,8 @@
 连接器独占一个会话。`Session` 串行执行登录和脚本，失败时关闭传输，不自动重放设备命令。`Result` 在后续步骤失败时仍保存已完成步骤。`RunningConfig` 每次采集创建一个新策略，同一策略负责响应检查、结果选择和清理。选择与清理在会话锁内经过现有设备钩子，子类覆盖后可调用 `super`。清理失败时也会解除临时绑定，其他 Fiber 的离线清理不能借用该策略。
 
 采集命令匹配当前会话的完整提示符行，不以末尾单个 `#`、`>` 或 `]` 判断完成。PAN-OS 切换视图时保留已认证的设备身份。缺少最终提示符会使采集失败，旧备份保持不变；只有提示符或命令回显的响应属于 `:incomplete_configuration`，不是成功的空配置。PAN-OS 在 `show` 前后都检查候选配置差异。
+
+PAN-OS 的 set 文本逐行增量跟踪单引号、双引号和转义状态，整条逻辑命令闭合后才由 Shellwords 校验；未闭合的多行内容仍拒绝。证书等长值不再每追加一行就重新解析完整前缀，校验仍在原会话租约内完成。
 
 IOS/NX-OS 清理器处理单条配置命令的响应，不把正文当成多命令会话记录。banner 内的命令、进度及完成提示均属于配置内容；易变时间注释仅从首个配置语句之前的响应头删除。终端渲染器成段处理普通文本，控制序列仍逐字节解释；光标覆盖、行尾空白、UTF-8 校验和逐行字节限额保持一致。
 
@@ -288,7 +293,11 @@ TFTP 策略必须实现 `validate_options!(target, source_file:, vrf:)`、`recei
 
 ## 加载入口与厂商策略
 
-`require "net/connector"` 加载设备 API 和引擎，厂商通过 autoload 按需加载。TextFSM 能力模块可预先组合，但外部 `textfsm` gem 只在实际解析时加载。仅需会话引擎时使用 `require "net/connector/engine/core"`；离线文件操作使用 `net/connector/storage`，不加载厂商。
+`require "net/connector"` 加载设备 API 和引擎，厂商由 `vendor_class` 按需加载。TextFSM 能力模块可预先组合，但外部 `textfsm` gem 只在实际解析时加载。仅需会话引擎时使用 `require "net/connector/engine/core"`；离线文件操作使用 `net/connector/storage`，不加载厂商。
+
+`engine/dialogue` 只定义 Interaction、Dialogue 与 Response；读取循环位于 `engine/response_reader`。`engine/errors` 不加载脱敏运行时，`engine/redactor` 负责秘密作用域。Session 明确加载并持有读取器与脱敏器。
+
+Netdisco 的 Settings、Planner、Fleet、CLI 等文件各自声明实际依赖，单独 require 后即可调用，不依赖 `netdisco.rb` 的预设加载顺序。总入口只组合 CLI 和 BackupRun；Batch 通过 autoload 创建 Report，避免两者循环加载。私有 InventoryBudget 由 Client 加载。Progress 的终端显示、Fleet 的设备执行、Report 的结果解释和 Storage 的文件持久化保持独立职责。
 
 公共策略位于 `RunningConfig::Strategy` / `Rendered`、`Tftp::Strategy` / `FileUpload`、`Topology::Strategy` / `ImmediateStrategy`。厂商文件直接依赖公共策略，由 Profile 绑定；没有反向加载和厂商转发别名。
 
@@ -311,6 +320,10 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 
 | 原名称或入口 | 当前入口 |
 | --- | --- |
+| `exe/net-connector-backup` | `bin/net-backup`；安装后命令为 `net-backup` |
+| TFTP 策略 `interaction` | private `build_interaction`，构造交互规则；`device.interact` 仍表示立即进入人工终端交互 |
+| `TftpHistory`、`TftpArchive#path_for/#capture` | `TftpArchive#upload_filename/#upload_and_archive` |
+| `ResultStore::Text` | `ResultStore::Json`，与 `Report::Text` 的文本报告职责区分 |
 | `Base#login_dialogues` / `confirmation_dialogues` | protected `login_interactions` / `confirmation_interactions`；子类覆盖同步改名，继续支持 `super` |
 | `Fleet#backup_one` / `tftp_backup_one` / `run_one` | private `backup_device` / `tftp_backup_device` / `run_device`；公开批次入口不变 |
 | `engine`、`engine/base`、`engine/profile` | `net/connector`；底层分别为 `engine/core`、`device/base`、`device/profile` |
@@ -371,6 +384,8 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 
 操作后处理无论抛出异常还是返回失败 Result，都在敏感作用域退出前归一化错误，再记录完成事件；Result 的已完成步骤及配置内容保持原样。最终处理继承实际执行的命令及交互敏感性，包括准备钩子、替换命令和追加查询；只累计标记，不长期保留秘密，也不影响后续普通命令的日志。
 
+业务执行与完成事件的异常范围分开：完成事件只尝试一次，观察者失败不能触发第二次相同通知。已有登录、命令或业务错误优先于失败日志的错误；脚本最终处理已生成的 Result.config 与 steps 不因日志收尾丢失。日志上下文刷新和传输接线恢复仍执行清理，但保留正在传播的主错误及 Interrupt。TFTP 的失败证据同样先决定错误码，再尝试记录失败事件。
+
 错误归一化通过 `Error#with_diagnostics` 保留内置错误的业务回执，并新建异常的原生状态，避免复制原 cause 或调用栈。自定义错误子类使用脱敏后的参数重新构造，不能复制可能参与消息呈现的原始私有字段。会话租约退出时若日志收尾失败，已返回的 Result 仍保留步骤、配置和原业务错误；仅在原操作成功时附加日志错误。
 
 单条命令的完整响应在输出日志和完成事件之前保存；即使这些日志处理失败，Session 仍在脱敏作用域退出前把响应交给 Execution，保留已完成步骤与输出预算。TFTP 可从失败结果的完成步骤构造设备回执，再报告日志错误；不会据此重放命令。
@@ -380,6 +395,8 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 `device.log_event(name, level: :info, **fields)` 是唯一自定义事件入口。会话身份和命令上下文由引擎提供，不能从 fields 覆盖。事件名和字段值经终端渲染与脱敏后冻结；非法字段名丢弃，复杂对象和非有限浮点数隐藏，不调用任意对象的 inspect/to_s。敏感范围内自定义事件整体隐藏，包括事件名和任意字段，防止配置钩子输出未登记的秘密。
 
 注入的 logger 由调用方持有；连接器不修改级别、formatter、progname，也不关闭它。每次写入同时检查配置与 logger 当前级别。消息对象支持 to_s/inspect 和安全 to_h，应用可自行输出 JSON。自有文本日志使用毫秒时间及逐行事件；raw 文件只写经过敏感保护的字节。上下文退出前先收尾渲染与脱敏缓冲，避免上一命令尾部被标成下一条命令。
+
+人类进度显示由 Progress 单独管理：终端 write/flush 的 I/O 故障会停用后续显示，并只保留固定词表内的错误类型，不携带原始异常。心跳照常回收，设备任务、events.jsonl 与报告持久化继续进行；BackupRun 将显示故障合并为一次批次 callback_errors。若首次故障发生在报告保存后的最终显示阶段，仅补写一次报告诊断，最终 JSON 与退出码采用更新后的策略结果；已有报告错误保持优先，不重放设备备份或事件。
 
 `log_file` 使用 NOFOLLOW/NONBLOCK 打开，再对同一 FD 检查普通文件类型，随后才修改权限或写入。FIFO、设备文件和目录不能用作日志文件；应用拥有的输出流通过 `logger` 接入。日志打开先于登录，不能依赖登录超时为文件打开提供期限。
 

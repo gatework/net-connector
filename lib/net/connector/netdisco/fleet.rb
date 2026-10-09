@@ -1,7 +1,16 @@
 # frozen_string_literal: true
 
 require "fileutils"
-require "digest"
+require_relative "../storage"
+require_relative "client"
+require_relative "settings"
+require_relative "device"
+require_relative "worker"
+require_relative "result_store"
+require_relative "planner"
+require_relative "report"
+require_relative "tftp_verification"
+require_relative "tftp_archive"
 
 module Net
   module Connector

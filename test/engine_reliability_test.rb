@@ -73,6 +73,67 @@ class EngineReliabilityTest < Minitest::Test
     end
   end
 
+  def test_log_scope_cleanup_preserves_business_errors_and_interrupts
+    %i[context pause].product([Net::Connector::DeviceError.new("device rejected"), Interrupt.new("cancelled")]).each do |scope, failure|
+      Dir.mktmpdir do |directory|
+        config = Net::Connector::Configuration.new(log_file: File.join(directory, "session.log"), log_format: :raw)
+        log = Net::Connector::Log.new(config, redactor: Net::Connector::Redactor.new)
+        transport = ConnectorFake.new
+        log.open(transport)
+        log.attach
+        file = log.instance_variable_get(:@io)
+        action = lambda do
+          if scope == :context
+            file.define_singleton_method(:flush) { raise IOError, "flush failed" }
+          else
+            transport.define_singleton_method(:log_output=) { |_| raise IOError, "attachment failed" }
+          end
+          raise failure
+        end
+        observed = assert_raises(failure.class) do
+          scope == :context ? log.with_operation_context(:collect, &action) : log.pause(&action)
+        end
+        assert_same failure, observed
+      ensure
+        file&.singleton_class&.remove_method(:flush) if scope == :context && file
+        transport&.singleton_class&.remove_method(:log_output=) if scope == :pause && transport
+        log&.close
+      end
+    end
+  end
+
+  def test_handled_outer_exception_does_not_hide_a_new_log_cleanup_failure
+    %i[context pause].each do |scope|
+      Dir.mktmpdir do |directory|
+        config = Net::Connector::Configuration.new(log_file: File.join(directory, "session.log"), log_format: :raw)
+        log = Net::Connector::Log.new(config, redactor: Net::Connector::Redactor.new)
+        transport = ConnectorFake.new
+        log.open(transport)
+        log.attach
+        file = log.instance_variable_get(:@io)
+        action = lambda do
+          if scope == :context
+            file.define_singleton_method(:flush) { raise IOError, "flush failed" }
+          else
+            transport.define_singleton_method(:log_output=) { |_| raise IOError, "attachment failed" }
+          end
+          :completed
+        end
+        begin
+          raise IOError, "already handled by caller"
+        rescue IOError
+          assert_raises(scope == :context ? Net::Connector::LogError : IOError) do
+            scope == :context ? log.with_operation_context(:collect, &action) : log.pause(&action)
+          end
+        end
+      ensure
+        file&.singleton_class&.remove_method(:flush) if scope == :context && file
+        transport&.singleton_class&.remove_method(:log_output=) if scope == :pause && transport
+        log&.close
+      end
+    end
+  end
+
   def test_application_logger_redacts_secrets_reconstructed_by_terminal_controls
     output = StringIO.new
     configuration = Net::Connector::Configuration.new(logger: ::Logger.new(output), log_level: :debug)

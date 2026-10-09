@@ -1,6 +1,10 @@
 # frozen_string_literal: true
 
 require_relative "../engine/error_metadata"
+require_relative "../engine/errors"
+require_relative "../device/local_backup"
+require_relative "../device/tftp/receipt"
+require_relative "../storage/private_file"
 
 module Net
   module Connector

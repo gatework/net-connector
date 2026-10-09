@@ -321,14 +321,13 @@ class TftpArchiveTest < Minitest::Test
     assert_equal 2, archived.validate!.ready.size
   end
 
-  def test_previous_entry_point_keeps_its_constructor_and_method_names
+  def test_upload_without_a_local_root_returns_the_device_receipt
     Dir.mktmpdir do |directory|
-      history = N::TftpHistory.new(server: "192.0.2.10", directory: directory)
+      archive = N::TftpArchive.new(directory: directory)
       item = device("H3C")
-      assert_kind_of N::TftpArchive, history
-      assert_equal history.upload_filename(item), history.path_for(item)
-      result = history.capture(item, started_at: Time.now.utc) { |remote| outcome(item, remote) }
-      assert_equal history.path_for(item), result.backup.path
+      result = archive.upload_and_archive(item, started_at: Time.now.utc) { |remote| outcome(item, remote) }
+      assert_equal archive.upload_filename(item), result.backup.path
+      assert_equal :device_reported, result.backup.verification
     end
   end
 end

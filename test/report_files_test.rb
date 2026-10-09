@@ -98,4 +98,27 @@ class ReportFilesTest < Minitest::Test
       end
     end
   end
+
+  def test_later_diagnostic_update_preserves_the_first_report_failure_and_committed_path
+    original, plan = fixture
+    Dir.mktmpdir do |directory|
+      original = N::Report::Files.write(original, directory: directory, plan: plan, concurrency: 1)
+      failed = original.with_report_error(IOError.new("first failure"), location: original.report_location)
+      updated = failed.with(callback_errors: [{ host: nil, error_type: "IOError" }])
+      N::Report::Text.stub(:write, ->(**) { raise Errno::ENOSPC }) do
+        result = N::Report::Files.write(updated, directory: directory, plan: plan, concurrency: 1)
+        assert_equal "IOError", result.report_error
+        assert_equal failed.report_diagnostic, result.report_diagnostic
+        document = JSON.parse(File.read(result.report_location))
+        assert_equal "IOError", document.fetch("report_error")
+        assert_equal 1, document.fetch("callback_errors").size
+      end
+      Net::Connector::Storage::PrivateFile.stub(:write, ->(*) { raise Errno::ENOSPC }) do
+        result = N::Report::Files.write(updated, directory: directory, plan: plan, concurrency: 1)
+        assert_equal original.report_location, result.report_location
+        assert_equal "IOError", result.report_error
+        assert_equal failed.report_diagnostic, result.report_diagnostic
+      end
+    end
+  end
 end

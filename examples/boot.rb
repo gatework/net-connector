@@ -8,5 +8,5 @@ ENV["NC_CONFIG"] = File.expand_path(ENV["NC_CONFIG"]) if ENV["NC_CONFIG"] && !EN
 require "dotenv"
 Dotenv.load(File.join(project_root, ".env"))
 
-# .env 和 YAML 中的相对备份、日志路径统一基于项目目录。
+# YAML 和 CLI 中的相对备份、日志路径统一基于项目目录。
 Dir.chdir(project_root)

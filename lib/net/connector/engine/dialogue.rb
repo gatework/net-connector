@@ -36,6 +36,9 @@ module Net
       # 根据当前提示计算响应文本或调用动态响应函数。
       def response(prompt) = @response.respond_to?(:call) ? @response.call(prompt) : @response
 
+      # 证据核对只能读取声明的静态响应，不能重新执行动态挑战回调。
+      def static_response = (@response if @response.is_a?(String))
+
       # 判断响应是否需要从日志和错误上下文中脱敏。
       def sensitive? = @sensitive
 
@@ -78,8 +81,8 @@ module Net
       def diagnostic(output)
         return if command_errors.empty?
 
-        # 先保留被回车覆写的失败，再识别颜色或退格处理后的可见诊断。
-        raw = output.gsub(/\r(?!\n)/, "\n")
+        # 样式不改变诊断历史；先拼回被颜色拆开的词，再保留重绘之前的失败。
+        raw = output.gsub(/\e\[[0-9;:]*m/, "").gsub(/\r(?!\n)/, "\n")
         diagnostic_line(raw) || (diagnostic_line(TerminalRenderer.render(output)) if output.match?(/[\e\b]/))
       end
 

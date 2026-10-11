@@ -18,8 +18,12 @@ module Net
 
           def committed? = state != :not_committed
           def durable? = state == :durable
+
+          # 阶段更新仍校验状态并冻结路径，Ruby 3.2 也不能绕过初始化约束。
+          def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
         end
 
+        # 写入失败仍携带阶段与提交回执，调用方据此区分未替换和已替换文件。
         class WriteError < IOError
           attr_reader :receipt, :code, :underlying_type
 
@@ -41,8 +45,10 @@ module Net
           def inspect = "#<#{self.class} state=#{receipt.state} phase=#{receipt.phase}>"
         end
 
+        # 替换已经提交后的持久化或收尾失败，不能按尚未写入处理。
         class PersistenceError < WriteError; end
 
+        # 目录同步能力缺失只表示持久性未确认，已替换的目标文件仍然保留。
         class DirectorySyncUnsupported < WriteError
           def initialize(**options)
             super

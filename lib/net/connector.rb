@@ -4,6 +4,7 @@ require_relative "connector/version"
 require_relative "connector/device/base"
 
 module Net
+  # 设备 API 的公开加载入口；只登记厂商名称，实际连接器在首次选择时加载。
   module Connector
     VENDORS = {
       h3c: "H3c",

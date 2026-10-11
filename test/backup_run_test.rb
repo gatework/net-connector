@@ -10,13 +10,46 @@ require_relative "support/fake_transport"
 class BackupRunTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
 
+  def test_invalid_policy_does_not_create_a_batch_directory_or_read_credentials
+    [{ "NC_PROTOCOL" => "invalid" }, { "NC_CONCURRENCY" => "0" },
+     { "NC_HOST_KEY_POLICY" => "replace" }].each do |invalid|
+      Dir.mktmpdir do |root|
+        error = StringIO.new
+        Netdisco::Connection.stub(:build, ->(*) { flunk "invalid policy read credentials" }) do
+          status = Netdisco::BackupRun.new(argv: [], env: invalid.merge("NC_BACKUP_DIRECTORY" => root),
+                                           output: StringIO.new, error: error).run
+          assert_equal 2, status, error.string
+        end
+        assert_empty Dir.children(root), invalid.inspect
+      end
+    end
+  end
+
+  def test_invalid_database_ca_path_is_rejected_before_directory_creation_or_credentials
+    Dir.mktmpdir do |root|
+      path = File.join(root, "config.yml")
+      File.write(path, { "netdisco" => { "source" => "postgres", "query" => "SELECT ip FROM device",
+                                        "db_sslrootcert" => "private-path\0suffix" } }.to_yaml)
+      output, error = StringIO.new, StringIO.new
+      Netdisco::Connection.stub(:build, ->(*) { flunk "invalid database policy read credentials" }) do
+        status = Netdisco::BackupRun.new(argv: ["--config", path, "--directory", root], env: {},
+                                        output: output, error: error).run
+        assert_equal 2, status
+      end
+      assert_equal ["config.yml"], Dir.children(root)
+      assert_empty output.string
+      assert_includes error.string, "netdisco.db_sslrootcert"
+      refute_includes error.string, "private-path"
+    end
+  end
+
   def test_backup_persists_plan_events_and_reports_missing_credentials_without_leaking_them
     Dir.mktmpdir do |root|
       output, error = StringIO.new, StringIO.new
       client = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
-      env = { "NC_BACKUP_DIRECTORY" => root, "NC_PROGRESS" => "0" }
+      env = {}
       Netdisco::Connection.stub(:build, [client, ->(_) { nil }]) do
-        status = Netdisco::BackupRun.new(argv: ["--json"], env: env, input: StringIO.new,
+        status = Netdisco::BackupRun.new(argv: ["--json", "--directory", root, "--no-progress"], env: env, input: StringIO.new,
                                         output: output, error: error).run
         assert_equal 1, status, error.string
       end
@@ -33,15 +66,21 @@ class BackupRunTest < Minitest::Test
     end
   end
 
+  def config_path(root)
+    path = File.join(root, "config.yml")
+    File.write(path, "tftp:\n  server: 192.0.2.10\n")
+    path
+  end
+
   def test_tftp_requires_local_root_for_verified_policy_before_inventory
     Dir.mktmpdir do |root|
       error = StringIO.new
-      status = Netdisco::BackupRun.new(mode: :tftp, argv: ["--success-policy", "verified"],
-                                       env: { "NC_BACKUP_DIRECTORY" => root, "TFTP_HOST" => "192.0.2.10" },
+      status = Netdisco::BackupRun.new(mode: :tftp, argv: ["--success-policy", "verified", "--directory", root, "--config", config_path(root)],
+                                       env: {},
                                        output: StringIO.new, error: error).run
       assert_equal 2, status
       assert_includes error.string, "verified policy requires a local TFTP directory"
-      assert_empty Dir.children(root)
+      assert_equal ["config.yml"], Dir.children(root)
     end
   end
 
@@ -56,7 +95,7 @@ class BackupRunTest < Minitest::Test
       end
       client = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
       Netdisco::Connection.stub(:build, [client, ->(_) { nil }]) do
-        status = Netdisco::BackupRun.new(argv: ["--json"], env: { "NC_BACKUP_DIRECTORY" => root },
+        status = Netdisco::BackupRun.new(argv: ["--json", "--directory", root], env: {},
                                         output: output, error: error).run
         assert_equal 1, status
       end
@@ -88,7 +127,7 @@ class BackupRunTest < Minitest::Test
         end
         Netdisco::Fleet.stub(:new, factory) do
           Netdisco::Connection.stub(:build, [client, ->(_) { { username: "audit" } }]) do
-            status = Netdisco::BackupRun.new(argv: ["--json"], env: { "NC_BACKUP_DIRECTORY" => root },
+            status = Netdisco::BackupRun.new(argv: ["--json", "--directory", root], env: {},
                                             output: output, error: error).run
             assert_equal 1, status, trigger
           end
@@ -110,9 +149,9 @@ class BackupRunTest < Minitest::Test
     Dir.mktmpdir do |root|
       output = StringIO.new
       client = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
-      env = { "NC_BACKUP_DIRECTORY" => root, "NC_PROGRESS" => "0" }
+      env = {}
       Netdisco::Connection.stub(:build, [client, ->(_) { nil }]) do
-        status = Netdisco::BackupRun.new(argv: ["--json", "--stdin-credentials"], env: env,
+        status = Netdisco::BackupRun.new(argv: ["--json", "--directory", root, "--no-progress", "--stdin-credentials"], env: env,
                                         input: StringIO.new("{}\nCANCEL\n"), output: output, error: StringIO.new).run
         assert_equal 1, status
       end

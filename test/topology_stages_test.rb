@@ -113,6 +113,21 @@ class TopologyStagesTest < Minitest::Test
     end
   end
 
+  def test_hidden_colored_failure_prevents_persistence_confirmation
+    each_device do |fixture|
+      plan = fixture.device.plan_interface_descriptions { "planned" }
+      completion = fixture.sample.fetch(:saved).lines.last.strip
+      ["Transfer fa\e[31miled\e[0m.\r#{completion}",
+       "Transfer fa\e[31miled\e[0m.\e[2K\e[1G#{completion}"].each do |output|
+        fixture.save_output = output
+        result = fixture.device.apply_interface_descriptions(plan, confirmed: true)
+        assert result.failure?, fixture.device.vendor.to_s
+        assert_equal :persistence_unconfirmed, result.error.code
+        plan = fixture.device.plan_interface_descriptions { "planned again" }
+      end
+    end
+  end
+
   def test_legacy_or_forged_command_sequences_are_rejected_before_changes
     each_device do |fixture|
       plan = fixture.device.plan_interface_descriptions { "planned" }

@@ -60,7 +60,7 @@ module Net
               threads.each do |thread|
                 begin
                   thread.join
-                rescue Exception # rubocop:disable Lint/RescueException -- Preserve the original interruption after all workers stop.
+                rescue Exception # rubocop:disable Lint/RescueException -- 等待全部工作线程停止，不让收尾异常覆盖原中断。
                   nil
                 end
               end

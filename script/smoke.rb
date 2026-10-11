@@ -26,7 +26,7 @@ raise "Gem loaded outside isolated install" unless File.realpath(spec.full_gem_p
 raise "Bundler leaked into plain installation" if ARGV.first == "plain" && defined?(Bundler)
 raise "Development tools leaked into application" unless (Gem.loaded_specs.keys & %w[rake rubocop parallel]).empty?
 
-%w[expect-pty textfsm digest english fileutils forwardable ipaddr json logger net-http open3 openssl
+%w[expect-pty textfsm digest fileutils forwardable ipaddr json logger net-http open3 openssl
    optparse securerandom shellwords stringio tempfile time timeout uri yaml].each do |name|
   raise "Undeclared runtime dependency: #{name}" unless spec.runtime_dependencies.any? { |dependency| dependency.name == name }
 end
@@ -148,7 +148,7 @@ raise "Executable wrapper escaped isolated install" unless File.realpath(executa
   raise "Installed executable output differs for #{argument}" unless actual.include?(expected) && other.empty?
 end
 
-settings = Net::Connector::Netdisco::Settings.new(env: {}, defaults: { "NETDISCO_MAX_DEVICES" => "2" })
+settings = Net::Connector::Netdisco::Settings.new(env: {}, defaults: { "ND_MAX_DEVICES" => "2" })
 policy = settings.snapshot(mode: :show_config)
 raise "Installed inventory budget missing" unless policy.client_options.fetch(:max_devices) == 2 && policy.frozen?
 output = StringIO.new

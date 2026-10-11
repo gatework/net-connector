@@ -7,6 +7,18 @@ require_relative "../lib/net/connector/netdisco"
 class NetdiscoPlanTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
 
+  def test_duplicate_index_preserves_invalid_addresses_and_marks_every_equivalent_host
+    rows = ["invalid-one", "invalid-two", "2001:db8::1", "2001:0db8:0:0:0:0:0:1", "2001:db8::1", "192.0.2.1"].map do |host|
+      { "ip" => host, "vendor" => "H3C" }
+    end
+    fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), settings: Netdisco::Settings.new(env: {}), result_store: nil)
+    plan = fleet.plan_backup
+
+    assert_equal [:invalid_address, :invalid_address, :duplicate_host, :duplicate_host, :duplicate_host, nil], plan.inventory.map(&:issue)
+    assert_equal ["192.0.2.1"], plan.selected.map(&:host)
+    assert_same plan, plan.validate!
+  end
+
   def test_external_plans_reject_duplicate_hosts_before_credentials_or_directory_creation
     fleet = Netdisco::Fleet.new(settings: Netdisco::Settings.new(env: {}), result_store: nil,
                                 credentials: ->(*) { flunk "invalid plan requested credentials" })

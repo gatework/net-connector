@@ -8,6 +8,7 @@ require_relative "../storage/private_file"
 module Net
   module Connector
     module Netdisco
+      # 调用方选择结果持久化方式；所有写入器接收同一份 Report，不再次执行设备任务。
       module ResultStore
         # 每批保存一份私有 JSON 报告，通过重命名防止半写文件。
         class Json

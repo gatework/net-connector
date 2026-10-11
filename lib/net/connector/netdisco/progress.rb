@@ -11,6 +11,7 @@ module Net
       class Progress
         attr_reader :output_error
 
+        # 调用方保留输出 IO 所有权；同一个互斥锁保护心跳、事件和任务计数。
         def initialize(io: $stderr, enabled: true, verbose: false)
           @io, @enabled, @verbose = io, enabled, verbose
           @tty = io.respond_to?(:tty?) && io.tty?
@@ -27,6 +28,7 @@ module Net
           write(nil, "正在读取 Netdisco 设备清单")
         end
 
+        # 以实际选中设备初始化进度，清单中被跳过的条目不计入执行任务总数。
         def plan(plan, concurrency:, limit_per_vendor: nil)
           @mutex.synchronize do
             @total = plan.ready.size
@@ -37,6 +39,7 @@ module Net
           end
         end
 
+        # 任务开始时记录单调时钟与登录阶段，不把开始通知当作连接成功。
         def start(device)
           @mutex.synchronize do
             @active += 1
@@ -75,6 +78,7 @@ module Net
           write(fields[:host], message) if message
         end
 
+        # 只消费最终任务结果，分别展示已保存、设备报告上传和服务器核验状态。
         def result(outcome)
           @mutex.synchronize do
             @completed += 1
@@ -104,6 +108,7 @@ module Net
           end
         end
 
+        # 使用报告的成功策略与受控失败分类，进度百分比不代替业务成功判定。
         def finish(report)
           return unless @enabled
 
@@ -148,6 +153,7 @@ module Net
           end
         end
 
+        # 心跳仅在持锁后刷新显示，不改变设备任务或完成计数。
         def tick
           @mutex.synchronize { refresh(force: true) }
         end
@@ -182,6 +188,7 @@ module Net
           format("%02d:%02d:%02d", total / 3600, total / 60 % 60, total % 60)
         end
 
+        # 吞吐与预计剩余时间使用单调时钟；异构设备的估算不能视为任务期限。
         def timing_line
           elapsed = [monotonic - (@run_started || @started_at), 0].max
           rate = elapsed.positive? ? @completed / elapsed : 0
@@ -200,6 +207,7 @@ module Net
           line
         end
 
+        # TTY 原地刷新最多每秒五次；详细事件和重定向输出采用独立显示路径。
         def refresh(force: false)
           return unless @enabled && @tty && !@verbose
 
@@ -230,6 +238,7 @@ module Net
           line
         end
 
+        # 擦除前一次实际显示的行数，避免短文本或窄终端留下旧状态。
         def clear_refresh
           return unless @refreshing
 

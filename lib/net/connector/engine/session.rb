@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "English"
 require_relative "authentication"
 require_relative "log"
 require_relative "redactor"
@@ -182,8 +181,11 @@ module Net
           @state = :interacting
           begin
             transport.interact(**options)
+          rescue Exception # rubocop:disable Lint/RescueException -- 交互失败或中断后仍关闭会话，保留本次原始异常。
+            failed = true
+            raise
           ensure
-            $ERROR_INFO ? close_preserving_failure : close_resources
+            failed ? close_preserving_failure : close_resources
           end
         end
       end
@@ -249,7 +251,7 @@ module Net
           failure = normalize_error(error, phase: phase)
           close_preserving_failure
           raise failure, cause: nil
-        rescue Exception # rubocop:disable Lint/RescueException -- Interrupts release the transport, then propagate.
+        rescue Exception # rubocop:disable Lint/RescueException -- 中断先释放传输资源，再继续向外传播。
           close_preserving_failure
           raise
         ensure
@@ -384,8 +386,15 @@ module Net
         @prompt = nil
         begin
           transport.close
+        rescue Exception # rubocop:disable Lint/RescueException -- 传输关闭失败或中断后仍须尝试关闭日志。
+          failed = true
+          raise
         ensure
-          @log.close
+          begin
+            @log.close
+          rescue Exception # rubocop:disable Lint/RescueException -- 日志收尾不能覆盖传输关闭的首个失败。
+            raise unless failed
+          end
         end
         nil
       rescue => error
@@ -395,7 +404,7 @@ module Net
       # 尝试清理资源但不覆盖原始操作异常。
       def close_preserving_failure
         close_resources
-      rescue
+      rescue Exception # rubocop:disable Lint/RescueException -- 原操作失败时，清理故障或中断均不得覆盖它。
         # 所有清理路径完成后，原始操作异常仍然是权威结果。
         nil
       end

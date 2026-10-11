@@ -176,8 +176,8 @@ BUNDLE_GEMFILE=gemfiles/minimum.gemfile bundle exec rake test package:verify
 当前这两个关键依赖的正常解析与下限恰好相同，报告仍记录实际版本，供以后比较。
 开发锁文件均忽略；gemspec 保持兼容范围，基准、夹具、兼容 Gemfile 和审阅报告均不进 gem。
 
-gem 只收录库代码、TextFSM 模板、CLI、架构/验证/发布文档、README、LICENSE、
-CHANGELOG、SECURITY 和 CONTRIBUTING。测试、示例、发布工具、工作流、本地评审快照、配置和备份不进入包。
+gem 只收录库代码、TextFSM 模板、CLI、双语设备/Netdisco 指南、架构/验证/发布文档、双语 README、LICENSE、
+CHANGELOG、SECURITY 和 CONTRIBUTING。仅两个非敏感 YAML 示例随包分发；测试、示例脚本、发布工具、工作流、本地评审快照、本地配置和备份不进入包。
 更改 gemspec 后，实际归档仍须通过独立的文件白名单检查。
 
 ## 敏感数据

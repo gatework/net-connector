@@ -6,6 +6,7 @@ require_relative "running_config/strategy"
 
 module Net
   module Connector
+    # 单次运行配置采集的协调器；策略状态仅在当前会话租约与 Fiber 内可见。
     class RunningConfig
       # 设备只引入此能力；采集入口和策略作用域与采集流程一起维护。
       module Capability
@@ -40,6 +41,7 @@ module Net
           @config_strategy_scope = previous
         end
 
+        # 离线清理使用新策略；只有当前 Fiber 可复用正在采集的策略状态。
         def config_strategy
           scope = @config_strategy_scope
           scope && scope.first.equal?(Fiber.current) ? scope.last : RunningConfig.strategy(self)

@@ -5,6 +5,7 @@ require_relative "tftp/receipt"
 
 module Net
   module Connector
+    # 协调原生上传与设备证据核对；设备报告完成和服务器文件核验分别处理。
     class Tftp
       # 设备入口与功能实现共置，Base 只组合能力，不重复业务流程。
       module Capability
@@ -66,6 +67,7 @@ module Net
 
       private
 
+      # 只接受厂商声明的固定元数据字段，沿用已确认的上传与路径回执。
       def build_receipt(strategy, target, source_file, explicit_source, receipt)
         metadata = strategy.receipt_metadata(target, source_file: source_file, explicit_source: explicit_source)
         unless metadata.is_a?(Hash) && (metadata.keys - %i[configuration_kind source_file format requested_path]).empty?
@@ -74,6 +76,7 @@ module Net
         receipt.with(**{ source_file: source_file, requested_path: target.path }.merge(metadata))
       end
 
+      # 实际目标必须重新校验；解析失败保留上传事实，但不推测远端路径。
       def remote_path(strategy, target, result, receipt)
         TftpTarget.validate_path!(strategy.remote_path(target, result))
       rescue StandardError => error
@@ -83,7 +86,7 @@ module Net
 
       # 失败证据优先；步骤中的明确完成行可在随后清理失败时证明设备已经报告上传。
       def confirm_transfer!(strategy, target, result)
-        if transfer_failed?(result)
+        if transfer_failed?(strategy, result)
           reject_transfer!(target, :transfer_failed, "device reported TFTP backup failure")
         end
         return if strategy.device_reported_complete?(result)
@@ -104,18 +107,16 @@ module Net
         raise failure, cause: nil
       end
 
-      # 识别设备回显中的传输失败信息。
-      def transfer_failed?(result)
-        result.steps.any? do |step|
+      # 已有厂商策略可提供证据枚举；其他策略复用公共证据过滤，不重跑交互回调。
+      def transfer_failed?(strategy, result)
+        evidence = strategy.respond_to?(:failure_outputs) ? strategy : Strategy.new(@device)
+        evidence.failure_outputs(result).any? do |output|
           # 文件名中的 failed.cfg、error-backup 等不属于诊断词；句末标点仍是词边界。
           pattern = %r{(?<![\w./-])
             (?:error|failed|failure|aborted|denied|timed\ out|timeout|not\ found|no\ such\ file|
                unable\ to|network\ is\ unreachable|can't\ open)
             (?![\w/-]|\.[\w])}ix
-          # 原始诊断不能被回车抹除，颜色控制符也不能掩盖失败词。
-          history = step.output.gsub(/\r(?!\n)/, "\n")
-          step.output.match?(pattern) || TerminalRenderer.render(history).match?(pattern) ||
-            TerminalRenderer.render(step.output).match?(pattern)
+          output.match?(pattern)
         end
       end
     end

@@ -5,6 +5,7 @@ require_relative "../../device/tftp/strategy"
 module Net
   module Connector
     module CiscoIos
+      # 通过交互复制运行配置，以设备的复制完成行确认上传。
       class TftpBackup < Tftp::Strategy
         # 在连接前拒绝当前厂商不支持的参数组合。
         def validate_options!(_target, source_file:, vrf: nil)
@@ -12,6 +13,7 @@ module Net
           raise ArgumentError, "Cisco IOS TFTP backup does not use vrf" unless vrf.nil?
         end
 
+        # 声明本厂商实际导出的配置种类与格式，不推断服务器文件已核验。
         def receipt_metadata(_target, **) = { configuration_kind: :running, format: :cfg }
 
         # 构造当前厂商的 TFTP 导出交互脚本。

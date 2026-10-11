@@ -19,6 +19,40 @@ class KnownHostsTest < Minitest::Test
     FileUtils.remove_entry(@directory)
   end
 
+  def test_initialization_keeps_original_failure_when_snapshot_cleanup_fails
+    [IOError.new("snapshot failed"), Interrupt.new("snapshot interrupted")].each do |original|
+      file = Tempfile.new(["snapshot-", ""], @directory)
+      path = file.path
+      close = file.method(:close!)
+      closed = 0
+      file.define_singleton_method(:write) { |*| raise original }
+      file.define_singleton_method(:close!) { closed += 1; close.call; raise IOError, "cleanup failed" }
+      config = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit", known_hosts: @destination)
+      Tempfile.stub(:new, file) do
+        raised = assert_raises(original.class) { Net::Connector::KnownHosts.new(config) }
+        assert_same original, raised
+      end
+      assert_equal 1, closed
+      refute File.exist?(path)
+    end
+  end
+
+  def test_close_removes_snapshot_even_when_old_file_removal_fails
+    config = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit", known_hosts: @destination)
+    entry = Net::Connector::KnownHosts.new(config)
+    path = entry.path
+    File.write(path + ".old", "previous snapshot")
+    original = IOError.new("old file removal failed")
+    unlink = File.method(:unlink)
+    File.stub(:unlink, ->(target) { target == path + ".old" ? (raise original) : unlink.call(target) }) do
+      raised = assert_raises(IOError) { entry.close }
+      assert_same original, raised
+    end
+    refute File.exist?(path)
+    entry.close
+    refute File.exist?(path + ".old")
+  end
+
   def test_lock_wait_expires_without_changing_trust_and_can_be_retried_after_unlock
     original = "192.0.2.9 #{@key}\n"
     File.write(@destination, original)

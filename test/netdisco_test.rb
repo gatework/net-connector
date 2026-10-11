@@ -113,15 +113,15 @@ class NetdiscoTest < Minitest::Test
     assert_equal :hillstone, rules.resolve("vendor" => "Hillstone Networks")
   end
 
-  def test_settings_read_environment_defaults_and_vendor_credentials
-    env = { "NETDISCO_URL" => "https://inventory.example", "NETDISCO_API_KEY" => "token",
+  def test_settings_read_public_defaults_and_environment_vendor_credentials
+    env = { "ND_URL" => "https://inventory.example", "ND_API_KEY" => "token",
             "NC_DEVICE_USERNAME" => "global", "NC_DEVICE_PASSWORD" => "global-secret",
             "NC_HUAWEI_USERNAME" => "huawei", "NC_HUAWEI_PASSWORD" => "vendor-secret",
             "NC_CONCURRENCY" => "2", "NC_INCLUDE_VENDORS" => "huawei",
             "NC_VENDOR_OVERRIDES" => '{"custom maker":"huawei"}',
             "NC_HOST_OVERRIDES" => '{"192.0.2.9":"h3c_wireless"}',
             "NC_DEVICE_RULES" => '[{"vendor":"Cisco","model_prefix":"CustomNX","connector":"cisco_nxos"}]' }
-    policy_keys = %w[NC_INCLUDE_VENDORS NC_VENDOR_OVERRIDES NC_HOST_OVERRIDES NC_DEVICE_RULES]
+    policy_keys = %w[NC_CONCURRENCY NC_INCLUDE_VENDORS NC_VENDOR_OVERRIDES NC_HOST_OVERRIDES NC_DEVICE_RULES]
     defaults = policy_keys.to_h { |key| [key, env.delete(key)] }
     settings = Settings.new(env: env, defaults: defaults)
     assert_equal 2, settings.concurrency
@@ -147,7 +147,7 @@ class NetdiscoTest < Minitest::Test
     assert_equal({ huawei: "flash:/startup.cfg" }, settings.tftp_source_files)
     assert_equal({}, settings.tftp_vrfs)
 
-    settings = Settings.new(env: { "NC_SAMPLE_PER_VENDOR" => "2" }, defaults: {
+    settings = Settings.new(env: {}, defaults: { "NC_SAMPLE_PER_VENDOR" => "2",
                                    "NC_H3C_TFTP_SOURCE_FILE" => "flash:/saved.cfg",
                                    "NC_TFTP_VRFS" => '{"cisco_nxos":"management"}' })
     assert_equal 2, settings.limit_per_vendor
@@ -175,7 +175,7 @@ class NetdiscoTest < Minitest::Test
     Dir.mktmpdir do |root|
       directory = File.join(root, "backup")
       logs = File.join(root, "logs")
-      settings = Settings.new(env: { "NC_LOG_DIRECTORY" => logs })
+      settings = Settings.new(env: {}, defaults: { "NC_LOG_DIRECTORY" => logs })
       fleet = Fleet.new(settings: settings, client: client, result_store: nil,
                         credentials: ->(_) { calls << :credentials },
                         connector_factory: ->(*) { calls << :connector })
@@ -374,7 +374,7 @@ class NetdiscoTest < Minitest::Test
         connector.define_singleton_method(:close) {}
       end
     end
-    settings = Settings.new(env: { "NC_CONCURRENCY" => "50" })
+    settings = Settings.new(env: {}, defaults: { "NC_CONCURRENCY" => "50" })
     assert_equal 50, settings.concurrency
     fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new(rows), settings: settings,
                       credentials: ->(_) { { username: "admin" } }, connector_factory: factory)
@@ -618,8 +618,8 @@ class NetdiscoTest < Minitest::Test
       output = StringIO.new
       error = StringIO.new
       cli = Net::Connector::Netdisco::CLI.new(
-        argv: ["--plan", "--host", "192.0.2.2"],
-        env: { "NC_BACKUP_DIRECTORY" => directory }, output: output, error: error,
+        argv: ["--plan", "--host", "192.0.2.2", "--directory", directory],
+        env: {}, output: output, error: error,
         fleet_factory: ->(_) { fleet }
       )
       assert_equal 2, cli.run
@@ -700,7 +700,7 @@ class NetdiscoTest < Minitest::Test
     end
   end
 
-  def test_yaml_config_loads_non_secret_settings_with_environment_precedence
+  def test_yaml_config_loads_non_secret_settings_with_cli_precedence
     Dir.mktmpdir do |directory|
       path = File.join(directory, "config.yml")
       File.write(path, <<~YAML)
@@ -720,16 +720,16 @@ class NetdiscoTest < Minitest::Test
           vrfs:
             cisco_nxos: management
       YAML
-      env = { "NC_CONCURRENCY" => "4", "NETDISCO_PASSWORD" => "private-password",
+      env = { "ND_PASSWORD" => "private-password",
               "NC_DEVICE_PASSWORD" => "device-secret" }
       settings = Settings.from_file(path, env: env)
-      assert_equal 4, settings.concurrency
+      assert_equal 2, settings.concurrency
       assert_equal File.join(directory, "saved"), settings.backup_directory
       assert_equal :h3c, settings.rules.resolve("vendor" => "Custom Vendor")
       assert_equal ["192.0.2.1"], settings.public_config.fetch(:inventory).fetch(:include_hosts)
       output = StringIO.new
       error = StringIO.new
-      status = Net::Connector::Netdisco::CLI.new(argv: ["--config", path, "--show-config"],
+      status = Net::Connector::Netdisco::CLI.new(argv: ["--config", path, "--show-config", "--concurrency", "4"],
                                                  env: env, output: output, error: error).run
       assert_equal 0, status, error.string
       assert_equal 4, JSON.parse(output.string).fetch("backup").fetch("concurrency")
@@ -793,7 +793,9 @@ class NetdiscoTest < Minitest::Test
                 result_store: nil)
     end
     Dir.mktmpdir do |directory|
-      env = { "TFTP_HOST" => "192.0.2.10", "NC_BACKUP_DIRECTORY" => directory }
+      path = File.join(directory, "config.yml")
+      File.write(path, "backup:\n  directory: #{directory}\ntftp:\n  server: 192.0.2.10\n")
+      env = { "NC_CONFIG" => path }
       output = StringIO.new
       error = StringIO.new
       cli = Net::Connector::Netdisco::CLI.new(

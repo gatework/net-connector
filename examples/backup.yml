@@ -1,9 +1,9 @@
-# Non-secret settings only. Credentials belong in environment variables.
-# Common NC_* environment variables override their YAML counterparts.
+# 仅保存非敏感策略，凭据使用环境变量。
+# ND_URL 可覆盖 netdisco.url；其他公开策略由 YAML 或 CLI 设置。
 backup:
   directory: ./examples/backups
   concurrency: 4
-  # limit_per_vendor: 3 # Omit for full inventory.
+  # limit_per_vendor: 3 # 省略时使用全量清单。
 netdisco:
   source: http
   page_size: 500
@@ -27,13 +27,14 @@ inventory:
 ssh:
   protocol: ssh
   vendor_protocols: {}
-  host_key_policy: accept_new # Persist first-seen keys; reject changed keys.
+  host_key_policy: accept_new # 保存首次见到的密钥，拒绝已有密钥变化。
   log_level: info
   max_script_output_bytes: null
 tftp:
   vrfs:
     cisco_nxos: management
     hillstone: mgt-vr
+  # verification_root: /srv/tftp
   # server: 192.0.2.10
   # h3c_source_file: flash:/startup.cfg
   # h3c_wireless_source_file: flash:/startup.cfg

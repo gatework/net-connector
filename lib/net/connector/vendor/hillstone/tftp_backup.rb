@@ -5,6 +5,7 @@ require_relative "../../device/tftp/strategy"
 module Net
   module Connector
     module Hillstone
+      # 导出山石启动配置，并从完成行确认设备实际使用的 dat 文件名。
       class TftpBackup < Tftp::Strategy
         # 山石原生导出的配置文件使用 dat 扩展名。
         def self.file_extension = "dat"
@@ -17,6 +18,7 @@ module Net
           raise ArgumentError, "Hillstone TFTP filename cannot contain a directory"
         end
 
+        # 声明本厂商实际导出的配置种类与格式，不推断服务器文件已核验。
         def receipt_metadata(target, **)
           { configuration_kind: :startup, format: :dat, requested_path: target.explicit_path? ? target.path : nil }
         end

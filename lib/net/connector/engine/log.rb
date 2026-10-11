@@ -39,7 +39,7 @@ module Net
           open_transcript if @io && @configuration.log_level == :debug
         end
       rescue => error
-        close_preserving_error
+        close_preserving_failure
         raise build_error("unable to open session log", error), cause: nil
       end
 
@@ -49,13 +49,13 @@ module Net
         finish_output
         @context = @context.merge(fields).freeze
         yield
-      rescue Exception # rubocop:disable Lint/RescueException -- Preserve only failures propagating from this scope, including interrupts.
+      rescue Exception # rubocop:disable Lint/RescueException -- 保留从当前作用域向外传播的故障，包括中断。
         failed = true
         raise
       ensure
         begin
           finish_output
-        rescue Error
+        rescue Exception # rubocop:disable Lint/RescueException -- 收尾故障或中断不能覆盖当前作用域的原始失败。
           raise unless failed
         ensure
           @context = previous
@@ -171,13 +171,13 @@ module Net
         finish_output
         @transport.log_output = nil if @transport
         yield
-      rescue Exception # rubocop:disable Lint/RescueException -- Restore attachment without replacing this scope's failure or interruption.
+      rescue Exception # rubocop:disable Lint/RescueException -- 恢复日志接线，不覆盖当前作用域的故障或中断。
         failed = true
         raise
       ensure
         begin
           @transport.log_output = self if @transport && @writer && @attached
-        rescue StandardError
+        rescue Exception # rubocop:disable Lint/RescueException -- 接线恢复故障或中断不能覆盖原始操作异常。
           # 恢复接线仍须尝试，但不能盖掉设备失败或用户中断。
           raise unless failed
         end
@@ -188,9 +188,14 @@ module Net
         begin
           @transport.log_output = nil if @transport
           finish_output
+        rescue Exception # rubocop:disable Lint/RescueException -- 脱离日志或刷新失败后仍须关闭文件并清除状态。
+          failed = true
+          raise
         ensure
           begin
             @io&.close
+          rescue Exception # rubocop:disable Lint/RescueException -- 文件关闭不能覆盖首个日志收尾故障或中断。
+            raise unless failed
           ensure
             @writer = @output = @transcript = @logger = @io = @transport = @session_id = nil
             @attached = false
@@ -249,10 +254,10 @@ module Net
           file.binmode
           file.write("\n") if file.size.positive? && @configuration.log_format == :text
           file
-        rescue Exception # rubocop:disable Lint/RescueException -- Release partially configured files on interrupts too.
+        rescue Exception # rubocop:disable Lint/RescueException -- 中断时也释放尚未完成设置的文件。
           begin
             file.close
-          rescue
+          rescue Exception # rubocop:disable Lint/RescueException -- 保留文件设置的原始故障或中断。
             # 保留设置失败的原始原因。
           end
           raise
@@ -260,9 +265,9 @@ module Net
       end
 
       # 在日志打开失败后尽力释放资源。
-      def close_preserving_error
+      def close_preserving_failure
         close
-      rescue
+      rescue Exception # rubocop:disable Lint/RescueException -- 清理故障或中断不能覆盖日志打开失败。
         nil
       end
 

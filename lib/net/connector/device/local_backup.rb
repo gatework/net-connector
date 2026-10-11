@@ -39,6 +39,7 @@ module Net
       end
     end
 
+    # 先取得路径锁再采集和原子写入；提交后的收尾错误仍保留备份元数据。
     class LocalBackup
       # 设备入口与功能实现共置，Base 只组合能力，不重复业务流程。
       module Capability
@@ -77,12 +78,14 @@ module Net
         backup = Backup.new(path: destination, bytes: contents.bytesize,
                             sha256: digest, collected_at: Time.now.utc, change: change,
                             previous_sha256: previous_digest)
+        # 内容未变也须核对权限与目录项身份；只在两者仍有效时保留原文件和 mtime。
         if change != :unchanged || previous.mode != 0o600 || !Storage::SafeFile.same_entry?(destination, previous)
           write_backup(backup, contents)
         end
         backup
       end
 
+      # 替换后失败仍交付已提交的备份回执，不能让调用方误判为没有产物。
       def write_backup(backup, contents)
         Storage::PrivateFile.write(backup.path, contents)
       rescue Storage::PrivateFile::WriteError => error

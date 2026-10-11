@@ -13,7 +13,7 @@ module SecretScan
   LOCAL_DIRECTORIES = %w[.git .bundle .idea .vscode .ssh .gem .secrets secrets tmp pkg vendor
                          backups exports logs log reports coverage .rubocop_cache .ruby-lsp .yardoc doc rdoc].freeze
   SOURCE_DIRECTORIES = %w[lib bin test examples docs script gemfiles .github].freeze
-  SOURCE_FILES = %w[Gemfile Rakefile net-connector.gemspec README.md CHANGELOG.md LICENSE
+  SOURCE_FILES = %w[Gemfile Rakefile net-connector.gemspec README.md README.zh-CN.md CHANGELOG.md LICENSE
                     .gitignore .gitleaks.toml .rubocop.yml .env.example].freeze
 
   def self.forbidden_path?(path)

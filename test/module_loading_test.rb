@@ -163,7 +163,7 @@ class ModuleLoadingTest < Minitest::Test
         config = "interface Ethernet1/1\n description offline\n!\n"
         File.binwrite(File.join(directory, "192.0.2.1.txt"), config)
         ARGV.replace(["--export", "192.0.2.1", "--directory", directory])
-        ENV.delete_if { |key, _| key.start_with?("NC_", "NETDISCO_", "TFTP_") }
+        ENV.delete_if { |key, _| key.start_with?("NC_", "ND_", "NETDISCO_", "TFTP_") }
         output, errors = StringIO.new, StringIO.new
         $stdout, $stderr = output, errors
         begin

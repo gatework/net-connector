@@ -24,9 +24,10 @@ module Net
         def persistence_confirmed?(result)
           !result.steps.empty? && result.steps.all? do |step|
             raw = step.output.delete_suffix(step.prompt.to_s)
+            history = raw.gsub(/\e\[[0-9;:]*m/, "").gsub(/\r(?!\n)/, "\n")
             rendered = TerminalRenderer.render(raw)
             failure = /\b(?:error|failed|failure|denied|cannot|unable|unsuccessful|aborted)\b/i
-            next false if raw.match?(failure) || rendered.match?(failure)
+            next false if history.match?(failure) || TerminalRenderer.render(history).match?(failure) || rendered.match?(failure)
 
             rendered.lines.any? { |line| line.strip.match?(persistence_pattern) }
           end

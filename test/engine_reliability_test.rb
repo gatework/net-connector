@@ -8,6 +8,48 @@ require_relative "../lib/net/connector"
 require_relative "support/fake_transport"
 
 class EngineReliabilityTest < Minitest::Test
+  def test_session_close_keeps_transport_interruption_when_log_cleanup_also_fails
+    transport = ConnectorFake.new("router#")
+    device = Net::Connector.build(:cisco_ios, host: "192.0.2.1", username: "admin", transport: transport)
+    device.connect
+    original = Interrupt.new("transport interrupted")
+    transport.on_close = -> { raise original }
+    log = device.instance_variable_get(:@session).instance_variable_get(:@log)
+    log.define_singleton_method(:close) { raise IOError, "log cleanup failed" }
+    raised = assert_raises(Interrupt) { device.close }
+    assert_same original, raised
+    refute device.connected?
+    assert_equal 1, transport.closes
+  end
+
+  def test_command_failure_survives_transport_cleanup_interruption
+    transport = ConnectorFake.new("router#", "% Invalid input\nrouter#")
+    transport.on_close = -> { raise Interrupt, "cleanup interrupted" }
+    device = Net::Connector.build(:cisco_ios, host: "192.0.2.1", username: "admin", transport: transport)
+    begin
+      result = device.execute_command("show broken")
+    rescue Interrupt
+      flunk "cleanup interruption replaced device failure"
+    end
+    assert_instance_of Net::Connector::DeviceError, result.error
+    assert_equal 1, transport.closes
+    refute device.connected?
+  end
+
+  def test_log_close_keeps_detachment_interruption_and_still_closes_the_file
+    log = Net::Connector::Log.new(Net::Connector::Configuration.new, redactor: Net::Connector::Redactor.new)
+    transport, file = ConnectorFake.new, StringIO.new
+    original = Interrupt.new("detachment interrupted")
+    transport.define_singleton_method(:log_output=) { |_| raise original }
+    file.define_singleton_method(:close) { super(); raise IOError, "file cleanup failed" }
+    log.instance_variable_set(:@transport, transport)
+    log.instance_variable_set(:@io, file)
+    raised = assert_raises(Interrupt) { log.close }
+    assert_same original, raised
+    assert file.closed?
+    log.close
+  end
+
   def test_nonexception_exit_from_device_dialogue_closes_the_incomplete_session
     transport = ConnectorFake.new("router#", "Destination filename:", "router#", "router#")
     device = Net::Connector.build(:cisco_ios, host: "192.0.2.1", username: "admin", transport: transport)
@@ -35,6 +77,20 @@ class EngineReliabilityTest < Minitest::Test
       assert_includes result.error.message, "% Invalid input"
       assert_empty result.steps
       refute device.connected?
+    ensure
+      device&.close
+    end
+  end
+
+  def test_hidden_colored_diagnostic_stops_following_save_command
+    ["% Inv\e[31malid\e[0m input\rcleared\e[K\n",
+     "% Inv\e[31malid\e[0m input\e[2K\e[1Gcleared\n"].each do |output|
+      transport = ConnectorFake.new("router#", "#{output}router#", "[OK]\nrouter#")
+      device = Net::Connector.build(:cisco_ios, host: "192.0.2.1", username: "admin", transport: transport)
+      result = device.execute_script(["description planned", "copy running-config startup-config"])
+      assert_instance_of Net::Connector::DeviceError, result.error
+      assert_equal ["description planned\n"], transport.writes
+      assert_empty result.steps
     ensure
       device&.close
     end
@@ -74,7 +130,8 @@ class EngineReliabilityTest < Minitest::Test
   end
 
   def test_log_scope_cleanup_preserves_business_errors_and_interrupts
-    %i[context pause].product([Net::Connector::DeviceError.new("device rejected"), Interrupt.new("cancelled")]).each do |scope, failure|
+    %i[context pause].product([Net::Connector::DeviceError.new("device rejected"), Interrupt.new("cancelled")],
+                             [IOError, Interrupt]).each do |scope, failure, cleanup_class|
       Dir.mktmpdir do |directory|
         config = Net::Connector::Configuration.new(log_file: File.join(directory, "session.log"), log_format: :raw)
         log = Net::Connector::Log.new(config, redactor: Net::Connector::Redactor.new)
@@ -84,9 +141,9 @@ class EngineReliabilityTest < Minitest::Test
         file = log.instance_variable_get(:@io)
         action = lambda do
           if scope == :context
-            file.define_singleton_method(:flush) { raise IOError, "flush failed" }
+            file.define_singleton_method(:flush) { raise cleanup_class, "flush failed" }
           else
-            transport.define_singleton_method(:log_output=) { |_| raise IOError, "attachment failed" }
+            transport.define_singleton_method(:log_output=) { |_| raise cleanup_class, "attachment failed" }
           end
           raise failure
         end
@@ -94,6 +151,8 @@ class EngineReliabilityTest < Minitest::Test
           scope == :context ? log.with_operation_context(:collect, &action) : log.pause(&action)
         end
         assert_same failure, observed
+      rescue Interrupt
+        flunk "log cleanup interruption replaced the original failure"
       ensure
         file&.singleton_class&.remove_method(:flush) if scope == :context && file
         transport&.singleton_class&.remove_method(:log_output=) if scope == :pause && transport

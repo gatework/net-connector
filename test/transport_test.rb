@@ -21,6 +21,55 @@ class ConnectorTransportTest < Minitest::Test
     def argv = [RbConfig.ruby, "--disable-gems", "-e", @script]
   end
 
+  def test_ssh_startup_keeps_original_failure_when_trust_cleanup_also_fails
+    [IOError.new("startup failed"), Interrupt.new("startup interrupted")].each do |original|
+      configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test", host_key_policy: :accept_new)
+      closed = 0
+      trust = Object.new
+      trust.define_singleton_method(:close) { closed += 1; raise IOError, "cleanup failed" }
+      transport = Connector::Transports::Ssh.new(configuration, channel_factory: -> { raise original })
+      Connector::KnownHosts.stub(:new, trust) do
+        raised = assert_raises(original.class) { transport.open }
+        assert_same original, raised
+      end
+      assert_equal 1, closed
+      assert transport.closed?
+      transport.close
+      assert_equal 1, closed
+    end
+  end
+
+  def test_ssh_close_attempts_both_resources_and_keeps_the_first_failure
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test")
+    transport = Connector::Transports::Ssh.new(configuration)
+    closed = []
+    original = Interrupt.new("channel interrupted")
+    channel, trust = Object.new, Object.new
+    channel.define_singleton_method(:hard_close) { closed << :channel; raise original }
+    trust.define_singleton_method(:close) { closed << :trust; raise IOError, "trust cleanup failed" }
+    transport.instance_variable_set(:@channel, channel)
+    transport.instance_variable_set(:@known_hosts, trust)
+    raised = assert_raises(Interrupt) { transport.close }
+    assert_same original, raised
+    assert_equal %i[channel trust], closed
+    transport.close
+    assert_equal %i[channel trust], closed
+  end
+
+  def test_ssh_close_reports_a_trust_cleanup_failure_without_retrying_the_same_resource
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test")
+    transport = Connector::Transports::Ssh.new(configuration)
+    closed = 0
+    trust = Object.new
+    original = IOError.new("trust cleanup failed")
+    trust.define_singleton_method(:close) { closed += 1; raise original }
+    transport.instance_variable_set(:@known_hosts, trust)
+    raised = assert_raises(IOError) { transport.close }
+    assert_same original, raised
+    transport.close
+    assert_equal 1, closed
+  end
+
   def test_fragmented_pager_preserves_output_and_reaps_the_child
     device, transport = local_device(<<~'RUBY')
       $stdout.sync = true

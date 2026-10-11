@@ -8,6 +8,50 @@ class ValueObjectContractTest < Minitest::Test
   Connector = Net::Connector
   Netdisco = Connector::Netdisco
 
+  def test_device_updates_copy_and_freeze_external_strings
+    original = Netdisco::Device.from_row({ "ip" => "192.0.2.1", "vendor" => "H3C" }, rules: Netdisco::Rules.new)
+    host = +"192.0.2.2"
+    updated = original.with(host: host)
+    host.replace("192.0.2.3")
+    assert_equal "192.0.2.2", updated.host
+    assert_predicate updated.host, :frozen?
+    assert_equal "192.0.2.1", original.host
+  end
+
+  def test_plan_updates_copy_and_freeze_external_containers
+    device = Netdisco::Device.from_row({ "ip" => "192.0.2.1", "vendor" => "H3C" }, rules: Netdisco::Rules.new)
+    original = Netdisco::Plan.new(mode: :backup, inventory: [device], ready: [[0, device]], outcomes: [nil])
+    inventory, tasks, outcomes = [device], [[0, device]], [nil]
+    updated = original.with(inventory: inventory, ready: tasks, outcomes: outcomes)
+    inventory.clear
+    tasks.first.clear
+    tasks.clear
+    outcomes.clear
+    assert_same updated, updated.validate!
+    assert_equal [device], updated.selected
+    [updated.inventory, updated.ready, updated.ready.first, updated.outcomes].each { |value| assert_predicate value, :frozen? }
+  end
+
+  def test_file_receipt_updates_revalidate_and_copy_the_path
+    original = Connector::Storage::PrivateFile::Receipt.new(path: "backup.cfg", state: :committed, phase: :directory_sync)
+    path = +"updated.cfg"
+    updated = original.with(path: path)
+    path.replace("changed.cfg")
+    assert_equal "updated.cfg", updated.path
+    assert_predicate updated.path, :frozen?
+    assert_raises(ArgumentError) { original.with(state: :unknown) }
+    assert_raises(ArgumentError) { original.with(phase: :unknown) }
+  end
+
+  def test_diagnostic_updates_apply_the_same_white_list_as_construction
+    original = Netdisco::Diagnostic.new(error_type: "IOError")
+    values = { error_type: "private-value", underlying_type: "private-value", error_code: :private_value,
+               phase: :private_value, artifact_state: :private_value, artifact_phase: :private_value, verification: :private_value }
+    updated = original.with(**values)
+    assert_equal Netdisco::Diagnostic.new(**values), updated
+    refute_includes updated.to_h.to_json, "private"
+  end
+
   def test_backup_constructor_preserves_member_references
     path = +"backup.cfg"
     sha256 = +"digest"

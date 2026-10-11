@@ -17,6 +17,9 @@ module Net
           super(*frozen_values, **frozen_attributes)
         end
 
+        # Ruby 3.2 的 Data#with 不调用初始化；更新也须复制并冻结外部字符串。
+        def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
+
         # 将 Netdisco 清单记录转换为可规划的设备对象。
         def self.from_row(row, rules:)
           valid = row.is_a?(Hash) && row["ip"].is_a?(String) && !row["ip"].empty? &&

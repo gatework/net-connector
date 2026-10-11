@@ -39,7 +39,7 @@ module Net
             return 0
           end
           if options[:tftp] && !options[:plan] && !settings.tftp_server
-            raise ArgumentError, "TFTP_HOST is required"
+            raise ArgumentError, "YAML tftp.server is required"
           end
 
           fleet = @fleet_factory.call(settings)
@@ -71,7 +71,7 @@ module Net
 
         private
 
-        # 文件、环境变量、命令行按优先级覆盖，凭据仍只来自环境变量。
+        # 公开 CLI 参数覆盖 YAML 与 ND_URL；设备凭据按环境或显式 CLI 参数解析。
         def settings_for(options)
           Options.settings(options, env: @env)
         end
@@ -105,7 +105,7 @@ module Net
             fleet.tftp_backup_all(plan: plan, server: settings.tftp_server,
                                   concurrency: settings.concurrency,
                                   vrfs: settings.tftp_vrfs,
-                                  source_files: settings.tftp_source_files, verification_root: options[:tftp_root] || @env["TFTP_ROOT"], **reporting)
+                                  source_files: settings.tftp_source_files, verification_root: options[:tftp_root] || settings.tftp_root, **reporting)
           else
             fleet.backup_all(plan: plan, directory: settings.backup_directory,
                              concurrency: settings.concurrency, **reporting)

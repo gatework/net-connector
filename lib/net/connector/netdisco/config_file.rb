@@ -6,20 +6,24 @@ require "yaml"
 module Net
   module Connector
     module Netdisco
-      # 命令行使用的无凭据 YAML 配置，环境变量优先。
+      # 无凭据 YAML 配置；仅 ND_URL 允许从进程环境覆盖，其他策略由 CLI 覆盖。
       class ConfigFile
         FIELDS = {
-          "netdisco" => { "source" => ["NETDISCO_SOURCE", :string],
-                          "query" => ["NETDISCO_QUERY", :string],
-                          "query_params" => ["NETDISCO_QUERY_PARAMS", :json_array],
-                          "url" => ["NETDISCO_URL", :string],
-                          "page_size" => ["NETDISCO_PAGE_SIZE", :integer],
-                          "max_pages" => ["NETDISCO_MAX_PAGES", :integer],
-                          "max_response_bytes" => ["NETDISCO_MAX_RESPONSE_BYTES", :integer],
-                          "max_inventory_bytes" => ["NETDISCO_MAX_INVENTORY_BYTES", :integer],
-                          "max_devices" => ["NETDISCO_MAX_DEVICES", :integer],
-                          "inventory_timeout" => ["NETDISCO_INVENTORY_TIMEOUT", :number],
-                          "allow_insecure_http" => ["NETDISCO_ALLOW_INSECURE_HTTP", :boolean] },
+          "netdisco" => { "source" => ["ND_SOURCE", :string],
+                          "query" => ["ND_QUERY", :string],
+                          "query_params" => ["ND_QUERY_PARAMS", :json_array],
+                          "url" => ["ND_URL", :string],
+                          "page_size" => ["ND_PAGE_SIZE", :integer],
+                          "max_pages" => ["ND_MAX_PAGES", :integer],
+                          "max_response_bytes" => ["ND_MAX_RESPONSE_BYTES", :integer],
+                          "max_inventory_bytes" => ["ND_MAX_INVENTORY_BYTES", :integer],
+                          "max_devices" => ["ND_MAX_DEVICES", :integer],
+                          "inventory_timeout" => ["ND_INVENTORY_TIMEOUT", :number],
+                          "allow_insecure_http" => ["ND_ALLOW_INSECURE_HTTP", :boolean],
+                          "db_port" => ["ND_DB_PORT", :integer],
+                          "db_sslmode" => ["ND_DB_SSLMODE", :string],
+                          "db_sslrootcert" => ["ND_DB_SSLROOTCERT", :string],
+                          "db_connect_timeout" => ["ND_DB_CONNECT_TIMEOUT", :integer] },
           "backup" => { "directory" => ["NC_BACKUP_DIRECTORY", :string],
                         "concurrency" => ["NC_CONCURRENCY", :integer],
                         "limit_per_vendor" => ["NC_SAMPLE_PER_VENDOR", :integer] },
@@ -36,14 +40,15 @@ module Net
                      "host_key_policy" => ["NC_HOST_KEY_POLICY", :string],
                      "log_directory" => ["NC_LOG_DIRECTORY", :string],
                      "log_level" => ["NC_LOG_LEVEL", :string] },
-          "tftp" => { "server" => ["TFTP_HOST", :string],
+          "tftp" => { "server" => ["NC_TFTP_HOST", :string],
+                      "verification_root" => ["NC_TFTP_ROOT", :string],
                       "vrfs" => ["NC_TFTP_VRFS", :json],
                       "h3c_source_file" => ["NC_H3C_TFTP_SOURCE_FILE", :string],
                       "h3c_wireless_source_file" => ["NC_H3C_WIRELESS_TFTP_SOURCE_FILE", :string],
                       "huawei_source_file" => ["NC_HUAWEI_TFTP_SOURCE_FILE", :string] }
         }.freeze
 
-        # 安全读取 YAML 配置并映射到环境变量格式。
+        # 安全读取 YAML 配置并编码为 Settings 的内部键值。
         def self.load(path)
           raise ArgumentError, "config path must be a nonempty String" unless path.is_a?(String) && !path.empty?
 

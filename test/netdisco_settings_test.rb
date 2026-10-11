@@ -11,8 +11,8 @@ class NetdiscoSettingsTest < Minitest::Test
 
   def test_snapshot_preserves_explicit_nil_and_false_over_defaults
     settings = Settings.new(env: {}, defaults: { "NC_SAMPLE_PER_VENDOR" => "3",
-                                                "NETDISCO_ALLOW_INSECURE_HTTP" => "true" },
-                            overrides: { "NC_SAMPLE_PER_VENDOR" => nil, "NETDISCO_ALLOW_INSECURE_HTTP" => false })
+                                                "ND_ALLOW_INSECURE_HTTP" => "true" },
+                            overrides: { "NC_SAMPLE_PER_VENDOR" => nil, "ND_ALLOW_INSECURE_HTTP" => false })
     policy = settings.for_run
     assert_nil policy.limit_per_vendor(tftp: true)
     assert_equal false, policy.client_options.fetch(:allow_insecure_http)
@@ -27,10 +27,10 @@ class NetdiscoSettingsTest < Minitest::Test
 
   def test_client_budget_errors_precede_source_specific_query_errors
     %w[http postgres].each do |source|
-      settings = Settings.new(env: {}, defaults: { "NETDISCO_SOURCE" => source, "NETDISCO_PAGE_SIZE" => "0",
-                                                  "NETDISCO_QUERY_PARAMS" => "not-json" })
+      settings = Settings.new(env: {}, defaults: { "ND_SOURCE" => source, "ND_PAGE_SIZE" => "0",
+                                                  "ND_QUERY_PARAMS" => "not-json" })
       error = assert_raises(ArgumentError) { settings.client_options }
-      assert_equal "NETDISCO_PAGE_SIZE must be a positive integer", error.message
+      assert_equal "ND_PAGE_SIZE must be a positive integer", error.message
       assert_nil error.cause
     end
   end
@@ -58,16 +58,16 @@ class NetdiscoSettingsTest < Minitest::Test
 
   def test_policy_snapshot_copies_only_non_secret_values_and_is_immutable
     secret = "generated-#{rand(1_000_000)}"
-    env = { "NC_PROTOCOL" => +"ssh", "NC_CONCURRENCY" => "2",
-            "NC_DEVICE_USERNAME" => secret, "NC_DEVICE_PASSWORD" => secret,
-            "NETDISCO_API_KEY" => secret, "NETDISCO_URL" => "https://inventory.example",
+    defaults = { "NC_PROTOCOL" => +"ssh", "NC_CONCURRENCY" => "2" }
+    env = { "NC_DEVICE_USERNAME" => secret, "NC_DEVICE_PASSWORD" => secret,
+            "ND_API_KEY" => secret, "ND_URL" => "https://inventory.example",
             "UNRELATED_SECRET" => secret }
-    settings = Settings.new(env: env)
+    settings = Settings.new(env: env, defaults: defaults)
     policy = settings.snapshot(mode: :backup)
     assert_predicate policy, :frozen?
     assert_equal :ssh, policy.connection_options(:h3c).fetch(:protocol)
-    env.fetch("NC_PROTOCOL").replace("telnet")
-    env["NC_CONCURRENCY"] = "3"
+    defaults.fetch("NC_PROTOCOL").replace("telnet")
+    defaults["NC_CONCURRENCY"] = "3"
     assert_equal :ssh, policy.connection_options(:h3c).fetch(:protocol)
     assert_equal 2, policy.concurrency
     assert_equal :telnet, settings.snapshot(mode: :backup).connection_options(:h3c).fetch(:protocol)
@@ -78,12 +78,46 @@ class NetdiscoSettingsTest < Minitest::Test
     assert_raises(FrozenError) { policy.connection_options(:h3c)[:protocol] = :telnet }
   end
 
+  def test_overrides_preserve_fixed_policy_and_dynamic_credentials
+    env = { "NC_DEVICE_USERNAME" => "first", "NC_DEVICE_PASSWORD" => "first-pass" }
+    defaults = { "NC_PROTOCOL" => "ssh", "NC_CONCURRENCY" => "2", "ND_MAX_DEVICES" => "12", "NC_MAX_SCRIPT_OUTPUT_BYTES" => "1024",
+                 "NC_VENDOR_PROTOCOLS" => '{"cisco_ios":"telnet"}' }
+    settings = Settings.new(env: env, defaults: defaults).for_run
+    defaults.merge!("NC_PROTOCOL" => "telnet", "NC_CONCURRENCY" => "3")
+    env.merge!("NC_DEVICE_USERNAME" => "second", "NC_DEVICE_PASSWORD" => "second-pass")
+    log_directory = +"/tmp/net-connector-policy-logs"
+    updated = settings.with_overrides("NC_LOG_DIRECTORY" => log_directory)
+    log_directory.replace("/tmp/changed-after-override")
+    policy = updated.snapshot
+    assert_equal :ssh, policy.connection_options(:h3c).fetch(:protocol)
+    assert_equal 2, policy.concurrency
+    assert_equal 12, policy.client_options.fetch(:max_devices)
+    assert_equal 1024, policy.connection_options(:h3c).fetch(:max_script_output_bytes)
+    assert_equal :telnet, policy.connection_options(:cisco_ios).fetch(:protocol)
+    assert_equal "/tmp/net-connector-policy-logs", policy.log_directory
+    assert_nil settings.snapshot.log_directory
+    device = Netdisco::Device.from_row(rows.first, rules: policy.rules)
+    assert_equal "second", updated.device_credentials_for(device).fetch(:username)
+    assert_equal "second-pass", updated.device_credentials_for(device).fetch(:password)
+    env.merge!("NC_DEVICE_USERNAME" => "third", "NC_DEVICE_PASSWORD" => "third-pass")
+    assert_equal "third-pass", updated.device_credentials_for(device).fetch(:password)
+  end
+
+  def test_export_overrides_keep_offline_validation_and_frozen_values
+    settings = Settings.new(env: { "ND_URL" => "invalid", "NC_PROTOCOL" => "invalid" }).for_run(mode: :export)
+    directory = +"/tmp/net-connector-export"
+    updated = settings.with_overrides("NC_BACKUP_DIRECTORY" => directory, "NC_PROTOCOL" => "invalid")
+    directory.replace("/tmp/changed-after-override")
+    policy = updated.snapshot(mode: :export)
+    assert_equal "/tmp/net-connector-export", policy.backup_directory
+    assert_predicate policy, :frozen?
+  end
+
   def test_running_batch_keeps_policy_but_reads_credentials_for_each_device
     Dir.mktmpdir do |directory|
-      env = { "NC_CONCURRENCY" => "1", "NC_PROTOCOL" => "ssh",
-              "NC_DEVICE_USERNAME" => "first", "NC_DEVICE_PASSWORD" => "first-pass",
-              "NC_LOG_DIRECTORY" => File.join(directory, "logs-one") }
-      defaults = { "NC_MAX_SCRIPT_OUTPUT_BYTES" => "1024" }
+      env = { "NC_DEVICE_USERNAME" => "first", "NC_DEVICE_PASSWORD" => "first-pass" }
+      defaults = { "NC_CONCURRENCY" => "1", "NC_PROTOCOL" => "ssh",
+                   "NC_LOG_DIRECTORY" => File.join(directory, "logs-one"), "NC_MAX_SCRIPT_OUTPUT_BYTES" => "1024" }
       seen = []
       factory = lambda do |device, options|
         seen << [device.host, options]
@@ -93,10 +127,10 @@ class NetdiscoSettingsTest < Minitest::Test
                                   connector_factory: factory, result_store: nil)
       rotate = lambda do |_result|
         defaults.merge!("NC_MAX_SCRIPT_OUTPUT_BYTES" => "2048", "NC_EXCLUDE_HOSTS" => "192.0.2.1")
-        env.merge!("NC_PROTOCOL" => "telnet", "NC_CONCURRENCY" => "2",
-                   "NC_HOST_KEY_POLICY" => "accept_new", "NC_LOG_LEVEL" => "warn",
-                   "NC_DEVICE_USERNAME" => "second", "NC_DEVICE_PASSWORD" => "second-pass",
-                   "NC_LOG_DIRECTORY" => File.join(directory, "logs-two"))
+        defaults.merge!("NC_PROTOCOL" => "telnet", "NC_CONCURRENCY" => "2",
+                        "NC_HOST_KEY_POLICY" => "accept_new", "NC_LOG_LEVEL" => "warn",
+                        "NC_LOG_DIRECTORY" => File.join(directory, "logs-two"))
+        env.merge!("NC_DEVICE_USERNAME" => "second", "NC_DEVICE_PASSWORD" => "second-pass")
       end
       assert fleet.backup_all(directory: directory, on_result: rotate).success?
       assert_equal ["first-pass", "second-pass"], (seen.map { |_host, options| options.fetch(:password) })
@@ -146,16 +180,16 @@ class NetdiscoSettingsTest < Minitest::Test
   end
 
   def test_client_policy_and_api_credentials_are_refreshed_between_batches
-    env = { "NETDISCO_URL" => "https://inventory.example", "NETDISCO_API_KEY" => "first" }
-    defaults = { "NETDISCO_MAX_DEVICES" => "7" }
+    env = { "ND_URL" => "https://inventory.example", "ND_API_KEY" => "first" }
+    defaults = { "ND_MAX_DEVICES" => "7" }
     seen = []
     builder = ->(**options) { seen << options; Struct.new(:devices).new([]) }
     Netdisco::Client.stub(:new, builder) do
       fleet = Netdisco::Fleet.new(settings: Settings.new(env: env, defaults: defaults), result_store: nil)
       2.times do |index|
         fleet.devices
-        env["NETDISCO_API_KEY"] = "second"
-        defaults["NETDISCO_MAX_DEVICES"] = (index + 8).to_s
+        env["ND_API_KEY"] = "second"
+        defaults["ND_MAX_DEVICES"] = (index + 8).to_s
       end
     end
     assert_equal %w[first second], (seen.map { |options| options.fetch(:api_key) })
@@ -167,9 +201,9 @@ class NetdiscoSettingsTest < Minitest::Test
       "NC_PROTOCOL" => "invalid", "NC_H3C_PROTOCOL" => "invalid",
       "NC_LOG_LEVEL" => "trace", "NC_HOST_KEY_POLICY" => "disabled",
       "NC_SAMPLE_PER_VENDOR" => "6", "NC_CONCURRENCY" => "51",
-      "NETDISCO_MAX_PAGES" => "0", "NETDISCO_MAX_DEVICES" => "-1",
-      "NETDISCO_MAX_RESPONSE_BYTES" => "1.5", "NETDISCO_MAX_INVENTORY_BYTES" => "0",
-      "NETDISCO_INVENTORY_TIMEOUT" => "Infinity", "NETDISCO_ALLOW_INSECURE_HTTP" => "maybe",
+      "ND_MAX_PAGES" => "0", "ND_MAX_DEVICES" => "-1",
+      "ND_MAX_RESPONSE_BYTES" => "1.5", "ND_MAX_INVENTORY_BYTES" => "0",
+      "ND_INVENTORY_TIMEOUT" => "Infinity", "ND_ALLOW_INSECURE_HTTP" => "maybe",
       "NC_MAX_SCRIPT_OUTPUT_BYTES" => "0",
       "NC_TFTP_VRFS" => '{"h3c":"not-supported"}',
       "NC_H3C_TFTP_SOURCE_FILE" => "../bad.cfg"
@@ -182,9 +216,8 @@ class NetdiscoSettingsTest < Minitest::Test
       refute_empty error
     end
     assert_equal 2, cli({ "NC_HOST_KEY_POLICY" => "replace" }).first
-    assert_equal 0, cli({ "NC_HOST_KEY_POLICY" => "replace",
-                          "NC_KNOWN_HOSTS" => "test-known-hosts" }).first
-    assert_equal 2, cli({ "NETDISCO_URL" => "http://inventory.example", "NETDISCO_ALLOW_INSECURE_HTTP" => "false" }).first
+    assert_equal 0, cli({}, %w[--show-config --host-key-policy replace --known-hosts test-known-hosts]).first
+    assert_equal 2, cli({ "ND_URL" => "http://inventory.example", "ND_ALLOW_INSECURE_HTTP" => "false" }).first
     assert_equal 0, cli({}).first
   end
 
@@ -217,8 +250,7 @@ class NetdiscoSettingsTest < Minitest::Test
         ssh:
           max_script_output_bytes: 1024
       YAML
-      env = { "NC_CONCURRENCY" => "4",
-              "NC_DEVICE_USERNAME" => "reader", "NC_DEVICE_PASSWORD" => "first" }
+      env = { "NC_DEVICE_USERNAME" => "reader", "NC_DEVICE_PASSWORD" => "first" }
       settings = Settings.from_file(path, env: env)
       policy = settings.snapshot(mode: :backup)
       assert_equal 2.5, policy.client_options.fetch(:inventory_timeout)
@@ -241,7 +273,7 @@ class NetdiscoSettingsTest < Minitest::Test
   end
 
   def test_export_help_and_version_remain_offline_with_irrelevant_invalid_network_settings
-    env = { "NETDISCO_URL" => "invalid", "NETDISCO_MAX_DEVICES" => "0", "NC_PROTOCOL" => "invalid",
+    env = { "ND_URL" => "invalid", "ND_MAX_DEVICES" => "0", "NC_PROTOCOL" => "invalid",
             "NC_MAX_SCRIPT_OUTPUT_BYTES" => "invalid" }
     [%w[--help], %w[--version]].each { |argv| assert_equal 0, cli(env, argv).first }
     Dir.mktmpdir do |directory|
@@ -268,7 +300,7 @@ class NetdiscoSettingsTest < Minitest::Test
     end
   end
 
-  def test_nc_config_loads_yaml_and_keeps_common_environment_precedence
+  def test_nc_config_loads_yaml_and_keeps_public_settings_in_yaml
     Dir.mktmpdir do |directory|
       path = File.join(directory, "backup.yml")
       File.write(path, <<~YAML)
@@ -284,9 +316,9 @@ class NetdiscoSettingsTest < Minitest::Test
         tftp:
           vrfs: {cisco_nxos: backup}
       YAML
-      env = { "NC_CONFIG" => path, "NC_CONCURRENCY" => "3" }
+      env = { "NC_CONFIG" => path }
       settings = Settings.from_env(env: env).snapshot
-      assert_equal 3, settings.concurrency
+      assert_equal 2, settings.concurrency
       assert_equal 8, settings.client_options.fetch(:max_devices)
       assert_equal :telnet, settings.connection_options(:h3c).fetch(:protocol)
       assert_equal :ssh, settings.connection_options(:huawei).fetch(:protocol)
@@ -299,14 +331,83 @@ class NetdiscoSettingsTest < Minitest::Test
 
   def test_legacy_and_removed_environment_settings_fail_without_echoing_values
     keys = Netdisco::ConfigFile::FIELDS.values.flat_map { |fields| fields.values.map(&:first) } - Settings::ENVIRONMENT_KEYS
-    keys += %w[NC_H3C_PROTOCOL NET_CONNECTOR_DEVICE_PASSWORD]
+    keys += %w[NC_H3C_PROTOCOL NC_PROGRESS NET_CONNECTOR_DEVICE_PASSWORD NETDISCO_URL NETDISCO_PASSWORD TFTP_HOST TFTP_ROOT]
     keys.each do |key|
       status, output, error = cli({ key => "private-value" })
       assert_equal 2, status, key
       assert_empty output
       assert_includes error, key
       refute_includes error, "private-value"
-      assert_match(/NC_CONFIG|renamed to NC_DEVICE_PASSWORD/, error)
+      assert_includes error, "NC_CONFIG"
+    end
+  end
+
+  def test_inventory_url_precedence_is_cli_then_nd_environment_then_yaml
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "settings.yml")
+      File.write(path, "netdisco:\n  url: https://yaml.example\n")
+      [{}, { "ND_URL" => "https://environment.example" }].each do |env|
+        status, output, error = cli(env, ["--show-config", "--config", path])
+        assert_equal 0, status, error
+        assert_equal env.fetch("ND_URL", "https://yaml.example"), JSON.parse(output).fetch("netdisco").fetch("url")
+      end
+      status, output, error = cli({ "ND_URL" => "https://environment.example" },
+                                  ["--show-config", "--config", path, "--netdisco-url", "https://cli.example"])
+      assert_equal 0, status, error
+      assert_equal "https://cli.example", JSON.parse(output).fetch("netdisco").fetch("url")
+    end
+  end
+
+  def test_database_policy_is_frozen_while_credentials_rotate_and_secrets_stay_private
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "database.yml")
+      File.write(path, <<~YAML)
+        netdisco:
+          source: postgres
+          query: SELECT ip FROM device
+          db_port: 5440
+          db_sslmode: verify-full
+          db_sslrootcert: /etc/inventory-ca.crt
+          db_connect_timeout: 7
+        tftp:
+          verification_root: /srv/tftp
+      YAML
+      env = { "ND_DB_HOST" => "database.example", "ND_DB_NAME" => "inventory",
+              "ND_DB_USER" => "reader", "ND_DB_PASS" => "first-private-value" }
+      settings = Settings.from_file(path, env: env).for_run(mode: :inventory)
+      policy = settings.snapshot(mode: :inventory)
+      assert_equal({ port: 5440, sslmode: "verify-full", sslrootcert: "/etc/inventory-ca.crt", connect_timeout: 7 },
+                   policy.database_options)
+      assert_equal "/srv/tftp", policy.tftp_root
+      received = []
+      Netdisco::DatabaseClient.stub(:new, ->(**options) { received << options; Object.new }) do
+        settings.client
+        env["ND_DB_PASS"] = "second-private-value"
+        File.write(path, "netdisco:\n  db_port: 9999\n")
+        settings.client
+      end
+      assert_equal [5440, 5440], (received.map { |options| options.fetch(:connection_options).fetch(:port) })
+      assert_equal %w[first-private-value second-private-value],
+                   (received.map { |options| options.fetch(:connection_options).fetch(:password) })
+      refute_includes Marshal.dump(policy), "private-value"
+      refute_includes settings.public_config.to_json, "private-value"
+      assert_raises(FrozenError) { policy.database_options.fetch(:sslrootcert).replace("changed") }
+    end
+  end
+
+  def test_database_yaml_policy_rejects_invalid_values_before_inventory_io
+    { "db_port" => [0, 65_536], "db_connect_timeout" => [0, 2_147_483_648],
+      "db_sslmode" => ["unknown"], "db_sslrootcert" => ["private-path\0suffix"] }.each do |field, values|
+      values.each do |value|
+        Dir.mktmpdir do |directory|
+          path = File.join(directory, "settings.yml")
+          File.write(path, { "netdisco" => { field => value } }.to_yaml)
+          status, output, error = cli({}, ["--config", path, "--plan"]) { flunk "invalid policy queried inventory" }
+          assert_equal 2, status
+          assert_empty output
+          refute_empty error
+        end
+      end
     end
   end
 

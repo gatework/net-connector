@@ -5,6 +5,7 @@ require_relative "../../device/topology/immediate_strategy"
 module Net
   module Connector
     module H3c
+      # 适配 H3C LLDP 表头与接口视图，数量核对失败时禁止继续规划变更。
       class Topology < Topology::ImmediateStrategy
         TABLE_HEADER = /^\s*(?:System Name\s+Local Interface\b|(?:Local Interface|LocalIf)\s+)/i
         # H3C 提供 LLDP 邻居、配置描述读取和描述变更。
@@ -24,6 +25,7 @@ module Net
         # 返回用户视图读回；保存交给后续独立阶段。
         def leave_configuration_commands = ["return"]
 
+        # 只认可本厂商明确的保存完成行，设备提示符返回本身不能证明持久化。
         def persistence_pattern = /\ASaved the current configuration to mainboard device successfully\.\z/i
 
         # H3C 不同版本的列顺序不同，按表头选对应模板。

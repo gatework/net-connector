@@ -6,6 +6,7 @@ require "tmpdir"
 require "bundler"
 require_relative "package"
 
+# 从校验过的 gem 构造普通与 Bundler 最小应用，验证消费者不依赖源码检出目录。
 module InstalledPackageCheck
   def self.run(artifact)
     artifact = File.expand_path(artifact)

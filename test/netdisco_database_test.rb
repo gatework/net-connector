@@ -23,7 +23,7 @@ class NetdiscoDatabaseTest < Minitest::Test
   end
 
   def query_settings
-    { "NETDISCO_SOURCE" => "postgres", "NETDISCO_QUERY" => QUERY, "NETDISCO_QUERY_PARAMS" => '["east"]' }
+    { "ND_SOURCE" => "postgres", "ND_QUERY" => QUERY, "ND_QUERY_PARAMS" => '["east"]' }
   end
 
   def cli(env, argv = ["--show-config"], &factory)
@@ -35,10 +35,10 @@ class NetdiscoDatabaseTest < Minitest::Test
   end
 
   def test_postgres_configuration_requires_explicit_query_and_validates_scalar_parameters
-    [{ "NETDISCO_SOURCE" => "mysql" }, { "NETDISCO_SOURCE" => "postgres" },
-     { "NETDISCO_QUERY_PARAMS" => "{}" }, { "NETDISCO_QUERY_PARAMS" => "[[1]]" },
-     { "NETDISCO_QUERY_PARAMS" => "[" }, { "NETDISCO_QUERY" => "SELECT\0secret" }].each do |values|
-      defaults = values.key?("NETDISCO_SOURCE") ? values : query_settings.merge(values)
+    [{ "ND_SOURCE" => "mysql" }, { "ND_SOURCE" => "postgres" },
+     { "ND_QUERY_PARAMS" => "{}" }, { "ND_QUERY_PARAMS" => "[[1]]" },
+     { "ND_QUERY_PARAMS" => "[" }, { "ND_QUERY" => "SELECT\0secret" }].each do |values|
+      defaults = values.key?("ND_SOURCE") ? values : query_settings.merge(values)
       assert_raises(ArgumentError) { Netdisco::Settings.new(env: {}, defaults: defaults).snapshot }
       env = values
       status, output, error = cli(env)
@@ -51,20 +51,20 @@ class NetdiscoDatabaseTest < Minitest::Test
     assert_equal ["east", 1, 2.5, true, false, nil], options.fetch(:query_params)
     assert_raises(ArgumentError) { Client.options(query: QUERY, query_params: [Float::INFINITY]) }
     assert_raises(ArgumentError) { Client.options(query: QUERY, query_params: ["\0"]) }
-    assert_equal 2, cli({ "NETDISCO_QUERY" => QUERY }).first
+    assert_equal 2, cli({ "ND_QUERY" => QUERY }).first
   end
 
   def test_settings_select_postgres_and_reuse_policy_while_refreshing_connection_credentials
     env = environment
     defaults = query_settings
     settings = Netdisco::Settings.new(env: env, defaults: defaults).for_run(mode: :inventory)
-    defaults["NETDISCO_QUERY"] = "SELECT changed AS ip"
+    defaults["ND_QUERY"] = "SELECT changed AS ip"
     # 已有运行策略保留 SQL；连接凭据仍从 env 动态读取。
     received = []
     Client.stub(:new, ->(**options) { received << options; Struct.new(:devices).new([]) }) do
       fleet = Netdisco::Fleet.new(settings: settings, result_store: nil)
       2.times do |index|
-        env["NETDISCO_DB_PASS"] = "rotation-#{index}"
+        env["ND_DB_PASS"] = "rotation-#{index}"
         assert_empty fleet.devices
       end
     end
@@ -83,9 +83,9 @@ class NetdiscoDatabaseTest < Minitest::Test
     [Marshal.dump(policy), output, settings.inspect, settings.client.inspect].each do |text|
       connection_options.each_value { |value| refute_includes text, value }
     end
-    assert_raises(ArgumentError) { Netdisco::Settings.new(env: env.except("NETDISCO_DB_PASS"), defaults: query_settings).client }
+    assert_raises(ArgumentError) { Netdisco::Settings.new(env: env.except("ND_DB_PASS"), defaults: query_settings).client }
     # defaults/overrides 不能作为连接凭据后门。
-    assert_raises(ArgumentError) { Netdisco::Settings.new(env: env.except("NETDISCO_DB_PASS"), defaults: query_settings.merge(env)).client }
+    assert_raises(ArgumentError) { Netdisco::Settings.new(env: env.except("ND_DB_PASS"), defaults: query_settings.merge(env)).client }
   end
 
   def test_query_options_are_copied_before_the_caller_can_change_them
@@ -138,7 +138,7 @@ class NetdiscoDatabaseTest < Minitest::Test
 
   def test_postgres_connection_options_reject_invalid_values_without_echoing_secrets
     [{ password: "\0sensitive" }, { port: "secret" }, { port: 65_536 }, { connect_timeout: 0 },
-     { sslmode: "unknown" }, { dbname: "postgres://reader:secret@db/inventory" },
+     { sslmode: "unknown" }, { sslrootcert: "sensitive\0path" }, { dbname: "postgres://reader:secret@db/inventory" },
      { dbname: "dbname=inventory password=secret" }, { options: "secret" }].each do |values|
       error = assert_raises(ArgumentError) do
         Client.new(connection_options: connection_options.merge(values), query: QUERY)
@@ -165,7 +165,7 @@ class NetdiscoDatabaseTest < Minitest::Test
   end
 
   def test_export_and_help_remain_offline_with_incomplete_database_configuration
-    env = { "NETDISCO_SOURCE" => "postgres", "NETDISCO_DB_PASS" => "secret" }
+    env = { "ND_SOURCE" => "postgres", "ND_DB_PASS" => "secret" }
     assert_equal 0, cli(env, ["--help"]).first
     assert_equal 0, cli(env, ["--version"]).first
     Dir.mktmpdir do |directory|
@@ -208,7 +208,7 @@ class NetdiscoDatabaseTest < Minitest::Test
     def set_notice_processor(&block) = block.call("sensitive-notice")
     def connect_poll = PG::PGRES_POLLING_OK
     def setnonblocking(_value); end
-    def set_client_encoding(_value); end # rubocop:disable Naming/AccessorMethodName -- Match the pg driver protocol.
+    def set_client_encoding(_value); end # rubocop:disable Naming/AccessorMethodName -- 方法名与 pg 驱动接口一致。
 
     def exec(sql)
       @commands << [sql]
@@ -228,7 +228,7 @@ class NetdiscoDatabaseTest < Minitest::Test
 
     def set_single_row_mode = @single_row_calls += 1
 
-    def get_result # rubocop:disable Naming/AccessorMethodName -- Match the pg driver protocol.
+    def get_result # rubocop:disable Naming/AccessorMethodName -- 方法名与 pg 驱动接口一致。
       @before_result&.call
       @pending.shift
     end

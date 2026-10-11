@@ -42,7 +42,7 @@ class NetdiscoProgressTest < Minitest::Test
       factory = lambda do |device, settings|
         device.build_connector(**settings, transport: transport, on_event: progress.method(:event))
       end
-      settings = Netdisco::Settings.new(env: { "NC_LOG_DIRECTORY" => File.join(directory, "logs") })
+      settings = Netdisco::Settings.new(env: {}, defaults: { "NC_LOG_DIRECTORY" => File.join(directory, "logs") })
       client = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "Cisco", "os" => "ios" }])
       fleet = Netdisco::Fleet.new(client: client, settings: settings, connector_factory: factory,
                                   credentials: ->(_) { { username: "audit", password: "private-password" } })

@@ -8,6 +8,7 @@ require "fileutils"
 require "time"
 require "digest"
 
+# 父进程为每个合成样本启动独立 Ruby 进程，记录系统峰值 RSS，不连接真实设备。
 module MemoryBenchmark
   MIB = 1024 * 1024
   DEFAULTS = { "transport" => "fake", "phase" => "retain", "response_bytes" => MIB,

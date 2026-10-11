@@ -25,8 +25,8 @@ module Net
         @file.write(@original)
         @file.flush
         remove_host(@path) if @replace
-      rescue Exception # rubocop:disable Lint/RescueException -- Remove the private snapshot on interruption.
-        close
+      rescue Exception # rubocop:disable Lint/RescueException -- 中断时也删除私有快照。
+        close_preserving_failure
         raise
       end
 
@@ -57,12 +57,28 @@ module Net
       end
 
       def close
-        File.unlink(@path + ".old") if @path && File.exist?(@path + ".old")
-        @file&.close!
+        file = @file
         @file = nil
+        File.unlink(@path + ".old") if @path && File.exist?(@path + ".old")
+      rescue Exception # rubocop:disable Lint/RescueException -- 删除附属文件失败或中断后仍须关闭私有快照。
+        failed = true
+        raise
+      ensure
+        begin
+          file&.close!
+        rescue Exception # rubocop:disable Lint/RescueException -- 私有快照清理不能覆盖先发生的删除故障。
+          raise unless failed
+        end
       end
 
       private
+
+      # 初始化失败时保留原始异常，同时尽力清理已经创建的临时文件。
+      def close_preserving_failure
+        close
+      rescue Exception # rubocop:disable Lint/RescueException -- 不让清理异常覆盖初始化故障或用户中断。
+        nil
+      end
 
       def read_shared
         File.open(@destination, File::RDONLY | File::NOFOLLOW | File::NONBLOCK) do |file|

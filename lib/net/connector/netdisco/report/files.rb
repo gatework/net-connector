@@ -9,6 +9,7 @@ module Net
       class Report
         # 示例与批次入口共享唯一摘要结构；保存结果先于终端成功提示。
         class Files
+          # 文本和 JSON 分别提交；失败时尝试保存诊断，并保留已提交的 JSON 位置。
           def self.write(report, directory:, plan:, concurrency:)
             destination = File.join(directory, "summary.json")
             finalized = report.with(report_location: destination)

@@ -16,21 +16,24 @@ module Net
         DEFAULT_BACKUP_DIRECTORY = "backups"
         DEFAULT_CONCURRENCY = 4
         MAX_CONCURRENCY = 50
-        ENVIRONMENT_KEYS = %w[NETDISCO_URL NC_BACKUP_DIRECTORY NC_CONCURRENCY NC_SAMPLE_PER_VENDOR
-                              NC_PROTOCOL NC_KNOWN_HOSTS NC_HOST_KEY_POLICY NC_LOG_DIRECTORY NC_LOG_LEVEL TFTP_HOST].freeze
+        # 这里只列可从环境读取的公开策略；凭据单独动态读取，其他内部键只供 YAML/CLI 使用。
+        ENVIRONMENT_KEYS = %w[ND_URL].freeze
         DEFAULT_PAGE_SIZE = Client::DEFAULTS.fetch(:page_size)
         UNSET = Object.new.freeze
         private_constant :UNSET
 
+        # 加载无凭据 YAML 作为默认策略，保留传入环境作为动态凭据来源。
         def self.from_file(path, env: ENV)
           new(env: env, defaults: ConfigFile.load(path))
         end
 
+        # 只有 NC_CONFIG 显式指定时才读取文件，不隐式加载 .env。
         def self.from_env(env: ENV)
           path = env["NC_CONFIG"]
           path && !path.empty? ? from_file(path, env: env) : new(env: env)
         end
 
+        # 分开保存默认策略、显式覆盖与凭据来源；fixed 实例只承载已复制的公开快照。
         def initialize(env: ENV, defaults: {}, overrides: {}, policy: nil, fixed: false)
           @env, @defaults, @overrides = env, defaults, overrides
           @policy, @fixed = policy, fixed
@@ -38,7 +41,14 @@ module Net
 
         # 调用入口补充运行目录等非敏感覆盖，凭据仍从同一来源读取。
         def with_overrides(values)
-          self.class.new(env: @env, defaults: @defaults, overrides: @overrides.merge(values))
+          if @fixed
+            public_values = @env.merge(@overrides).merge(values).slice(*non_secret_keys)
+                                .transform_values { |value| value.is_a?(String) ? value.dup.freeze : value }.freeze
+            return self.class.new(env: public_values, fixed: true).freeze
+          end
+
+          policy = @policy.with_overrides(values) if @policy
+          self.class.new(env: @env, defaults: @defaults, overrides: @overrides.merge(values), policy: policy)
         end
 
         # 快照自身不保留 ENV、凭据 resolver 或原 Settings 的引用，不能携带秘密进入摘要。
@@ -61,6 +71,7 @@ module Net
           self.class.new(env: @env, defaults: @defaults, overrides: @overrides, policy: snapshot(mode: mode))
         end
 
+        # 按业务模式预检所有策略；离线导出仅验证目录，不读取清单或设备凭据。
         def validate!(mode:)
           unless %i[backup tftp inventory show_config export].include?(mode)
             raise ArgumentError, "unknown settings validation mode"
@@ -73,7 +84,9 @@ module Net
           concurrency
           limit_per_vendor
           log_directory
+          tftp_root
           connection_options
+          database_options
           Net::Connector.vendors.each { |vendor| connection_options(vendor) }
           tftp_source_files.each_value { |source| TftpTarget.validate_source_file!(source) }
           tftp_vrfs
@@ -81,6 +94,7 @@ module Net
           self
         end
 
+        # 用固定策略创建清单客户端，但每次读取最新身份凭据；显式认证覆盖默认认证来源。
         def client(policy: snapshot(mode: :inventory), credentials: nil)
           if credentials && (!credentials.is_a?(Hash) || credentials.keys.sort != %i[password username] ||
             !credentials.values.all? { |value| present?(value) })
@@ -88,28 +102,29 @@ module Net
           end
           options = policy.client_options
           if policy.inventory_source == :postgres
-            connection = DatabaseClient::CONNECTION_ENV.each_with_object({}) do |(key, name), values|
+            connection = DatabaseClient::CONNECTION_ENV.each_with_object(policy.database_options.dup) do |(key, name), values|
               item = secret_value(name)
               values[key] = item if item
             end
             connection.merge!(user: credentials[:username], password: credentials[:password]) if credentials
             return DatabaseClient.new(connection_options: connection, **options)
           end
-          raise ArgumentError, "NETDISCO_URL is required" unless options.fetch(:url)
+          raise ArgumentError, "ND_URL is required" unless options.fetch(:url)
 
           authentication = if credentials
                              credentials
-                           elsif (token = secret_value("NETDISCO_API_KEY"))
+                           elsif (token = secret_value("ND_API_KEY"))
                              { api_key: token }
                            else
-                             { username: required_secret("NETDISCO_USERNAME"), password: required_secret("NETDISCO_PASSWORD") }
+                             { username: required_secret("ND_USERNAME"), password: required_secret("ND_PASSWORD") }
                            end
           Client.new(**options, **authentication)
         end
 
+        # 清单来源来自 YAML/CLI，HTTP 与 PostgreSQL 共用后续计划和执行接口。
         def inventory_source
-          source = value("NETDISCO_SOURCE") || "http"
-          raise ArgumentError, "NETDISCO_SOURCE must be http or postgres" unless %w[http postgres].include?(source)
+          source = value("ND_SOURCE") || "http"
+          raise ArgumentError, "ND_SOURCE must be http or postgres" unless %w[http postgres].include?(source)
 
           source.to_sym
         end
@@ -121,6 +136,7 @@ module Net
           inventory_source == :postgres ? postgres_options(options) : http_options(options)
         end
 
+        # 将筛选和映射策略交给 Rules 校验，未识别设备由清单结果单独标记。
         def rules
           Rules.new(include_hosts: list("NC_INCLUDE_HOSTS"),
                     exclude_hosts: list("NC_EXCLUDE_HOSTS"),
@@ -130,6 +146,7 @@ module Net
                     mappings: json("NC_DEVICE_RULES", []))
         end
 
+        # 将备份目录解析为绝对路径；这里只校验配置，不创建目录。
         def backup_directory
           path = raw("NC_BACKUP_DIRECTORY", DEFAULT_BACKUP_DIRECTORY)
           raise ArgumentError, "NC_BACKUP_DIRECTORY must be nonempty" unless present?(path)
@@ -137,6 +154,7 @@ module Net
           File.expand_path(path)
         end
 
+        # 与 Worker 共用并发上限，非法值在任务与目录创建前失败。
         def concurrency
           count = integer("NC_CONCURRENCY", DEFAULT_CONCURRENCY)
           raise ArgumentError, "NC_CONCURRENCY must be at most #{MAX_CONCURRENCY}" if count > MAX_CONCURRENCY
@@ -144,6 +162,7 @@ module Net
           count
         end
 
+        # 显式 nil 表示全量；tftp: true 且未设置时采用五台上限，示例入口另外选择全量。
         def limit_per_vendor(tftp: false)
           count = if configured?("NC_SAMPLE_PER_VENDOR")
                     integer("NC_SAMPLE_PER_VENDOR", 5) unless raw("NC_SAMPLE_PER_VENDOR").nil?
@@ -154,6 +173,7 @@ module Net
           count
         end
 
+        # 华为批次默认上传 startup.cfg；H3C 省略源文件时由设备策略探测。
         def tftp_source_files
           files = { huawei: raw("NC_HUAWEI_TFTP_SOURCE_FILE", "flash:/startup.cfg") }
           %i[h3c h3c_wireless].each do |vendor|
@@ -163,6 +183,7 @@ module Net
           files
         end
 
+        # 按厂商读取 VRF 映射，不能把不支持 VRF 的厂商静默忽略。
         def tftp_vrfs
           mapping = json("NC_TFTP_VRFS", {})
           raise ArgumentError, "NC_TFTP_VRFS must be a JSON object" unless mapping.is_a?(Hash)
@@ -170,6 +191,7 @@ module Net
           self.class.validate_vrfs!(mapping.transform_keys(&:to_sym))
         end
 
+        # 只允许 NX-OS、山石的安全单一 VRF 名称，禁止命令拼接字符。
         def self.validate_vrfs!(vrfs)
           unless vrfs.is_a?(Hash) && vrfs.all? { |vendor, name|
             %i[cisco_nxos hillstone].include?(vendor) && name.is_a?(String) &&
@@ -180,8 +202,32 @@ module Net
           vrfs
         end
 
-        def tftp_server = value("TFTP_HOST")
+        # 服务器地址只来自 YAML/CLI 的公开策略，不从 NC_TFTP_HOST 环境变量读取。
+        def tftp_server = value("NC_TFTP_HOST")
 
+        # 本机核验根目录属于策略快照，解析路径不证明文件已经上传。
+        def tftp_root
+          path = value("NC_TFTP_ROOT")
+          File.expand_path(path) if path
+        end
+
+        # 端口、TLS 与连接超时进入固定策略；主机、数据库名和登录凭据仍从环境读取。
+        def database_options
+          options = {}
+          %i[port connect_timeout].each do |name|
+            key = "ND_DB_#{name.to_s.upcase}"
+            next unless configured?(key)
+
+            options[name] = integer(key, nil)
+          end
+          %i[sslmode sslrootcert].each do |name|
+            item = value("ND_DB_#{name.to_s.upcase}")
+            options[name] = item if item
+          end
+          DatabaseClient.connection_policy(**options)
+        end
+
+        # 经 Configuration 复用连接校验；厂商协议覆盖通用协议，不包含设备凭据。
         def connection_options(vendor = nil)
           configuration = Configuration.new(
             protocol: vendor_protocols[vendor.to_s] || value("NC_PROTOCOL") || "ssh",
@@ -194,6 +240,7 @@ module Net
           options.freeze
         end
 
+        # 厂商协议必须使用已登记的厂商键和 ssh/telnet，不接受未知映射。
         def vendor_protocols
           values = json("NC_VENDOR_PROTOCOLS", {})
           unless values.is_a?(Hash) && values.all? { |vendor, protocol| Net::Connector.vendors.map(&:to_s).include?(vendor) && %w[ssh telnet].include?(protocol) }
@@ -202,6 +249,7 @@ module Net
           values
         end
 
+        # 每台任务读取最新厂商凭据，缺失字段回退到通用凭据；无用户名时跳过设备。
         def device_credentials_for(device)
           prefix = "NC_#{device.vendor.to_s.upcase}_"
           username = secret_value(prefix + "USERNAME") || secret_value("NC_DEVICE_USERNAME")
@@ -212,11 +260,13 @@ module Net
             enable_password: secret_value(prefix + "ENABLE_PASSWORD") || secret_value("NC_ENABLE_PASSWORD") }
         end
 
+        # 会话日志目录属于公开策略；调用方和批次入口负责实际创建。
         def log_directory
           path = value("NC_LOG_DIRECTORY")
           File.expand_path(path) if path
         end
 
+        # 生成已验证的无凭据配置摘要，不展开原环境或 resolver。
         def public_config
           snapshot(mode: :show_config).config_hash
         end
@@ -225,9 +275,10 @@ module Net
 
         protected
 
+        # 只输出公开策略；数据库身份和设备凭据不得通过配置摘要进入报告。
         def config_hash
           {
-            netdisco: client_options.merge(source: inventory_source),
+            netdisco: client_options.merge(source: inventory_source, database: database_options),
             backup: { directory: backup_directory, concurrency: concurrency, limit_per_vendor: limit_per_vendor },
             inventory: { include_hosts: list("NC_INCLUDE_HOSTS"),
                          exclude_hosts: list("NC_EXCLUDE_HOSTS"),
@@ -239,10 +290,11 @@ module Net
               log_directory: log_directory,
               vendor_protocols: vendor_protocols
             ),
-            tftp: { server: tftp_server, vrfs: tftp_vrfs.transform_keys(&:to_s), source_files: tftp_source_files }
+            tftp: { server: tftp_server, verification_root: tftp_root, vrfs: tftp_vrfs.transform_keys(&:to_s), source_files: tftp_source_files }
           }
         end
 
+        # 优先读取固定策略或显式覆盖；内部键的名称不表示该键可由进程环境配置。
         def raw(key, default = nil)
           return @policy.raw(key, default) if @policy
           return @overrides.fetch(key) if @overrides.key?(key)
@@ -260,7 +312,7 @@ module Net
 
         def client_budget_options(defaults)
           defaults.to_h do |name, default|
-            key = "NETDISCO_#{name.to_s.upcase}"
+            key = "ND_#{name.to_s.upcase}"
             parsed = case name
                      when :inventory_timeout then number(key, default)
                      when :allow_insecure_http then boolean(key, default)
@@ -271,16 +323,16 @@ module Net
         end
 
         def postgres_options(options)
-          query = value("NETDISCO_QUERY") || (raise ArgumentError, "NETDISCO_QUERY is required for postgres")
-          DatabaseClient.options(query: query, query_params: json("NETDISCO_QUERY_PARAMS", []), **options)
+          query = value("ND_QUERY") || (raise ArgumentError, "ND_QUERY is required for postgres")
+          DatabaseClient.options(query: query, query_params: json("ND_QUERY_PARAMS", []), **options)
         end
 
         def http_options(options)
-          if value("NETDISCO_QUERY") || value("NETDISCO_QUERY_PARAMS")
-            raise ArgumentError, "SQL query settings require NETDISCO_SOURCE=postgres"
+          if value("ND_QUERY") || value("ND_QUERY_PARAMS")
+            raise ArgumentError, "SQL query settings require ND_SOURCE=postgres"
           end
           options = Client.options(**options)
-          url = value("NETDISCO_URL")
+          url = value("ND_URL")
           Client.validate_url!(url, allow_insecure_http: options.fetch(:allow_insecure_http)) if url
           options.merge(url: url).freeze
         end
@@ -289,11 +341,16 @@ module Net
           ConfigFile::FIELDS.values.flat_map { |section| section.values.map(&:first) }
         end
 
+        # 旧前缀和已移除策略明确报错；错误只包含变量名，不泄露变量值。
         def validate_environment!
           legacy = @env.keys.find { |key| key.start_with?("NET_CONNECTOR_") }
-          raise ArgumentError, "#{legacy} has been renamed to #{legacy.sub("NET_CONNECTOR_", "NC_")}" if legacy
+          raise ArgumentError, "#{legacy} is unsupported; use NC_ credentials or YAML via NC_CONFIG" if legacy
+
+          legacy = @env.keys.find { |key| key.start_with?("NETDISCO_", "TFTP_") }
+          raise ArgumentError, "#{legacy} is unsupported; use ND_ credentials or YAML via NC_CONFIG" if legacy
 
           removed = non_secret_keys - ENVIRONMENT_KEYS
+          removed << "NC_PROGRESS"
           removed += Net::Connector.vendors.map { |vendor| "NC_#{vendor.to_s.upcase}_PROTOCOL" }
           key = removed.find { |name| @env.key?(name) }
           raise ArgumentError, "#{key} is no longer an environment setting; use YAML via NC_CONFIG or CLI options" if key
@@ -349,6 +406,7 @@ module Net
           result if present?(result)
         end
 
+        # 凭据只从活的环境映射读取并复制，不允许 defaults/overrides 充当秘密来源。
         def secret_value(key)
           result = @env[key]
           raise ArgumentError, "#{key} must be a String" unless result.nil? || result.is_a?(String)

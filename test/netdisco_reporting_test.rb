@@ -69,14 +69,20 @@ class NetdiscoReportingTest < Minitest::Test
     end
   end
 
+  def config_path(directory)
+    path = File.join(directory, "settings.yml")
+    File.write(path, "backup:\n  directory: #{directory}\ntftp:\n  server: 192.0.2.10\n")
+    path
+  end
+
   def test_cli_reports_coverage_for_both_success_policies
     Dir.mktmpdir do |directory|
       [%w[], %w[--success-policy strict], %w[--success-policy selected]].each do |extra|
         calls = []
         output, error = StringIO.new, StringIO.new
         factory = ->(settings) { fleet(settings: settings, calls: calls) }
-        status = Netdisco::CLI.new(argv: ["--tftp", "--host", "192.0.2.1", *extra],
-                                   env: { "TFTP_HOST" => "192.0.2.10", "NC_BACKUP_DIRECTORY" => directory },
+        status = Netdisco::CLI.new(argv: ["--tftp", "--host", "192.0.2.1", "--config", config_path(directory), *extra],
+                                   env: {},
                                    output: output, error: error, fleet_factory: factory).run
         selected = extra.include?("selected")
         assert_equal selected ? 0 : 1, status, error.string

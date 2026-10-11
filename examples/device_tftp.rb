@@ -1,32 +1,36 @@
 # frozen_string_literal: true
 
-# 由设备发起原生配置备份；运行前通过环境变量设置设备和目标服务器。
-if ARGV == ["--help"] || ARGV == ["-h"]
-  puts "用法：ruby device_tftp.rb"
-  puts "必填环境变量：DEVICE_VENDOR、DEVICE_HOST、DEVICE_USERNAME、DEVICE_PASSWORD、TFTP_HOST"
-  puts "可选环境变量：TFTP_SOURCE_FILE、TFTP_PATH、TFTP_VRF"
-  exit
+# 单设备 TFTP 目标由命令行指定；登录凭据从 NC_ 环境变量读取。
+require "optparse"
+
+values = {}
+parser = OptionParser.new do |options|
+  options.banner = "用法：ruby device_tftp.rb --vendor VENDOR --host HOST --server SERVER [选项]"
+  { "--vendor VENDOR" => :vendor, "--host HOST" => :host, "--server SERVER" => :server,
+    "--source-file FILE" => :source_file, "--path PATH" => :path, "--vrf VRF" => :vrf }.each do |flag, key|
+    options.on(flag) { |value| values[key] = value }
+  end
+  options.on("-h", "--help", "凭据：NC_DEVICE_USERNAME、NC_DEVICE_PASSWORD") { puts options; exit }
 end
-abort "用法：ruby device_tftp.rb（--help 查看环境变量）" unless ARGV.empty?
+begin
+  parser.parse!
+  raise OptionParser::InvalidArgument unless ARGV.empty? && %i[vendor host server].all? { |key| values[key] && !values[key].empty? }
+rescue OptionParser::ParseError
+  abort parser.to_s
+end
 
 require_relative "boot"
-
 require "net/connector"
 require "json"
 require "time"
 
-vendor = ENV.fetch("DEVICE_VENDOR").to_sym
-device_host = ENV.fetch("DEVICE_HOST")
-server = ENV.fetch("TFTP_HOST")
-options = { host: server }
-options[:path] = ENV["TFTP_PATH"] if ENV.key?("TFTP_PATH")
-options[:source_file] = ENV["TFTP_SOURCE_FILE"] if ENV.key?("TFTP_SOURCE_FILE")
-options[:vrf] = ENV["TFTP_VRF"] if ENV.key?("TFTP_VRF")
-
+vendor = values.fetch(:vendor).to_sym
+device_host = values.fetch(:host)
+transfer = values.slice(:source_file, :path, :vrf).merge(host: values.fetch(:server))
 Net::Connector.open(vendor, host: device_host,
-                    username: ENV.fetch("DEVICE_USERNAME"),
-                    password: ENV.fetch("DEVICE_PASSWORD")) do |device|
-  result = device.tftp_backup(**options)
+                    username: ENV.fetch("NC_DEVICE_USERNAME"),
+                    password: ENV.fetch("NC_DEVICE_PASSWORD")) do |device|
+  result = device.tftp_backup(**transfer)
   puts JSON.generate(device: device_host, vendor: vendor, server: result.server,
                      path: result.path, completed_at: result.completed_at.utc.iso8601)
 end

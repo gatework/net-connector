@@ -5,6 +5,7 @@ require_relative "../../device/topology/immediate_strategy"
 module Net
   module Connector
     module Hillstone
+      # 核对山石 LLDP 数据与总数，接口描述读回一致后才保存配置。
       class Topology < Topology::ImmediateStrategy
         # 山石提供 LLDP 邻居、配置描述读取和描述变更。
         def self.supports?(capability)
@@ -23,6 +24,7 @@ module Net
         # 退出配置视图后先读回，保存动作随后单独执行。
         def leave_configuration_commands = ["exit"]
 
+        # 只认可本厂商明确的保存完成行，设备提示符返回本身不能证明持久化。
         def persistence_pattern = /\ASaving configuration is finished\.?\z/i
 
         # 用数据行和设备报告的总数交叉核对，避免遗漏邻居。

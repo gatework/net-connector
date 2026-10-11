@@ -94,11 +94,13 @@ module Net
 
         # 根据地址、显式规则和厂商信息识别连接器。
         def resolve(row)
-          begin
-            address = IPAddr.new(row["ip"]).to_s
-            return @host_overrides.fetch(address) if @host_overrides.key?(address)
-          rescue IPAddr::Error, TypeError
-            # 无效的管理地址交由 Device.from_row 标记。
+          unless @host_overrides.empty?
+            begin
+              address = IPAddr.new(row["ip"]).to_s
+              return @host_overrides.fetch(address) if @host_overrides.key?(address)
+            rescue IPAddr::Error, TypeError
+              # 无效的管理地址交由 Device.from_row 标记。
+            end
           end
           label = normalize(row["vendor"])
           os = normalize(row["os"])

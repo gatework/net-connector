@@ -48,7 +48,7 @@ module Net
         @rules.freeze
       end
 
-      # 依次尝试恢复规则，并只返回第一个新传输对象。
+      # 依次尝试恢复规则，只采用首个可用传输；密钥替换可以复用原对象。
       def recover(error, transport)
         @rules.lazy.filter_map { |rule| rule.recover(error, transport) }.first
       end

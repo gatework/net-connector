@@ -14,19 +14,21 @@ module Net
     module Netdisco
       # 人类批次入口：固定配置、预览、执行、保存报告，最后决定输出与退出码。
       class BackupRun
+        # 保存批次模式与调用方 IO，构造阶段不读取清单、不创建目录。
         def initialize(mode: :backup, argv: ARGV, env: ENV, input: $stdin, output: $stdout, error: $stderr)
           raise ArgumentError, "mode must be backup or tftp" unless %i[backup tftp].include?(mode)
 
           @mode, @argv, @env, @input, @output, @error = mode, argv, env, input, output, error
         end
 
+        # 先固定并校验策略，再预览、执行和保存报告；成功判定使用最终报告。
         def run
           options = CLI::Options.parse(argv: @argv, input: @input, output: @output, error: @error)
           return 0 if options[:help]
 
           settings, success_policy, server_root, batch_directory = prepare(options)
           client, credentials = Connection.build(settings, stdin_credentials: options[:stdin_credentials], input: @input)
-          progress = Progress.new(io: @error, enabled: @env.fetch("NC_PROGRESS", "1") != "0", verbose: options[:verbose])
+          progress = Progress.new(io: @error, enabled: !options[:no_progress], verbose: options[:verbose])
           resolver = ->(device) { credentials.call(device)&.merge(on_event: progress.method(:event)) }
           fleet = Fleet.new(client: client, settings: settings, credentials: resolver, result_store: nil)
           progress.reading_inventory
@@ -57,8 +59,9 @@ module Net
 
         private
 
+        # 预检完成后才创建批次目录；补充日志路径时保持原策略快照与动态凭据来源。
         def prepare(options)
-          settings = CLI::Options.settings(options, env: @env)
+          settings = CLI::Options.settings(options, env: @env).for_run(mode: @mode)
           success_policy = options.fetch(:success_policy, :selected)
           raise ArgumentError, "verified policy requires TFTP mode" if success_policy == :verified && @mode != :tftp
           raise ArgumentError, "--tftp-root requires TFTP mode" if options[:tftp_root] && @mode != :tftp
@@ -69,10 +72,10 @@ module Net
           if @mode == :tftp && !settings.log_directory
             settings = settings.with_overrides("NC_LOG_DIRECTORY" => File.join(batch_directory, "logs"))
           end
-          settings = settings.for_run(mode: @mode)
           [settings, success_policy, server_root, batch_directory]
         end
 
+        # 事件流仅记录受控元数据；计划写入后在有界工作线程中执行同一批设备。
         def execute(fleet, settings, plan, batch_directory, progress, success_policy, server_root)
           File.open(File.join(batch_directory, "events.jsonl"), File::WRONLY | File::CREAT | File::EXCL, 0o600) do |events|
             options = { plan: plan, concurrency: settings.concurrency, success_policy: success_policy,
@@ -89,6 +92,7 @@ module Net
           end
         end
 
+        # 将任务结果追加到私有事件流并更新进度；异常由工作线程保留为回调诊断。
         def result_callback(progress, events)
           lock = Mutex.new
           lambda do |outcome|
@@ -102,6 +106,7 @@ module Net
           end
         end
 
+        # 报告先保存，再显示完成信息；终端收尾失败只补写诊断，不重放任务。
         def finish(report, progress, options, batch_directory, plan, concurrency)
           progress.finish(report)
           progress.location(report.report_location) if report.report_location
@@ -121,21 +126,24 @@ module Net
           report.policy_success? ? 0 : 1
         end
 
+        # 输出故障只记录一次，保留已有批次结果和回调错误。
         def record_progress_error(report, progress)
           return report unless progress.output_error && !report.callback_errors.include?(progress.output_error)
 
           report.with(callback_errors: [*report.callback_errors, progress.output_error].freeze)
         end
 
+        # 优先使用显式核验根目录；仅服务器是本机地址时探测本机惯用 TFTP 目录。
         def tftp_root(settings, options)
-          server = settings.tftp_server || (raise ArgumentError, "TFTP_HOST or YAML tftp.server is required")
-          return options[:tftp_root] || @env["TFTP_ROOT"] if options[:tftp_root] || @env["TFTP_ROOT"]
+          server = settings.tftp_server || (raise ArgumentError, "YAML tftp.server is required")
+          return options[:tftp_root] || settings.tftp_root if options[:tftp_root] || settings.tftp_root
           return unless Socket.ip_address_list.any? { |address| address.ip_address == server }
 
           candidate = File.join(Dir.home, "Documents", "TFTP")
           candidate if File.directory?(candidate)
         end
 
+        # 预览来自已有计划，文件名按本次模式计算，不重新请求清单或设备。
         def plan_summary(plan)
           { total: plan.inventory.size, ready: plan.inventory.count(&:ready?),
             vendors: plan.inventory.group_by { |device| device.vendor || :unmapped }.transform_values(&:size),

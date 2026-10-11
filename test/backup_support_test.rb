@@ -26,7 +26,7 @@ class BackupSupportTest < Minitest::Test
   end
 
   def test_connection_consumes_only_credentials_line_and_returns_resolver_without_network
-    settings = Netdisco::Settings.new(env: { "NETDISCO_URL" => "https://inventory.example" })
+    settings = Netdisco::Settings.new(env: { "ND_URL" => "https://inventory.example" })
     input = StringIO.new(JSON.generate(netdisco_username: "reader", netdisco_password: "secret",
                                        device_username: "audit", device_password: "device-secret") + "\nRUN\n")
     client, resolver = Netdisco::Connection.build(settings, stdin_credentials: true, input: input)
@@ -43,8 +43,8 @@ class BackupSupportTest < Minitest::Test
   end
 
   def test_stdin_credentials_use_the_configured_database_client
-    settings = Netdisco::Settings.new(env: { "NETDISCO_DB_HOST" => "db.example", "NETDISCO_DB_NAME" => "inventory" },
-                                      defaults: { "NETDISCO_SOURCE" => "postgres", "NETDISCO_QUERY" => "SELECT ip FROM device" })
+    settings = Netdisco::Settings.new(env: { "ND_DB_HOST" => "db.example", "ND_DB_NAME" => "inventory" },
+                                      defaults: { "ND_SOURCE" => "postgres", "ND_QUERY" => "SELECT ip FROM device" })
     input = StringIO.new(JSON.generate(netdisco_username: "reader", netdisco_password: "secret",
                                        device_username: "audit", device_password: "device-secret") + "\nRUN\n")
     client, resolver = Netdisco::Connection.build(settings, stdin_credentials: true, input: input)

@@ -41,7 +41,7 @@ class ConnectorExamplesTest < Minitest::Test
       [root, nil].each do |local_root|
         with_example("backup_tftp.rb", [{ "ip" => "192.0.2.1", "vendor" => "Hillstone" }],
                      preload_code: tftp_preload("../unsafe.dat"),
-                     extra_env: { "TFTP_ROOT" => local_root, "NC_DEVICE_USERNAME" => "audit" }) do |output, error, status, directory|
+                     extra_env: { "NC_TFTP_ROOT" => local_root, "NC_DEVICE_USERNAME" => "audit" }) do |output, error, status, directory|
           assert_equal 1, status.exitstatus, error
           assert_empty error
           refute JSON.parse(output.lines.last).fetch("success")
@@ -64,7 +64,7 @@ class ConnectorExamplesTest < Minitest::Test
       File.utime(Time.now + 60, Time.now + 60, actual)
       with_example("backup_tftp.rb", [{ "ip" => "192.0.2.1", "vendor" => "Hillstone" }],
                    preload_code: tftp_preload("actual.dat"),
-                   extra_env: { "TFTP_ROOT" => root, "NC_DEVICE_USERNAME" => "audit" }) do |output, error, status, directory|
+                   extra_env: { "NC_TFTP_ROOT" => root, "NC_DEVICE_USERNAME" => "audit" }) do |output, error, status, directory|
         assert_equal 1, status.exitstatus, error
         assert_empty error
         refute JSON.parse(output.lines.last).fetch("success")
@@ -103,7 +103,7 @@ class ConnectorExamplesTest < Minitest::Test
       RUBY
       dotenv = "NC_DEVICE_USERNAME=fixture-user\nNC_DEVICE_PASSWORD=fixture-password\n"
       with_example("backup.rb", [{ "ip" => "192.0.2.1", "vendor" => "H3C" }],
-                   preload_code: preload, extra_env: overrides.merge("NC_PROGRESS" => "1"), dotenv: dotenv,
+                   preload_code: preload, extra_env: overrides, dotenv: dotenv,
                    config: "inventory:\n  include_hosts: [192.0.2.1]\nbackup:\n  concurrency: 2\n") do |output, error, status, _directory|
         assert status.success?, error
         assert JSON.parse(output.lines.last).fetch("tasks_succeeded")
@@ -136,7 +136,7 @@ class ConnectorExamplesTest < Minitest::Test
   end
 
   def test_default_output_is_human_readable_without_json_or_command_spam
-    with_example("backup.rb", [], extra_env: { "NC_PROGRESS" => "1" }, arguments: []) do |output, error, status, _directory|
+    with_example("backup.rb", [], extra_env: {}, arguments: []) do |output, error, status, _directory|
       assert_equal 1, status.exitstatus
       assert_empty output
       assert_includes error, "本次 0 台"
@@ -145,7 +145,7 @@ class ConnectorExamplesTest < Minitest::Test
     end
   end
 
-  def test_command_line_credentials_and_concurrency_override_environment_and_yaml
+  def test_command_line_credentials_override_environment_and_concurrency_overrides_yaml
     preload = <<~RUBY
       require #{File.join(ROOT, "test/support/fake_transport").inspect}
       Net::Connector::Netdisco::Fleet.prepend(Module.new do
@@ -160,7 +160,7 @@ class ConnectorExamplesTest < Minitest::Test
         end
       end)
     RUBY
-    env = { "NC_CONCURRENCY" => "2", "NC_H3C_USERNAME" => "vendor-user", "NC_H3C_PASSWORD" => "vendor-secret", "NC_HOST_KEY_POLICY" => "strict" }
+    env = { "NC_H3C_USERNAME" => "vendor-user", "NC_H3C_PASSWORD" => "vendor-secret" }
     with_example("backup.rb", [{ "ip" => "192.0.2.1", "vendor" => "H3C" }],
                  preload_code: preload, extra_env: env, config: "backup:\n  concurrency: 3\n",
                  arguments: %w[--json --concurrency 7 --username cli-user --password cli-secret --host-key-policy accept_new]) do |output, error, status, _directory|
@@ -185,17 +185,17 @@ class ConnectorExamplesTest < Minitest::Test
 
   def test_command_line_environment_is_isolated_and_explicit_netdisco_login_overrides_api_key
     require_relative "../lib/net/connector/netdisco"
-    env = { "NETDISCO_API_KEY" => "old-token", "NC_H3C_PASSWORD" => "old-device",
+    env = { "ND_API_KEY" => "old-token", "NC_H3C_PASSWORD" => "old-device",
             "NC_H3C_ENABLE_PASSWORD" => "keep-enable" }
-    options = { environment: { "NETDISCO_USERNAME" => "reader", "NETDISCO_PASSWORD" => "new-token",
-                               "NETDISCO_URL" => "https://inventory.example", "NC_DEVICE_PASSWORD" => "new-device" } }
+    options = { environment: { "ND_USERNAME" => "reader", "ND_PASSWORD" => "new-token",
+                               "ND_URL" => "https://inventory.example", "NC_DEVICE_PASSWORD" => "new-device" } }
     result = Net::Connector::Netdisco::CLI::Options.environment(options, env: env)
-    refute result.key?("NETDISCO_API_KEY")
+    refute result.key?("ND_API_KEY")
     refute result.key?("NC_H3C_PASSWORD")
     assert_equal "keep-enable", result.fetch("NC_H3C_ENABLE_PASSWORD")
     assert_equal "new-device", result.fetch("NC_DEVICE_PASSWORD")
     assert_equal "old-device", env.fetch("NC_H3C_PASSWORD")
-    assert_equal "old-token", env.fetch("NETDISCO_API_KEY")
+    assert_equal "old-token", env.fetch("ND_API_KEY")
   end
 
   def test_batch_directory_uses_utc_plus_eight_and_never_reuses_existing_directory
@@ -299,7 +299,7 @@ class ConnectorExamplesTest < Minitest::Test
     RUBY
   end
 
-  # Run real example entrypoints with an in-memory inventory and no network I/O.
+  # 用内存清单执行真实示例入口，所有设备交互由注入传输完成，不访问网络。
   def with_example(name, rows, preload_code: "", extra_env: {}, dotenv: nil, config: nil, arguments: ["--json", "--verbose"])
     Dir.mktmpdir do |root|
       directory = File.join(root, "examples")
@@ -315,15 +315,24 @@ class ConnectorExamplesTest < Minitest::Test
         end
         #{preload_code}
       RUBY
-      env = ENV.keys.grep(/\A(?:NETDISCO_|NET_CONNECTOR_|NC_|TFTP_)/).to_h { |key| [key, nil] }
-      env.merge!("NETDISCO_URL" => "https://inventory.example", "NETDISCO_API_KEY" => "test",
-                 "TFTP_HOST" => "192.0.2.10", "NC_BACKUP_DIRECTORY" => File.join(directory, "backups"),
-                 "NC_PROGRESS" => "0")
-      if config
-        path = File.join(root, "config.yml")
-        File.write(path, config)
-        env["NC_CONFIG"] = path
+      env = ENV.keys.grep(/\A(?:ND_|NETDISCO_|NET_CONNECTOR_|NC_|TFTP_)/).to_h { |key| [key, nil] }
+      env.merge!("ND_URL" => "https://inventory.example", "ND_API_KEY" => "test")
+      require "yaml"
+      document = YAML.safe_load(config || "") || {}
+      document["backup"] ||= {}
+      document["backup"]["directory"] = File.join(directory, "backups")
+      document["tftp"] ||= {}
+      document["tftp"]["server"] = "192.0.2.10"
+      document["tftp"]["verification_root"] = extra_env.delete("NC_TFTP_ROOT") if extra_env["NC_TFTP_ROOT"]
+      extra_env.delete("NC_TFTP_ROOT")
+      if extra_env["NC_LOG_DIRECTORY"]
+        document["ssh"] ||= {}
+        document["ssh"]["log_directory"] = extra_env.delete("NC_LOG_DIRECTORY")
       end
+      path = File.join(root, "config.yml")
+      File.write(path, YAML.dump(document))
+      env["NC_CONFIG"] = path
+      arguments = [*arguments, "--no-progress"] unless arguments.empty? || (name == "backup.rb" && dotenv)
       env.merge!(extra_env)
       output, error, status = Open3.capture3(env, RbConfig.ruby, "-I#{File.join(ROOT, "lib")}",
                                              "-r", preload, File.join(directory, name), *arguments)

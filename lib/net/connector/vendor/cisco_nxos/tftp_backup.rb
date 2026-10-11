@@ -5,12 +5,14 @@ require_relative "../../device/tftp/strategy"
 module Net
   module Connector
     module CiscoNxos
+      # 在指定 VRF 上传 NX-OS 运行配置，默认使用 management。
       class TftpBackup < Tftp::Strategy
         # 在连接前拒绝当前厂商不支持的参数组合。
         def validate_options!(_target, source_file:, **)
           raise ArgumentError, "Cisco NX-OS does not use source_file" unless source_file.nil?
         end
 
+        # 声明本厂商实际导出的配置种类与格式，不推断服务器文件已核验。
         def receipt_metadata(_target, **) = { configuration_kind: :running, format: :cfg }
 
         # 构造当前厂商的 TFTP 导出交互脚本。

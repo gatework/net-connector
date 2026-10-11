@@ -38,7 +38,7 @@ ruby review_tftp.rb backups/2026-09-28_14-04-11
 
 示例默认 `--success-policy selected`：只允许主动过滤和抽样跳过；未知厂商、缺少凭据、失败、部分成功和报告错误均返回非零。
 `summary.json` 的逐台结果统一位于 `devices`，保留诊断字段；`events.jsonl` 逐台完成即刷新。
-自定义 `NC_LOG_DIRECTORY` 会同步体现在报告的 `session_log` 中。
+在 YAML 自定义 `ssh.log_directory` 会同步体现在报告的 `session_log` 中。
 
 ```sh
 ruby backup_tftp.rb --tftp-root /srv/tftp --success-policy verified

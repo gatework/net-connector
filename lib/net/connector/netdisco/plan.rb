@@ -25,6 +25,9 @@ module Net
         # 按清单顺序返回选中的设备。
         def selected = ready.map(&:last)
 
+        # 更新与新建共用容器复制边界，不能因 Ruby 版本差异共享可变任务槽位。
+        def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
+
         # 在任何设备 I/O 前校验完整快照，外部构造或修改的计划也必须遵守相同约束。
         def validate!
           raise ArgumentError, "plan mode must be backup or tftp" unless %i[backup tftp].include?(mode)
@@ -72,10 +75,16 @@ module Net
 
         # 外部快照也遵守清单入口的地址唯一性；采样不能把重复设备重新变为可执行。
         def validate_duplicate_hosts!
-          groups = inventory.group_by { |device| device.host && IPAddr.new(device.host).to_s }
-          return unless groups.any? { |host, devices| host && devices.size > 1 && devices.any? { |device| device.issue != :duplicate_host } }
+          issues_by_host = {}
+          inventory.each do |device|
+            next unless device.host
 
-          raise ArgumentError, "plan duplicate hosts must be marked as duplicate_host"
+            host = IPAddr.new(device.host).to_s
+            if issues_by_host.key?(host) && (issues_by_host[host] != :duplicate_host || device.issue != :duplicate_host)
+              raise ArgumentError, "plan duplicate hosts must be marked as duplicate_host"
+            end
+            issues_by_host[host] = device.issue
+          end
         end
 
         # 跳过结果不携带执行产物；文件冲突必须有本批次实际执行的目标作为依据。

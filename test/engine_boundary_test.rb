@@ -10,6 +10,51 @@ require_relative "support/fake_transport"
 class EngineBoundaryTest < Minitest::Test
   Connector = Net::Connector
 
+  def test_open_preserves_its_block_failure_when_close_is_interrupted
+    [IOError.new("block failed"), Interrupt.new("block interrupted")].each do |original|
+      transport = ConnectorFake.new("router#")
+      transport.on_close = -> { raise Interrupt, "cleanup interrupted" }
+      begin
+        raised = assert_raises(original.class) do
+          Connector.open(:cisco_ios, host: "192.0.2.1", username: "operator", transport: transport) { raise original }
+        end
+      rescue Interrupt
+        flunk "cleanup interruption replaced the original block failure"
+      end
+      assert_same original, raised
+      assert transport.closed?
+      assert_equal 1, transport.closes
+    end
+  end
+
+  def test_open_reports_close_failure_inside_an_unrelated_outer_rescue
+    transport = ConnectorFake.new("router#")
+    transport.on_close = -> { raise IOError, "close failed" }
+    begin
+      raise RuntimeError, "already handled by caller"
+    rescue RuntimeError
+      assert_raises(Connector::TransportError) do
+        Connector.open(:cisco_ios, host: "192.0.2.1", username: "operator", transport: transport) { :completed }
+      end
+    end
+    assert transport.closed?
+    assert_equal 1, transport.closes
+  end
+
+  def test_interact_reports_close_failure_inside_an_unrelated_outer_rescue
+    transport = ConnectorFake.new("router#")
+    transport.on_interact = ->(*) { :device_eof }
+    transport.on_close = -> { raise IOError, "close failed" }
+    device = Connector.build(:cisco_ios, host: "192.0.2.1", username: "operator", transport: transport)
+    begin
+      raise RuntimeError, "already handled by caller"
+    rescue RuntimeError
+      assert_raises(Connector::TransportError) { device.interact }
+    end
+    refute device.connected?
+    assert_equal 1, transport.closes
+  end
+
   def test_open_block_forwarding_preserves_break_and_closes_transport
     transport = ConnectorFake.new("router#")
     returned = Connector.open(:cisco_ios, host: "192.0.2.1", username: "operator", transport: transport) do |device|

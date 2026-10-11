@@ -5,6 +5,7 @@ require_relative "../../device/tftp/strategy"
 module Net
   module Connector
     module PaloAlto
+      # PAN-OS 上传固定的 running-config.xml，调用方不能改名或指定其他源文件。
       class TftpBackup < Tftp::Strategy
         FILENAME = "running-config.xml"
 
@@ -20,6 +21,7 @@ module Net
           raise ArgumentError, "PAN-OS TFTP export uses the fixed filename #{FILENAME}"
         end
 
+        # 声明本厂商实际导出的配置种类与格式，不推断服务器文件已核验。
         def receipt_metadata(_target, **)
           { configuration_kind: :running, format: :xml, source_file: FILENAME }
         end

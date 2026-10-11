@@ -11,6 +11,7 @@ module Net
       class CLI
         # 可注入参数与输入输出的备份选项，不退出宿主进程。
         class Options
+          # 复制参数数组，返回选项或帮助标记；非法输入抛错，不退出宿主进程。
           def self.parse(argv: ARGV, input: $stdin, output: $stdout, error: $stderr, program: $PROGRAM_NAME)
             values = { environment: {}, json: false, verbose: false, stdin_credentials: false }
             parser = parser_for(values, output: output, program: program)
@@ -22,7 +23,7 @@ module Net
               raise ArgumentError, "--stdin-credentials 不能与命令行凭据或密码提示同时使用"
             end
             read_password(values, :ask_password, "NC_DEVICE_PASSWORD", "设备密码", input: input, output: error)
-            read_password(values, :ask_netdisco_password, "NETDISCO_PASSWORD", "Netdisco 密码", input: input, output: error)
+            read_password(values, :ask_netdisco_password, "ND_PASSWORD", "Netdisco 密码", input: input, output: error)
 
             values
           rescue OptionParser::ParseError
@@ -36,6 +37,7 @@ module Net
               add_execution(opts, values)
               opts.on("--ask-password", "隐藏输入设备密码") { values[:ask_password] = true }
               opts.on("--ask-netdisco-password", "隐藏输入 Netdisco 密码") { values[:ask_netdisco_password] = true }
+              opts.on("--no-progress", "关闭进度显示") { values[:no_progress] = true }
               opts.on("--verbose", "显示逐条登录和命令事件") { values[:verbose] = true }
               opts.on("--json", "在 STDOUT 输出计划和结果 JSON") { values[:json] = true }
               opts.on("--stdin-credentials", "从标准输入读取凭据并等待 RUN") { values[:stdin_credentials] = true }
@@ -43,6 +45,7 @@ module Net
             end
           end
 
+          # 正式 CLI 与批次示例共用并发、抽样、核验和成功策略选项。
           def self.add_execution(opts, values)
             opts.on("-c", "--concurrency N", Integer, "并发设备数，1 至 50") do |count|
               raise OptionParser::InvalidArgument unless (1..Settings::MAX_CONCURRENCY).cover?(count)
@@ -60,14 +63,17 @@ module Net
             end
           end
 
+          # 公开 CLI 参数进入 overrides，凭据留在 environment；内部键不会重新开放已移除环境设置。
           def self.settings(options, env: ENV)
             raise ArgumentError, "--all 不能与抽样同时使用" if options[:all] && options[:limit]
 
             environment = environment(options, env: env)
             path = environment["NC_CONFIG"]
             defaults = path && !path.empty? ? ConfigFile.load(path) : {}
-            overrides = {}
-            { source: "NETDISCO_SOURCE", query: "NETDISCO_QUERY", query_params: "NETDISCO_QUERY_PARAMS",
+            keys = ConfigFile::FIELDS.values.flat_map { |fields| fields.values.map(&:first) }
+            overrides = options.fetch(:environment).slice(*keys)
+            environment = environment.reject { |key, _| overrides.key?(key) && !Settings::ENVIRONMENT_KEYS.include?(key) }
+            { source: "ND_SOURCE", query: "ND_QUERY", query_params: "ND_QUERY_PARAMS",
               max_script_output_bytes: "NC_MAX_SCRIPT_OUTPUT_BYTES", host: "NC_INCLUDE_HOSTS",
               limit: "NC_SAMPLE_PER_VENDOR" }.each do |option, key|
               overrides[key] = options[option].to_s if options.key?(option)
@@ -76,14 +82,15 @@ module Net
             Settings.new(env: environment, defaults: defaults, overrides: overrides)
           end
 
+          # 共用配置与凭据参数登记；具体入口决定后续预览、执行或导出。
           def self.add_settings(opts, values)
             {
               "--username USER" => ["NC_DEVICE_USERNAME", "设备登录用户名"],
               "--password PASSWORD" => ["NC_DEVICE_PASSWORD", "设备登录密码（可改用 --ask-password）"],
               "--enable-password PASSWORD" => ["NC_ENABLE_PASSWORD", "设备提权密码"],
-              "--netdisco-url URL" => ["NETDISCO_URL", "Netdisco 地址"],
-              "--netdisco-username USER" => ["NETDISCO_USERNAME", "Netdisco 用户名"],
-              "--netdisco-password PASSWORD" => ["NETDISCO_PASSWORD", "Netdisco 密码"],
+              "--netdisco-url URL" => ["ND_URL", "Netdisco 地址"],
+              "--netdisco-username USER" => ["ND_USERNAME", "Netdisco 用户名"],
+              "--netdisco-password PASSWORD" => ["ND_PASSWORD", "Netdisco 密码"],
               "--directory DIR" => ["NC_BACKUP_DIRECTORY", "备份目录，相对项目根目录"],
               "--config FILE" => ["NC_CONFIG", "YAML 配置，相对项目根目录"]
             }.each do |flag, (key, description)|
@@ -101,6 +108,7 @@ module Net
             end
           end
 
+          # 复制原环境并合并显式凭据，清除被通用凭据覆盖的厂商值及旧 API key。
           def self.environment(options, env: ENV)
             result = env.to_h.dup
             overrides = options.fetch(:environment)
@@ -114,12 +122,13 @@ module Net
                   (suffix != "PASSWORD" || !name.end_with?("_ENABLE_PASSWORD"))
               end
             end
-            if overrides.key?("NETDISCO_USERNAME") || overrides.key?("NETDISCO_PASSWORD")
-              result.delete("NETDISCO_API_KEY")
+            if overrides.key?("ND_USERNAME") || overrides.key?("ND_PASSWORD")
+              result.delete("ND_API_KEY")
             end
             result.merge(overrides)
           end
 
+          # 隐藏输入只用于交互终端；与显式密码互斥，不输出或记录密码内容。
           def self.read_password(values, flag, key, label, input:, output:)
             return unless values[flag]
 

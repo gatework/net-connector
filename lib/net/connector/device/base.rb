@@ -1,6 +1,5 @@
 # frozen_string_literal: true
 
-require "English"
 require "forwardable"
 require_relative "../engine/core"
 require_relative "profile"
@@ -67,12 +66,14 @@ module Net
         begin
           device.connect
           yield device
+        rescue Exception # rubocop:disable Lint/RescueException -- 本次连接或块失败时仍关闭设备，并保留原始故障或中断。
+          failed = true
+          raise
         ensure
-          active_error = $ERROR_INFO
           begin
             device.close
-          rescue StandardError
-            raise unless active_error
+          rescue Exception # rubocop:disable Lint/RescueException -- 只保留本次作用域的原始异常，不受外层已处理异常影响。
+            raise unless failed
           end
         end
       end

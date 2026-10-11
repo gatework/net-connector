@@ -1,6 +1,10 @@
-# 数据库连接只从 NETDISCO_DB_* 环境变量读取；此文件可直接编辑并纳入版本控制。
+# 数据库身份从 ND_DB_HOST/NAME/USER/PASS 读取；非敏感连接策略在此设置。
 netdisco:
   source: postgres
+  db_port: 5432
+  db_sslmode: verify-full
+  # db_sslrootcert: /etc/net-connector/database-ca.crt
+  # db_connect_timeout: 10
   query: |
     SELECT host(ip) AS ip, name, dns, vendor, os, model, os_ver, serial
     FROM device

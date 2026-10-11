@@ -31,7 +31,7 @@ class SecurityTest < Minitest::Test
       rules = JSON.parse(File.read(File.join(directory, "tmp", "security", "source.json"))).map { |finding| finding.fetch("rule") }
       assert_includes rules, "network-private-address"
       assert_includes rules, "network-device-secret"
-      File.write(fixture, "host 192.0.2.1\nNETDISCO_PASSWORD=replace-me\n")
+      File.write(fixture, "host 192.0.2.1\nND_PASSWORD=replace-me\n")
       capture_io { SecretScan.source(root: directory, history: false) }
       assert_empty JSON.parse(File.read(File.join(directory, "tmp", "security", "source.json")))
     end
@@ -69,7 +69,7 @@ class SecurityTest < Minitest::Test
   def test_netdisco_database_password_is_scanned_without_reporting_the_value
     with_source do |directory|
       secret = %w[fixture database credential 18379].join("-")
-      File.write(File.join(directory, "README.md"), "export NETDISCO_DB_PASS=#{secret}\n")
+      File.write(File.join(directory, "README.md"), "export ND_DB_PASS=#{secret}\n")
       output, errors = capture_io do
         assert_raises(RuntimeError) { SecretScan.source(root: directory, history: false) }
       end

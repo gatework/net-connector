@@ -1,6 +1,7 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
+# 安装后的命令行入口；退出码由批量 CLI 决定，加载时不直接连接设备。
 require "net/connector/netdisco"
 
 exit Net::Connector::Netdisco::CLI.new.run

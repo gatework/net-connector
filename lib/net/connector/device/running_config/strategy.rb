@@ -5,6 +5,7 @@ require_relative "../../engine/terminal_renderer"
 module Net
   module Connector
     class RunningConfig
+      # 采集策略决定业务步骤、视图提示符和响应校验；默认不改写配置正文。
       class Strategy
         # 保存策略所属设备，供提示符和厂商校验使用。
         def initialize(device) = @device = device
@@ -24,7 +25,7 @@ module Net
         def validate_response!(_command, _response, _execution) end
       end
 
-      # 使用终端行编辑规则渲染 H3C、Huawei 和 Radware 配置。
+      # 按终端行编辑规则还原配置画面，厂商子类只清理已识别的响应头。
       class Rendered < Strategy
         # 应用终端行编辑规则，还原设备最终显示的配置文本。
         def clean(text) = TerminalRenderer.render(text)

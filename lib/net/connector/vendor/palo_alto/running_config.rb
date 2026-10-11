@@ -6,6 +6,7 @@ require_relative "../../device/running_config/strategy"
 module Net
   module Connector
     module PaloAlto
+      # 通过候选差异与 set 格式校验确认采集证据，拒绝将未提交配置当作运行配置。
       class RunningConfig < Net::Connector::RunningConfig::Strategy
         # 配置位于 show 步骤，最后的 exit 只负责离开候选视图。
         def result_step(result)

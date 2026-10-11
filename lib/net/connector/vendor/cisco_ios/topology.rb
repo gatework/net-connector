@@ -5,6 +5,7 @@ require_relative "../../device/topology/immediate_strategy"
 module Net
   module Connector
     module CiscoIos
+      # 基于 CDP 证据规划接口描述，变更后读回确认，再执行独立保存阶段。
       class Topology < Topology::ImmediateStrategy
         # IOS 提供 CDP 邻居、配置描述读取和描述变更。
         def self.supports?(capability)
@@ -26,6 +27,7 @@ module Net
         # 先回到执行视图读回，随后才执行档案中的保存命令。
         def leave_configuration_commands = ["end"]
 
+        # 只认可本厂商明确的保存完成行，设备提示符返回本身不能证明持久化。
         def persistence_pattern = /\A(?:\[OK\]|Copy complete\.)\z/i
 
         # 每个 Device ID 表示一条应由模板解析的邻居记录。

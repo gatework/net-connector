@@ -65,12 +65,8 @@ module Net
             @channel.spawn(*argv)
           end
           self
-        rescue Exception # rubocop:disable Lint/RescueException -- A half-open PTY must be released on interrupts.
-          begin
-            close
-          rescue
-            # 尝试释放半打开信道后，仍然抛出原始失败。
-          end
+        rescue Exception # rubocop:disable Lint/RescueException -- 中断时也必须释放尚未完成初始化的 PTY。
+          close_preserving_failure
           raise
         end
 
@@ -120,6 +116,13 @@ module Net
 
         private
 
+        # 已有操作异常时仍尝试清理；次级故障或中断不能覆盖原始失败。
+        def close_preserving_failure
+          close
+        rescue Exception # rubocop:disable Lint/RescueException -- 清理后继续传播原始操作异常。
+          nil
+        end
+
         # 检查缓冲上限并把设备输出写入当前日志目标。
         def write_log_output(bytes)
           if @channel.buffer.bytesize > configuration.max_output_bytes
@@ -148,8 +151,8 @@ module Net
             @known_hosts = KnownHosts.new(configuration, replace: @replace_host_key)
           end
           super
-        rescue Exception # rubocop:disable Lint/RescueException -- Release a staged trust file on failed startup.
-          close
+        rescue Exception # rubocop:disable Lint/RescueException -- 启动失败或中断时释放临时信任文件。
+          close_preserving_failure
           raise
         end
 
@@ -159,10 +162,18 @@ module Net
         end
 
         def close
-          super
-        ensure
-          @known_hosts&.close
+          known_hosts = @known_hosts
           @known_hosts = nil
+          super
+        rescue Exception # rubocop:disable Lint/RescueException -- 全部资源均须尝试关闭，保留首个失败或中断。
+          failed = true
+          raise
+        ensure
+          begin
+            known_hosts&.close
+          rescue Exception # rubocop:disable Lint/RescueException -- 信任文件收尾不能覆盖传输关闭的原始异常。
+            raise unless failed
+          end
         end
 
         # 返回 SSH 协议标识。

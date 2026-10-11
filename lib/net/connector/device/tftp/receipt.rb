@@ -15,6 +15,7 @@ module Net
       FORMATS = %i[cfg xml dat tgz unknown].freeze
       private_constant :KINDS, :FORMATS
 
+      # 校验目标、配置种类和核验状态，只有服务器核验成功才允许携带文件摘要与归档路径。
       def initialize(server:, path:, completed_at:, configuration_kind: :unknown, source_file: nil,
                      format: :unknown, requested_path: nil, verification: :device_reported, server_sha256: nil,
                      server_bytes: nil, local_path: nil, archive_path: nil)

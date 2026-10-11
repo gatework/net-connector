@@ -129,8 +129,8 @@ module Net
 
           rules = @rules || settings_snapshot.rules
           devices = rows.map { |row| Device.from_row(row, rules: rules) }
-          duplicates = devices.group_by(&:host).reject { |host, entries| host.nil? || entries.size == 1 }
-          devices.map { |device| duplicates.key?(device.host) ? device.with(issue: :duplicate_host) : device }.freeze
+          host_counts = devices.each_with_object(Hash.new(0)) { |device, counts| counts[device.host] += 1 if device.host }
+          devices.map { |device| host_counts[device.host] > 1 ? device.with(issue: :duplicate_host) : device }.freeze
         end
 
         def build_plan(mode, limit, settings_snapshot, allow_fixed_name_reuse: false)

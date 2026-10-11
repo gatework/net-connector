@@ -17,6 +17,7 @@ module Net
         BATCH_DIRECTORY_NAME = /\A\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:_\d{2})?\z/
         private_constant :BATCH_DIRECTORY_NAME
 
+        # 固定名上传无法保留历史时，在设备上传之前拒绝执行。
         class Unavailable < Net::Connector::Error
           def initialize(host: nil)
             super("a local TFTP root is required to retain a fixed-name upload", code: :tftp_history_unavailable,
@@ -24,6 +25,7 @@ module Net
           end
         end
 
+        # 设备可能已经上传，归档失败不能撤销或重新执行设备命令。
         class ArchiveFailed < Net::Connector::Error
           def initialize(host: nil)
             super("the uploaded file could not be retained in the batch", code: :tftp_archive_failed,
@@ -40,6 +42,7 @@ module Net
           @verifier = TftpVerification.new(root: @server_root)
         end
 
+        # 有本机根目录时保留原名并归档；远端服务器使用批次后缀避免重复覆盖。
         def upload_filename(device)
           name = device.tftp_filename
           return name if @server_root || device.vendor == :palo_alto
@@ -50,6 +53,7 @@ module Net
           TftpTarget.validate_path!("#{stem.byteslice(0, TftpTarget::MAX_PATH_BYTES - suffix.bytesize)}#{suffix}")
         end
 
+        # 上传与归档在同一目标锁内完成，后续失败仍保留可确认的上传回执和提交路径。
         def upload_and_archive(device, started_at:)
           raise Unavailable.new(host: device.host) if device.vendor == :palo_alto && !@server_root
 

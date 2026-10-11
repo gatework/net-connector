@@ -30,6 +30,9 @@ module Net
                 verification: verification == :device_reported ? verification : nil)
         end
 
+        # 更新也经过初始化白名单；Ruby 3.2 的原生 Data#with 会跳过这一边界。
+        def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
+
         # 读取已知错误的白名单属性后立即丢弃异常引用，不把回调对象保留进批次。
         def self.from(error, backup: nil, phase: nil)
           return unless error
@@ -44,6 +47,7 @@ module Net
           new(error_type: "StandardError", phase: phase)
         end
 
+        # 只有本库错误与匹配的业务回执才能证明提交状态，不能采信任意对象自报成功。
         def self.completion_fields(error, backup, phase)
           if error.instance_of?(BackupPersistenceError) && backup.instance_of?(Backup) && error.backup.equal?(backup)
             { artifact_state: error.receipt.state, artifact_phase: error.receipt.phase,

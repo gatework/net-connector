@@ -5,6 +5,7 @@ require_relative "../../device/tftp/file_upload"
 module Net
   module Connector
     module H3c
+      # 未指定源文件时探测 H3C 启动配置，显式文件不推断配置种类。
       class TftpBackup < Tftp::FileUpload
         # 自动探测选择的是启动配置；显式文件仍不能推断为运行或启动配置。
         def receipt_metadata(target, source_file:, explicit_source:)

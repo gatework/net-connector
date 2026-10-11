@@ -8,15 +8,44 @@ module Net
     module Netdisco
       # SQL 负责业务选择和列别名；适配器只管理只读查询、清单预算与连接生命周期。
       class DatabaseClient
+        # 只有数据库身份从环境读取；非敏感连接策略的内部选项与诊断名称另行映射。
         CONNECTION_ENV = {
-          host: "NETDISCO_DB_HOST", port: "NETDISCO_DB_PORT", dbname: "NETDISCO_DB_NAME",
-          user: "NETDISCO_DB_USER", password: "NETDISCO_DB_PASS",
-          sslmode: "NETDISCO_DB_SSLMODE", sslrootcert: "NETDISCO_DB_SSLROOTCERT",
-          connect_timeout: "NETDISCO_DB_CONNECT_TIMEOUT"
+          host: "ND_DB_HOST", dbname: "ND_DB_NAME", user: "ND_DB_USER", password: "ND_DB_PASS"
         }.freeze
+        CONNECTION_OPTIONS = CONNECTION_ENV.merge(
+          port: "netdisco.db_port", sslmode: "netdisco.db_sslmode", sslrootcert: "netdisco.db_sslrootcert",
+          connect_timeout: "netdisco.db_connect_timeout"
+        ).freeze
         REQUIRED_CONNECTION_KEYS = %i[host dbname user password].freeze
+        POLICY_KEYS = (CONNECTION_OPTIONS.keys - REQUIRED_CONNECTION_KEYS).freeze
+        private_constant :POLICY_KEYS
         DEFAULTS = Client::DEFAULTS.except(:allow_insecure_http).freeze
 
+        # 预检与实际连接共用公开策略校验；不读取身份凭据，也不访问文件或数据库。
+        def self.connection_policy(**options)
+          raise ArgumentError, "unknown PostgreSQL connection policy" unless (options.keys - POLICY_KEYS).empty?
+
+          options.each do |key, value|
+            valid = value.is_a?(String) && !value.empty? && !value.include?("\0")
+            valid ||= %i[port connect_timeout].include?(key) && value.is_a?(Integer)
+            raise ArgumentError, "#{CONNECTION_OPTIONS.fetch(key)} is invalid" unless valid
+          end
+          %i[port connect_timeout].each do |key|
+            next unless options.key?(key)
+
+            value = options.fetch(key).to_s
+            maximum = key == :port ? 65_535 : 2_147_483_647
+            unless value.match?(/\A\d+\z/) && value.to_i.between?(1, maximum)
+              raise ArgumentError, "#{CONNECTION_OPTIONS.fetch(key)} must be a positive integer within range"
+            end
+          end
+          if options[:sslmode] && !%w[disable allow prefer require verify-ca verify-full].include?(options[:sslmode])
+            raise ArgumentError, "netdisco.db_sslmode is invalid"
+          end
+          options.transform_values { |value| value.is_a?(String) ? value.dup.freeze : value }.freeze
+        end
+
+        # 纯校验 SQL、绑定参数和清单预算，不连接数据库或打印查询内容。
         def self.options(query:, query_params: [], **values)
           unless query.is_a?(String) && !query.strip.empty? && !query.include?("\0")
             raise ArgumentError, "query must be a nonempty SQL string without NUL"
@@ -35,6 +64,7 @@ module Net
           ).freeze
         end
 
+        # 复制并校验查询与连接选项；真正连接由 devices 的资源作用域管理。
         def initialize(connection_options:, **options)
           @options = self.class.options(**options)
           @connection_options = validate_connection_options!(connection_options)
@@ -105,36 +135,22 @@ module Net
           end
         end
 
+        # 数据库名不得嵌入 URI/conninfo；合法选项仍受清单总期限及只读查询边界约束。
         def validate_connection_options!(options)
-          unless options.is_a?(Hash) && (options.keys - CONNECTION_ENV.keys).empty?
+          unless options.is_a?(Hash) && (options.keys - CONNECTION_OPTIONS.keys).empty?
             raise ArgumentError, "connection_options must contain supported PostgreSQL connection keys"
           end
           REQUIRED_CONNECTION_KEYS.each do |key|
             value = options[key]
             unless value.is_a?(String) && !value.strip.empty?
-              raise ArgumentError, "#{CONNECTION_ENV.fetch(key)} is required"
+              raise ArgumentError, "#{CONNECTION_OPTIONS.fetch(key)} is required"
             end
+            raise ArgumentError, "#{CONNECTION_OPTIONS.fetch(key)} is invalid" if value.include?("\0")
           end
-          options.each do |key, value|
-            valid = value.is_a?(String) && !value.empty? && !value.include?("\0")
-            valid ||= %i[port connect_timeout].include?(key) && value.is_a?(Integer)
-            raise ArgumentError, "#{CONNECTION_ENV.fetch(key)} is invalid" unless valid
-          end
-          %i[port connect_timeout].each do |key|
-            next unless options.key?(key)
-
-            value = options.fetch(key).to_s
-            maximum = key == :port ? 65_535 : 2_147_483_647
-            unless value.match?(/\A\d+\z/) && value.to_i.between?(1, maximum)
-              raise ArgumentError, "#{CONNECTION_ENV.fetch(key)} must be a positive integer within range"
-            end
-          end
-          if options[:sslmode] && !%w[disable allow prefer require verify-ca verify-full].include?(options[:sslmode])
-            raise ArgumentError, "NETDISCO_DB_SSLMODE is invalid"
-          end
+          self.class.connection_policy(**options.slice(*POLICY_KEYS))
           # libpq 会把 dbname 中的 URI/conninfo 再解释为连接参数，不能借此绕过凭据来源。
           if options.fetch(:dbname).match?(/=|\Apostgres(?:ql)?:\/\//)
-            raise ArgumentError, "NETDISCO_DB_NAME must be a database name, not a connection string"
+            raise ArgumentError, "ND_DB_NAME must be a database name, not a connection string"
           end
           options.transform_values { |value| value.is_a?(String) ? value.dup.freeze : value }.freeze
         end

@@ -5,6 +5,7 @@ require_relative "../../device/tftp/strategy"
 module Net
   module Connector
     module Radware
+      # 交互导出 Alteon 原生 tgz 归档；回执不将归档推断为文本运行配置。
       class TftpBackup < Tftp::Strategy
         # Radware 原生导出生成压缩配置归档。
         def self.file_extension = "tgz"
@@ -15,6 +16,7 @@ module Net
           raise ArgumentError, "Radware TFTP backup does not use vrf" unless vrf.nil?
         end
 
+        # 声明本厂商实际导出的配置种类与格式，不推断服务器文件已核验。
         def receipt_metadata(_target, **) = { configuration_kind: :native_archive, format: :tgz }
 
         # 构造当前厂商的 TFTP 导出交互脚本。

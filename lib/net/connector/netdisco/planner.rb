@@ -16,28 +16,16 @@ module Net
         # 生成本地或 TFTP 备份计划，明确记录每台未执行设备的原因。
         def call(mode:, limit_per_vendor:, allow_fixed_name_reuse: false)
           self.class.validate_limit!(limit_per_vendor)
-          ready_tasks = @inventory.each_with_index.filter_map do |device, index|
-            [index, device] if device.ready?
-          end
-          selected_tasks = if limit_per_vendor
-                             ready_tasks.group_by { |_index, device| device.vendor }.values.flat_map do |tasks|
-                               tasks.min_by(limit_per_vendor) { |_index, device| device.host }
-                             end
-                           else
-                             ready_tasks
-                           end
-          selected_indices = selected_tasks.to_h { |index, _device| [index, true] }
-          first_index_by_filename = {}
-          if mode == :tftp
-            # 先按采样顺序保留每个目标的首台设备，再按清单顺序输出结果。
-            selected_tasks.each { |index, device| first_index_by_filename[device.tftp_filename] ||= index }
-          end
+          # 默认全量不构造采样任务副本或逐设备选择索引；只保留最终计划需要的槽位。
+          selected_tasks = sample_tasks(limit_per_vendor)
+          selected_indices = selected_tasks&.to_h { |index, _device| [index, true] }
+          first_index_by_filename = mode == :tftp ? tftp_target_indices(selected_tasks) : {}
           outcomes = Array.new(@inventory.size)
           ready = @inventory.each_with_index.filter_map do |device, index|
             if !device.ready?
               outcomes[index] = skipped(device, device.issue)
               nil
-            elsif !selected_indices.key?(index)
+            elsif selected_indices && !selected_indices.key?(index)
               outcomes[index] = skipped(device, :sample_limit)
               nil
             elsif mode == :tftp && first_index_by_filename.fetch(device.tftp_filename) != index &&
@@ -60,6 +48,27 @@ module Net
         end
 
         private
+
+        # 只有显式采样才分组；厂商组内仍按管理地址选择，与全量输出顺序分开。
+        def sample_tasks(limit)
+          return unless limit
+
+          tasks = @inventory.each_with_index.filter_map { |device, index| [index, device] if device.ready? }
+          tasks.group_by { |_index, device| device.vendor }.values.flat_map do |group|
+            group.min_by(limit) { |_index, device| device.host }
+          end
+        end
+
+        # 采样模式按采样顺序仲裁目标，全量模式直接扫描清单；输出仍保留清单顺序。
+        def tftp_target_indices(selected_tasks)
+          found = {}
+          if selected_tasks
+            selected_tasks.each { |index, device| found[device.tftp_filename] ||= index }
+          else
+            @inventory.each_with_index { |device, index| found[device.tftp_filename] ||= index if device.ready? }
+          end
+          found
+        end
 
         # 构建计划阶段无需设备连接的跳过结果。
         def skipped(device, status)

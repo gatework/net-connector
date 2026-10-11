@@ -57,7 +57,7 @@ class ConnectorExamplesTest < Minitest::Test
     end
   end
 
-  def test_tftp_path_mismatch_verifies_only_the_confirmed_actual_file
+  def test_tftp_path_mismatch_retains_receipt_without_verifying_an_unlocked_old_file
     Dir.mktmpdir do |root|
       actual = File.join(root, "actual.dat")
       File.write(actual, "confirmed backup")
@@ -73,15 +73,11 @@ class ConnectorExamplesTest < Minitest::Test
         assert_equal "reported_with_error", item.fetch("status")
         assert_equal "transfer_path_mismatch", item.fetch("error_code")
         assert_equal "actual.dat", item.fetch("remote_path")
-        assert item.fetch("server_file_verified")
-        assert_equal "confirmed backup", File.read(item.fetch("local_file"))
-        assert_match(%r{/tftp/unnamed-192\.0\.2\.1\.dat\z}, item.fetch("local_file"))
-        assert_equal "confirmed backup", File.read(item.fetch("server_archive_file"))
-        assert_match(%r{/archive/\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:_\d{2})?/unnamed-192\.0\.2\.1\.dat\z},
-                     item.fetch("server_archive_file"))
-        assert_equal File.size(actual), item.fetch("bytes")
-        assert_equal "server_verified", item.fetch("verification")
-        assert_equal Digest::SHA256.file(actual).hexdigest, item.fetch("server_sha256")
+        refute item.fetch("server_file_verified")
+        assert_equal "device_reported", item.fetch("verification")
+        %w[local_file server_archive_file bytes sha256 server_sha256].each { |key| assert_nil item.fetch(key) }
+        assert_equal "confirmed backup", File.read(actual)
+        assert_empty(Dir[File.join(root, "archive/**/*")].select { |path| File.file?(path) })
       end
     end
   end

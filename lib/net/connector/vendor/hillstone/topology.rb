@@ -31,7 +31,7 @@ module Net
         def expected_neighbor_count(output, _template)
           reported = output[/Total lldp neighbor number:\s*(\d+)/i, 1]
           lines = neighbor_lines(output)
-          return unless lines.all? { |line| line.match?(/\A\S+\s+ethernet\d+\/\d+\s/i) }
+          return unless lines.all? { |line| line.match?(/\A\S+\s+(?:(?:x?ethernet|eth|xe)\d+\/\d+|(?:aggregate|agg)\d+)(?:\.\d+)?\s/i) }
           return if reported && reported.to_i != lines.size
 
           lines.size

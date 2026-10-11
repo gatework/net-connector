@@ -1,5 +1,5 @@
 # 仅保存非敏感策略，凭据使用环境变量。
-# ND_URL 可覆盖 netdisco.url；其他公开策略由 YAML 或 CLI 设置。
+# ND_URL、ND_CACHE_TTL、NC_CONCURRENCY 可覆盖对应策略；其余由 YAML 或 CLI 设置。
 backup:
   directory: ./examples/backups
   concurrency: 4

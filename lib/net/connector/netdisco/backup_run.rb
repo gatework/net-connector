@@ -33,11 +33,13 @@ module Net
           fleet = Fleet.new(client: client, settings: settings, credentials: resolver, result_store: nil)
           progress.reading_inventory
           limit = settings.limit_per_vendor
+          refresh = options[:force_refresh] ? { force_refresh: true } : {}
           plan = if @mode == :backup
-                   fleet.plan_backup(limit_per_vendor: limit)
+                   fleet.plan_backup(limit_per_vendor: limit, **refresh)
                  else
-                   fleet.plan_tftp_backup(limit_per_vendor: limit, allow_fixed_name_reuse: !server_root.nil?)
+                   fleet.plan_tftp_backup(limit_per_vendor: limit, allow_fixed_name_reuse: !server_root.nil?, **refresh)
                  end
+          inventory_warning(fleet)
           progress.plan(plan, concurrency: settings.concurrency, limit_per_vendor: limit)
           preview = plan_summary(plan)
           @output.puts JSON.generate(plan: preview) if options[:json]
@@ -58,6 +60,16 @@ module Net
         end
 
         private
+
+        # 清单离线回退和本地保存故障单独提示，不覆盖设备操作结果。
+        def inventory_warning(fleet)
+          if fleet.inventory_status && fleet.inventory_status[:source] == :stale_cache
+            @error.puts "清单刷新失败，使用历史缓存（#{fleet.inventory_status[:refresh_error_code]}）"
+          end
+          return unless fleet.inventory_status && fleet.inventory_status[:write_error_type]
+          @error.puts "清单缓存写入失败（#{fleet.inventory_status[:write_error_type]}）"
+
+        end
 
         # 预检完成后才创建批次目录；补充日志路径时保持原策略快照与动态凭据来源。
         def prepare(options)

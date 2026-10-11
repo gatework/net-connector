@@ -1,6 +1,6 @@
 # 设备操作架构
 
-一个连接器对应一台设备的一段会话。`Base` 组合设备能力，提供统一的命令执行和会话入口；各项能力的公开方法、流程和策略放在同一功能目录。公共层不反向依赖厂商，也不保留另一套 Operations 入口。
+一个连接器对应一台设备的一段会话。`Base` 组合设备能力，提供统一的命令执行和会话入口；各项能力的公开方法、流程和策略放在同一功能目录。设备公共层不直接加载厂商实现，也不额外包装同一套单设备业务；批次编排由 Netdisco 层调用这些公开能力。
 
 | 层次 | 职责 | 位置 |
 | --- | --- | --- |
@@ -38,6 +38,7 @@
 | `tftp_backup` | `TftpReceipt`，直接包含 server、path、时间、来源、格式及核验等级 | 参数先校验；失败/未确认直接抛出。完成后故障为 `TftpCompletionError`，保留回执 |
 | `parse_command`、`parse_config` | TextFSM 记录数组 | 命令失败、模板错误、严格 UTF-8/解析错误直接抛出，不用空数组代替未知输出 |
 | `neighbors`、`interface_descriptions` | `Neighbor` 数组、接口到描述的 Hash | 不支持、未知/部分输出或读取失败直接抛出；明确空表才允许空结果 |
+| `sync_interface_descriptions` | `Result` | 显式同步请求在同一租约内完成发现、重验、修改、读回、保存；无变化不写入或保存 |
 | `plan_interface_descriptions` | 冻结的 `Topology::Plan` | 只读证据和能力检查；PAN-OS 当前拒绝自动改写计划，无隐式 commit |
 | `apply_interface_descriptions(plan, confirmed:)` | `Result`，包括变更后已完成的读回/保存步骤 | 未确认、错误设备/旧命令序列、能力不足及重验失败在写入前直接抛出；`stale_plan` 是 `DeviceError`。开始变更后的领域失败保留步骤 |
 | `SavedConfig#read/#parse/#export` | 原始字节、记录数组；export 返回目标路径或 stdout 模式的 nil | 纯本地，只读取规范地址文件；缺失、不安全文件、解析或写入错误直接抛出 |
@@ -84,7 +85,7 @@ TFTP 内置策略的 `validate_options!` 是纯参数校验，执行于 H3C 源�
 
 明确完成证据先生成最小回执，再执行路径提取、元数据钩子及事件记录。已完成步骤之后的清理错误同样保留回执；路径不可用时保留 nil，不把请求文件名冒充实际目标。`TftpCompletionError` 只含受控码、类型和回执，不带原始消息、输出或 cause。Fleet 仅信任库定义的精确错误类及匹配产物；第三方异常上的 receipt 字段和错误子类不能供应完成事实。已上传但收尾失败使用 reported_with_error/partial 分类。
 
-`Topology` 读取邻居和旧描述，冻结计划，要求显式确认，并在写入前重验全部证据和重建的命令。`ImmediateStrategy` 将即时生效设备的修改/退出视图、运行配置读回、保存拆开：读回未确认或有未识别接口块时停止，不发送保存。重验、下发、读回、保存及阶段间隙都持有原有会话租约；只有所属线程和 Fiber 能顺序执行脚本，其他调用、关闭请求和脚本回调重入均返回 `SessionBusy`。租约不隔离其他设备会话或管理员。
+`Topology` 默认通过显式 `sync_interface_descriptions` 调用在同一连接与租约内完成发现到保存，调用方无须传递计划。独立规划/应用流程仍冻结计划并要求显式确认；两条路径共用写入前证据重验和命令核对。`ImmediateStrategy` 将即时生效设备的修改/退出视图、运行配置读回、保存拆开：读回未确认或有未识别接口块时停止，不发送保存。重验、下发、读回、保存及阶段间隙都持有原有会话租约；只有所属线程和 Fiber 能顺序执行脚本，其他调用、关闭请求和脚本回调重入均返回 `SessionBusy`。租约不隔离其他设备会话或管理员。
 
 ```mermaid
 flowchart LR
@@ -355,9 +356,9 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 
 原始 `Neighbor` 字段和计划证据完整保留发现值。`Topology::InterfaceName.key` 用于匹配本机接口别名与运行配置名称；`Topology::InterfaceName.configuration` 保留配置命令的接口展开规则。`Topology::InterfaceName.short` 只决定描述里对端接口的显示形式，绝不替换本机下发命令中的接口名。
 
-`Topology::InterfaceDescription.format(neighbor, abbreviate: true, lowercase: false)` 是各厂商默认计划共用的纯函数，生成 `To <名称> <接口>`。已知接口族会缩写，并保留原有大小写：Ethernet/Eth 为 Eth，GigabitEthernet/GE/Gi 为 Gi，Ten-GigabitEthernet/TenGigabitEthernet/XGE/Te 为 Te，FastEthernet/Fa 为 Fa，port-channel/Po 为 Po。端口编号与子接口后缀保留。`ge-0/0/1`、`100GE1/0/1`、`Port 12` 等未知形式默认不变；这是有限映射，不声称识别全部厂商命名。
+`Topology::InterfaceDescription.format(neighbor, abbreviate: true, lowercase: false)` 是各厂商同步与计划共用的纯函数，生成 `To_<名称>_<接口简称>`。接口族的全称、简称和大小写统一，端口、拆分通道与子接口后缀保持不变；H3C 二层和三层聚合身份不合并。完整规则及厂商命名依据见[设备指南](usage.zh-CN.md#邻居发现与接口描述)。
 
-默认建议因此从 `To peer Ethernet1/2` 变为 `To peer Eth1/2`。`abbreviate: false` 保留原拼写，`lowercase: true` 仅将对端接口改为小写。自定义代码块拿到原始邻居，可生成完整描述。输出仍必须经过 80 字节及字符校验、证据复核、确认和回读。
+`abbreviate: false` 保留接口原拼写，`lowercase: true` 仅将对端接口改为小写。自定义代码块拿到原始邻居，可生成完整描述。输出仍须经过 80 字节及字符校验、证据复核和回读；同步调用表达写入意图，独立计划应用仍要求确认。
 
 `Topology::InterfaceDescription.commands(interface:, description:, leave: "exit")` 为 IOS/NX-OS 和山石分别生成 `interface`、`description`、退出命令；H3C 使用 `leave: "quit"`。进入、退出全局配置视图和保存完成证据由厂商负责。各阶段命令分别由策略声明，PAN-OS 的命令构造/超时辅助方法不会启用未经验证的候选提交。命令构造器本身不连接设备，也不能绕开已审核的拓扑计划。
 
@@ -401,7 +402,7 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 
 注入的 logger 由调用方持有；连接器不修改级别、formatter、progname，也不关闭它。每次写入同时检查配置与 logger 当前级别。消息对象支持 to_s/inspect 和安全 to_h，应用可自行输出 JSON。自有文本日志使用毫秒时间及逐行事件；raw 文件只写经过敏感保护的字节。上下文退出前先收尾渲染与脱敏缓冲，避免上一命令尾部被标成下一条命令。
 
-人类进度显示由 Progress 单独管理：终端 write/flush 的 I/O 故障会停用后续显示，并只保留固定词表内的错误类型，不携带原始异常。心跳照常回收，设备任务、events.jsonl 与报告持久化继续进行；BackupRun 将显示故障合并为一次批次 callback_errors。若首次故障发生在报告保存后的最终显示阶段，仅补写一次报告诊断，最终 JSON 与退出码采用更新后的策略结果；已有报告错误保持优先，不重放设备备份或事件。
+人类进度显示由 Progress 单独管理：终端 write/flush 的普通故障会停用后续显示，并只保留固定词表内的错误类型，不携带原始异常。心跳照常回收，设备任务、events.jsonl 与报告持久化继续进行；BackupRun 将显示故障合并为一次批次 callback_errors。若首次故障发生在报告保存后的最终显示阶段，仅补写一次报告诊断，最终 JSON 与退出码采用更新后的策略结果；已有报告错误保持优先，不重放设备备份或事件。
 
 `log_file` 使用 NOFOLLOW/NONBLOCK 打开，再对同一 FD 检查普通文件类型，随后才修改权限或写入。FIFO、设备文件和目录不能用作日志文件；应用拥有的输出流通过 `logger` 接入。日志打开先于登录，不能依赖登录超时为文件打开提供期限。
 
@@ -422,3 +423,13 @@ end
 ```
 
 这里的 `DeviceCredential` 是应用自己的模型。涉及 Rails 的工厂、回调或自定义连接器方法也遵循同一规则；Rails 的 Executor 负责应用代码的执行边界及数据库连接回收。不要在工作线程中使用 Reloader 包住整批任务。需要每台设备独立重试和调度时，可在应用的 Active Job 中调用单设备 API。具体规则见 [Rails 线程与代码执行指南](https://guides.rubyonrails.org/threading_and_code_execution.html)。
+
+## 公共并发、配置批次与清单缓存
+
+`ExecutionPool` 只持有线程、启动闸门和完成事件，按输入顺序交付块结果。普通设备失败如何转成结果由业务适配负责；创建并登记线程时延迟异步中断，登记完成后恢复，启动失败不执行任何设备块。工作线程捕获异常并由调用线程同步传播，避免宿主全局线程策略影响无关线程。原 `Netdisco::Worker` 保留备份计时、结果槽位和通知适配，不再自行管理线程。
+
+`DeviceSession` 持有单台任务连接器，分别交付业务值与普通故障，收尾不覆盖先前错误或中断。`Netdisco::Operations` 为配置脚本与接口描述同步、规划/应用提供全批预检、固定策略、动态凭据和安全摘要；它保留领域 `Result`、计划和完成步骤，使用独立 `OperationBatch`，不借用备份路径或上传状态。应用审批计划必须走原拓扑重验、变更、回读、保存流程；有限并发不代表跨设备事务或自动重试安全。
+
+`Settings#client` 为原始清单适配器包裹 `InventoryCache`，默认三天有效。缓存仅保存完整白名单 rows，Rules 和重复地址判定每次重做。身份、SQL 及绑定参数只参与摘要分区，不写入文件；凭据缺失仍在缓存读取前拒绝。过期刷新在有界、按身份的跨进程文件锁内完成，成功后原子替换；失败使用原时间的已验证历史，成功空清单替换旧值。最新查询成功与本地缓存持久化成功是两个事实，不能因写盘失败回退旧数据或重复查询。强刷跳过有效期，不跳过身份、限额、文件校验和失败回退边界。
+
+后台心跳和 HTTP 超时观察使用内部 `BackgroundTask` 作用域，前台保留主业务值和原始故障；观察线程的异常同步交付所有者，不受宿主全局线程异常策略影响。创建至登记期间延后中断，停止和等待期间保证线程回收；心跳普通故障转换为显示诊断，正常 HTTP 请求的未知观察故障仍传播。

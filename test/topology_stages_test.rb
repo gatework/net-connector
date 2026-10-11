@@ -140,6 +140,31 @@ class TopologyStagesTest < Minitest::Test
     end
   end
 
+  def test_duplicate_interfaces_and_their_aliases_are_rejected_before_any_apply_io
+    fixture = TopologyFixture.new(:cisco_ios)
+    plan = fixture.device.plan_interface_descriptions { "planned" }
+    first = plan.changes.first
+    [first.interface, "Gi1/0/1"].each do |interface|
+      duplicate = first.with(interface: interface, new_description: "conflicting")
+      commands = plan.commands.dup
+      commands.insert(commands.index(fixture.sample.fetch(:leave)),
+                      *Net::Connector::Topology::InterfaceDescription.commands(interface: interface, description: "conflicting"))
+      invalid = plan.with(changes: [first, duplicate], commands: commands)
+      previous_writes = fixture.transport.writes.dup
+      previous_opens = fixture.transport.opens
+
+      assert_raises(ArgumentError) do
+        Net::Connector::Topology.validate_plan!(invalid, host: fixture.device.host, vendor: fixture.device.vendor)
+      end
+      assert_raises(ArgumentError) { fixture.device.apply_interface_descriptions(invalid, confirmed: true) }
+      assert_equal previous_writes, fixture.transport.writes
+      assert_equal previous_opens, fixture.transport.opens
+      assert_equal "original", fixture.description
+    end
+  ensure
+    fixture&.close
+  end
+
   def test_panos_without_verified_candidate_isolation_is_read_only_before_io
     transport = ConnectorFake.new
     device = Net::Connector.build(:palo_alto, host: "192.0.2.1", username: "audit", transport: transport)

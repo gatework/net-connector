@@ -380,7 +380,7 @@ class NetdiscoSettingsTest < Minitest::Test
                    policy.database_options)
       assert_equal "/srv/tftp", policy.tftp_root
       received = []
-      Netdisco::DatabaseClient.stub(:new, ->(**options) { received << options; Object.new }) do
+      Netdisco::DatabaseClient.stub(:new, ->(**options) { received << options; Struct.new(:devices).new([]) }) do
         settings.client
         env["ND_DB_PASS"] = "second-private-value"
         File.write(path, "netdisco:\n  db_port: 9999\n")

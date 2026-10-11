@@ -73,18 +73,35 @@ Parsing validates UTF-8 before and after terminal rendering. Invalid bytes raise
 ## Topology and interface descriptions
 
 ```ruby
-neighbors = device.neighbors
-plan = device.plan_interface_descriptions
-puts plan.commands.join("\n")
-# Review the plan and approve the exact commands before applying it.
-device.apply_interface_descriptions(plan, confirmed: true).value!
+device.sync_interface_descriptions.value!
 ```
+
+This explicit update completes neighbor discovery, description changes, readback and save in one session. Matching descriptions cause no writes or saves. Callers do not manage a plan or a second confirmation step. For a separate preview and approval workflow, use `plan_interface_descriptions`, then `apply_interface_descriptions(plan, confirmed: true)`.
 
 IOS/NX-OS use CDP; H3C, H3C wireless, Hillstone, and PAN-OS use LLDP. Neighbor records contain local interface, peer name/interface, chassis ID, and protocol. Unknown or partial output raises an error rather than becoming an empty table. Radware can read port names but cannot discover neighbors or apply descriptions.
 
-The default description is `To <peer name> <peer interface abbreviation>`. Abbreviations preserve case. Use `abbreviate: false`, `lowercase: true`, or a formatter block to customize them. Raw identities and evidence are unchanged.
+The default description is `To_<peer name>_<interface abbreviation>`, for example `To_Core-SW_Gi1/0/1`. Known vendor spellings and case normalize to the same abbreviation; spaces in displayed names become underscores. Use `abbreviate: false`, `lowercase: true`, or a formatter block to customize them. Raw identities and evidence are unchanged.
 
-Apply requires `confirmed: true` and rechecks neighbor and description evidence. Changed evidence raises `:stale_plan` before writing. Supported immediate-change devices follow change, exit configuration, read back, then save. Failed/incomplete readback prevents save; unconfirmed persistence returns `:persistence_unconfirmed` with completed steps. Changes may already be active, so commands are never replayed or rolled back automatically.
+Applying a separately approved plan requires `confirmed: true`. Both workflows recheck neighbor and description evidence. Changed evidence raises `:stale_plan` before writing. Supported immediate-change devices follow change, exit configuration, read back, then save. Failed/incomplete readback prevents save; unconfirmed persistence returns `:persistence_unconfirmed` with completed steps. Changes may already be active, so commands are never replayed or rolled back automatically.
+
+Known names use the following shared rules; port numbers, breakout lanes and subinterfaces remain intact. Unknown prefixes retain their spelling.
+
+| Interface family | Vendor names / aliases | Description prefix |
+| --- | --- | --- |
+| Ethernet | `Ethernet`, `ethernet` | `Eth` |
+| 1G | `GigabitEthernet`, `GE`, `Gi` | `Gi` |
+| 10G | `Ten-GigabitEthernet`, `TenGigabitEthernet`, `TenGigE`, `XGE`, Hillstone `xethernet` / `xe` | `Te` |
+| 25G | H3C `Twenty-FiveGigE` / `WGE`, Cisco `TwentyFiveGigE`, `25GE` | `Twe` |
+| 40G | `FortyGigE`, `FortyGigabitEthernet`, `FGE`, `40GE` | `Fo` |
+| 100G | `HundredGigE`, `HundredGigabitEthernet`, `HGE`, `100GE` | `Hu` |
+| H3C Layer 2 aggregation | `Bridge-Aggregation`, `BAGG` | `BAGG` |
+| H3C Layer 3 aggregation | `Route-Aggregation`, `RAGG` | `RAGG` |
+| Cisco aggregation | `Port-channel`, `Po` | `Po` |
+| Hillstone aggregation | `aggregate`, `Agg` | `Agg` |
+
+Naming references: [H3C CLI interface names](https://www.h3c.com/en/d_202307/1892442_294551_0.htm), [Cisco interface commands](https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9600/software/release/17-13/command_reference/b_1713_9600_cr/interface_and_hardware_commands.html), and [Hillstone interface examples](https://kb.hillstonenet.com/en/wp-content/uploads/2016/05/Hillstone-All-Series-Device-Troubleshooting-and-Debug-Guide.pdf). These display rules do not establish firmware support. H3C Layer 2 and Layer 3 aggregate identities remain distinct.
+
+An approval may contain only one change per canonical interface. Duplicate interfaces, including abbreviated and full names for the same interface, are rejected before additional device I/O. Fleet application performs the same check before opening any device session.
 
 PAN-OS supports read-only discovery and descriptions. Automatic changes are disabled with `:candidate_isolation_unavailable`; collection checks candidate differences before and after export and requires set format. See [topology contracts](architecture.md#业务约束) (Chinese) before extending these flows.
 

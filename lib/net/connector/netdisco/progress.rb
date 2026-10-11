@@ -3,6 +3,7 @@
 require "io/console"
 require_relative "../engine/error_metadata"
 require_relative "../engine/log/event"
+require_relative "../background_task"
 
 module Net
   module Connector
@@ -127,13 +128,13 @@ module Net
         end
 
         # 心跳只负责显示；退出、异常或中断时先唤醒并回收线程。
-        def with_updates
+        def with_updates(&)
           return yield unless @enabled && @tty && !@verbose
 
           lock = Mutex.new
           signal = ConditionVariable.new
           stopped = false
-          worker = Thread.new do
+          task = lambda do
             loop do
               stop = lock.synchronize do
                 signal.wait(lock, 1) unless stopped
@@ -143,13 +144,20 @@ module Net
 
               tick
             end
+          rescue StandardError => error
+            # 非 IO 的显示故障也只停用进度；完整报告仍记录这一受控诊断。
+            @mutex.synchronize { record_output_error(error) }
           end
-          yield
+          stop = -> { lock.synchronize { stopped = true; signal.broadcast } }
+          BackgroundTask.run(task: task, stop: stop, &)
+        rescue Exception => error # rubocop:disable Lint/RescueException -- 后台已回收，最后清屏也不能覆盖原业务故障或取消。
+          primary_failure = error
+          raise
         ensure
-          if worker
-            lock.synchronize { stopped = true; signal.broadcast }
-            worker.value
-            @mutex.synchronize { clear_refresh }
+          begin
+            Thread.handle_interrupt(Exception => :never) { @mutex.synchronize { clear_refresh } if task }
+          rescue Exception => error # rubocop:disable Lint/RescueException -- 清屏中的取消正常传播，已有主故障时保持其身份。
+            raise error unless primary_failure
           end
         end
 
@@ -268,10 +276,14 @@ module Net
           @io.write(text)
           @io.flush
           true
-        rescue IOError, SystemCallError => error
-          @output_error = { host: nil, error_type: ErrorMetadata.type(error.class.name) }.freeze
-          @enabled = false
+        rescue StandardError => error
+          record_output_error(error)
           false
+        end
+
+        def record_output_error(error)
+          @output_error = { host: nil, error_type: ErrorMetadata.type(error.class.name) || "StandardError" }.freeze
+          @enabled = false
         end
       end
     end

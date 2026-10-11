@@ -80,11 +80,21 @@ module Net
 
         # 临时设置写入超时，完成写入后恢复原设置。
         def write(bytes, timeout: configuration.write_timeout)
-          previous = @channel.write_timeout
-          @channel.write_timeout = timeout
-          @channel.write(bytes)
-        ensure
-          @channel.write_timeout = previous if @channel
+          channel = @channel
+          previous = channel.write_timeout
+          begin
+            channel.write_timeout = timeout
+            channel.write(bytes)
+          rescue Exception # rubocop:disable Lint/RescueException -- 恢复超时前保留写入的首个故障或中断。
+            failed = true
+            raise
+          ensure
+            begin
+              channel.write_timeout = previous
+            rescue Exception # rubocop:disable Lint/RescueException -- 收尾故障不能把中断转换成普通写入错误。
+              raise unless failed
+            end
+          end
         end
 
         # 判断信道尚未建立或已经关闭。

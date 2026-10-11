@@ -1,9 +1,12 @@
 # frozen_string_literal: true
 
 require "json"
+require "digest"
 require_relative "../../connector"
+require_relative "../execution_pool"
 require_relative "client"
 require_relative "database_client"
+require_relative "inventory_cache"
 require_relative "config_file"
 require_relative "rules"
 require_relative "planner"
@@ -14,10 +17,10 @@ module Net
       # 活的凭据来源与不可变的批次策略分开保存；只有明确列出的非敏感字段进入快照。
       class Settings
         DEFAULT_BACKUP_DIRECTORY = "backups"
-        DEFAULT_CONCURRENCY = 4
-        MAX_CONCURRENCY = 50
+        DEFAULT_CONCURRENCY = ExecutionPool::DEFAULT_CONCURRENCY
+        MAX_CONCURRENCY = ExecutionPool::MAX_CONCURRENCY
         # 这里只列可从环境读取的公开策略；凭据单独动态读取，其他内部键只供 YAML/CLI 使用。
-        ENVIRONMENT_KEYS = %w[ND_URL].freeze
+        ENVIRONMENT_KEYS = %w[ND_URL ND_CACHE_TTL NC_CONCURRENCY].freeze
         DEFAULT_PAGE_SIZE = Client::DEFAULTS.fetch(:page_size)
         UNSET = Object.new.freeze
         private_constant :UNSET
@@ -80,6 +83,7 @@ module Net
           return self if mode == :export
 
           client_options
+          inventory_cache_options
           rules
           concurrency
           limit_per_vendor
@@ -107,7 +111,9 @@ module Net
               values[key] = item if item
             end
             connection.merge!(user: credentials[:username], password: credentials[:password]) if credentials
-            return DatabaseClient.new(connection_options: connection, **options)
+            client = DatabaseClient.new(connection_options: connection, **options)
+            identity = [:postgres, connection.except(:password), options.slice(:query, :query_params)]
+            return cached_client(client, policy, identity)
           end
           raise ArgumentError, "ND_URL is required" unless options.fetch(:url)
 
@@ -118,7 +124,9 @@ module Net
                            else
                              { username: required_secret("ND_USERNAME"), password: required_secret("ND_PASSWORD") }
                            end
-          Client.new(**options, **authentication)
+          client = Client.new(**options, **authentication)
+          identity = [:http, Client.validate_url!(options.fetch(:url)).normalize.to_s, authentication.except(:password)]
+          cached_client(client, policy, identity)
         end
 
         # 清单来源来自 YAML/CLI，HTTP 与 PostgreSQL 共用后续计划和执行接口。
@@ -134,6 +142,16 @@ module Net
           defaults = inventory_source == :postgres ? DatabaseClient::DEFAULTS : Client::DEFAULTS
           options = client_budget_options(defaults)
           inventory_source == :postgres ? postgres_options(options) : http_options(options)
+        end
+
+        # 默认三天，可由环境覆盖；缓存策略随批次固定，不缓存设备凭据或业务计划。
+        def inventory_cache_options
+          directory = raw("ND_CACHE_DIRECTORY", ".cache/net-connector/inventory")
+          unless directory.is_a?(String) && !directory.empty? && !directory.include?("\0")
+            raise ArgumentError, "netdisco.cache_directory must be a nonempty path without NUL"
+          end
+          { directory: File.expand_path(directory), ttl: number("ND_CACHE_TTL", InventoryCache::DEFAULT_TTL),
+            enabled: boolean("ND_CACHE_ENABLED", true) }.freeze
         end
 
         # 将筛选和映射策略交给 Rules 校验，未识别设备由清单结果单独标记。
@@ -278,7 +296,7 @@ module Net
         # 只输出公开策略；数据库身份和设备凭据不得通过配置摘要进入报告。
         def config_hash
           {
-            netdisco: client_options.merge(source: inventory_source, database: database_options),
+            netdisco: client_options.merge(source: inventory_source, database: database_options, cache: inventory_cache_options),
             backup: { directory: backup_directory, concurrency: concurrency, limit_per_vendor: limit_per_vendor },
             inventory: { include_hosts: list("NC_INCLUDE_HOSTS"),
                          exclude_hosts: list("NC_EXCLUDE_HOSTS"),
@@ -309,6 +327,18 @@ module Net
         end
 
         private
+
+        # 身份指纹只用于隔离缓存；凭据、SQL 和参数均不写入缓存文件或摘要。
+        def cached_client(client, policy, identity)
+          cache = policy.inventory_cache_options
+          return client unless cache.fetch(:enabled)
+
+          options = policy.client_options
+          InventoryCache.new(client: client, **cache.except(:enabled),
+                             identity: Digest::SHA256.hexdigest(JSON.generate(identity)),
+                             **options.slice(:max_inventory_bytes, :max_devices),
+                             lock_timeout: [5, options.fetch(:inventory_timeout)].min)
+        end
 
         def client_budget_options(defaults)
           defaults.to_h do |name, default|

@@ -1,7 +1,10 @@
 # frozen_string_literal: true
 
 require_relative "../storage/safe_file"
+require_relative "../storage/backup_lock"
 require_relative "../device/tftp/receipt"
+require_relative "diagnostic"
+require "tempfile"
 
 module Net
   module Connector
@@ -12,31 +15,53 @@ module Net
           @root = root && File.realpath(root)
         end
 
-        def call(report)
-          return report unless @root
+        # 基线、设备上传和核验共用目标锁；只有上传后变化的文件才属于本次任务。
+        def upload_and_verify(device, path: device.tftp_filename)
+          outcome = nil
+          raise ArgumentError, "upload requires a block" unless block_given?
 
-          outcomes = report.outcomes.map do |outcome|
-            receipt = outcome.backup
-            next outcome unless receipt.is_a?(TftpReceipt) && receipt.path && outcome.started_at
+          TftpTarget.validate_path!(path)
+          return yield path unless @root
 
-            verify(outcome, receipt)
+          destination = server_path(path)
+          Storage::BackupLock.synchronize(destination, host: device.host, timeout: 240) do
+            previous = Storage::SafeFile.open(destination, missing: true) { |_file, stat| stat }
+            started_at = Tempfile.create(".net-connector-upload-", @root) { |file| file.stat.mtime }
+            outcome = yield path
+            outcome = verify_outcome(outcome, started_at: started_at, previous: previous, expected_path: path)
           end
-          report.with(outcomes: outcomes.freeze)
+        rescue StandardError => error
+          raise unless outcome
+          return outcome unless outcome.success?
+
+          # 上传后的核验或解锁故障保留回执，不能让 Worker 把已上传结果退回普通失败。
+          diagnostic = Diagnostic.from(error, backup: outcome.backup, phase: :tftp_backup)
+          outcome.with(status: :reported_with_error, error_code: diagnostic.error_code,
+                       error_type: diagnostic.error_type, diagnostic: diagnostic)
         end
 
-        def verify_outcome(outcome, started_at: outcome.started_at, previous: nil)
+        # 调用者必须在目标锁内先捕获基线；nil 明确表示上传前文件缺失，不能事后猜测。
+        def verify_outcome(outcome, started_at:, previous:, expected_path:)
           return outcome unless @root && started_at && outcome.backup.is_a?(TftpReceipt) && outcome.backup.path
+          return outcome unless outcome.backup.path == expected_path
 
           verify(outcome, outcome.backup, started_at: started_at, previous: previous)
         end
 
         private
 
-        def verify(outcome, receipt, started_at: outcome.started_at, previous: nil)
-          path = File.join(@root, receipt.path)
+        def server_path(relative_path)
+          path = File.join(@root, relative_path)
           parent = File.realpath(File.dirname(path))
-          return outcome unless parent == @root || parent.start_with?(@root + File::SEPARATOR)
+          unless parent == @root || parent.start_with?(@root + File::SEPARATOR)
+            raise ArgumentError, "TFTP verification path escaped its root"
+          end
 
+          path
+        end
+
+        def verify(outcome, receipt, started_at:, previous:)
+          path = server_path(receipt.path)
           size = nil
           fingerprint = Storage::SafeFile.open(path, missing: true) do |file, stat|
             next unless stat.size.positive? && stat.mtime >= started_at

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "topology/strategy"
+require_relative "topology/stages"
 
 module Net
   module Connector
@@ -13,6 +14,11 @@ module Net
 
         # 读取运行配置中的接口描述或端口名称。
         def interface_descriptions = Topology.new(self).interface_descriptions
+
+        # 显式同步请求在同一会话中完成发现、修改、读回与保存，无须调用方传递计划。
+        def sync_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
+          Topology.new(self).sync_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, &formatter)
+        end
 
         # 以邻居和现有配置为证据，生成待确认的接口描述变更计划。
         def plan_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
@@ -28,6 +34,50 @@ module Net
       Neighbor = Data.define(:local_interface, :neighbor_name, :neighbor_interface, :chassis_id, :protocol)
       Change = Data.define(:interface, :old_description, :new_description, :neighbor)
       Plan = Data.define(:host, :vendor, :evidence, :changes, :commands)
+
+      # 仅承载厂商档案的离线上下文，不能连接、查询或下发设备命令。
+      PlanningContext = Data.define(:host, :vendor, :profile) do
+        def config_commands = profile.config_commands
+      end
+      private_constant :PlanningContext
+
+      # 全批应用前拒绝可离线判定的能力或命令问题；现场证据仍由单设备操作重验。
+      def self.validate_plan!(plan, host:, vendor:)
+        unless plan.is_a?(Plan) && plan.host == host && plan.vendor == vendor
+          raise ArgumentError, "plan must match its target device"
+        end
+        if plan.changes.empty?
+          raise ArgumentError, "empty topology plan cannot contain commands" unless plan.commands.empty?
+
+          return plan
+        end
+        strategy = planning_strategy(host: host, vendor: vendor)
+        validate_change_support!(strategy, host: host, phase: :apply)
+        stages = Stages.build(strategy: strategy, host: host, changes: plan.changes)
+        unless stages.values.flat_map { |script| script.map(&:text) } == plan.commands
+          raise ArgumentError, "plan commands were modified or use an older execution sequence; regenerate the plan"
+        end
+        plan
+      end
+
+      # 批次规划在建立任一会话前检查整个目标集合的厂商写入能力。
+      def self.validate_vendor_support!(host:, vendor:, phase:)
+        validate_change_support!(planning_strategy(host: host, vendor: vendor), host: host, phase: phase)
+      end
+
+      def self.planning_strategy(host:, vendor:)
+        profile = Net::Connector.vendor_class(vendor).profile
+        (profile.topology_strategy || Strategy).new(PlanningContext.new(host: host, vendor: vendor, profile: profile))
+      end
+      private_class_method :planning_strategy
+
+      # 能力声明不需要会话；规划、批次预检和现场应用使用同一厂商规则。
+      def self.validate_change_support!(strategy, host:, phase:)
+        return if strategy.supports?(:interface_description_changes)
+
+        raise UnsupportedOperation.new("automatic interface description changes are unavailable; use a verified manual workflow",
+                                       code: strategy.change_error_code, host: host, phase: phase)
+      end
 
       # 保存设备及其独立的 TextFSM 解析入口。
       def initialize(device, template_dir: nil)
@@ -91,6 +141,18 @@ module Net
       end
 
       private :read_interface_descriptions
+
+      # 调用即表达修改意图；同一租约覆盖发现到保存，外部变更仍须重验。
+      def sync_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
+        unless [abbreviate, lowercase].all? { |value| value == true || value == false }
+          raise ArgumentError, "description formatting options must be boolean"
+        end
+        validate_change_support!(:apply)
+        @device.with_operation(:apply) do
+          plan = plan_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, &formatter)
+          plan.changes.empty? ? Result.new : apply_plan(plan)
+        end
+      end
 
       # 比对邻居和现有描述，生成包含确切命令的只读变更计划。
       def plan_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
@@ -210,21 +272,7 @@ module Net
 
       # 审批列表保留真正执行的读回命令，使旧版“先保存后读回”计划无法静默复用。
       def stage_scripts(changes)
-        phases = %i[leave_configuration_commands verification_commands persistence_commands].map do |method|
-          @strategy.public_send(method)
-        end
-        unless phases.all? { |commands| commands.is_a?(Array) && !commands.empty? }
-          raise UnsupportedOperation.new("topology strategy must declare separate readback and persistence stages",
-                                         code: :description_stages_unsupported, host: @device.host, phase: :plan)
-        end
-        leave, verify, persist = phases
-        sequences = {
-          change: [@strategy.enter_configuration_command] + changes.flat_map { |change| change_commands(change) } + leave,
-          verify: verify, persist: persist
-        }
-        sequences.transform_values do |commands|
-          Script.new(commands.map { |command| @strategy.script_command(command) }, name: "interface descriptions")
-        end
+        Stages.build(strategy: @strategy, host: @device.host, changes: changes)
       end
 
       def execute_stage(script, steps)
@@ -242,10 +290,7 @@ module Net
 
       # 下发描述前确认厂商提供配置能力，避免把只读发现当成可写能力。
       def validate_change_support!(phase)
-        return if @strategy.supports?(:interface_description_changes)
-
-        raise UnsupportedOperation.new("automatic interface description changes are unavailable; use a verified manual workflow",
-                                       code: @strategy.change_error_code, host: @device.host, phase: phase)
+        self.class.validate_change_support!(@strategy, host: @device.host, phase: phase)
       end
 
       # 汇总邻居身份和当前描述，并要求每个目标接口都有配置证据。
@@ -267,11 +312,7 @@ module Net
         end.freeze
       end
 
-      # 设备标识来自解析证据，仍需在生成命令前验证其安全性。
-      def change_commands(change)
-        InterfaceDescription.validate_interface!(change.interface)
-        @strategy.change_commands(change)
-      end
+
     end
   end
 end

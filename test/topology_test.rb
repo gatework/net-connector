@@ -221,7 +221,7 @@ class TopologyTest < Minitest::Test
       exit
     CONFIG
     plan = Net::Connector::Topology.new(hillstone).plan_interface_descriptions
-    assert_equal ["configure", "interface ethernet0/1", "description To switch-b Gi2/0",
+    assert_equal ["configure", "interface ethernet0/1", "description To_switch-b_Gi2/0",
                   "exit", "exit", "terminal length 0", "show configuration running", "save all"], plan.commands
 
     cisco = Device.new(vendor: :cisco_ios, neighbor_output: "", config_output: <<~CONFIG)
@@ -263,15 +263,15 @@ class TopologyTest < Minitest::Test
     CONFIG
     topology = Net::Connector::Topology.new(device)
     plan = topology.plan_interface_descriptions
-    assert_equal "To Core-SW Eth1/2", plan.changes.first.new_description
+    assert_equal "To_Core-SW_Eth1/2", plan.changes.first.new_description
     assert_equal "Ethernet1/1", plan.changes.first.interface
     assert_equal "Ethernet1/2", plan.changes.first.neighbor.neighbor_interface
     assert_equal ["Core-SW", "Ethernet1/2", "old uplink"], plan.evidence.fetch("ethernet1/1")
-    assert_equal "To Core-SW eth1/2", topology.plan_interface_descriptions(lowercase: true).changes.first.new_description
-    assert_equal "To Core-SW Ethernet1/2", topology.plan_interface_descriptions(abbreviate: false).changes.first.new_description
+    assert_equal "To_Core-SW_eth1/2", topology.plan_interface_descriptions(lowercase: true).changes.first.new_description
+    assert_equal "To_Core-SW_Ethernet1/2", topology.plan_interface_descriptions(abbreviate: false).changes.first.new_description
     assert_equal "Ethernet1/2", topology.plan_interface_descriptions { |neighbor| neighbor.neighbor_interface }.changes.first.new_description
 
-    device.on_execute = ->(_) { device.config_output = device.config_output.sub("old uplink", "To Core-SW Eth1/2") }
+    device.on_execute = ->(_) { device.config_output = device.config_output.sub("old uplink", "To_Core-SW_Eth1/2") }
     assert topology.apply_interface_descriptions(plan, confirmed: true).success?
     assert_empty topology.plan_interface_descriptions.changes
     assert_empty topology.plan_interface_descriptions.commands
@@ -289,8 +289,8 @@ class TopologyTest < Minitest::Test
     topology = Net::Connector::Topology.new(device)
     plan = topology.plan_interface_descriptions
     assert_equal "old uplink", plan.changes.fetch(0).old_description
-    assert_equal "To switch-a Te1/0/2", plan.changes.fetch(0).new_description
-    assert_equal ["system-view", "interface Ten-GigabitEthernet1/0/1", "description To switch-a Te1/0/2",
+    assert_equal "To_switch-a_Te1/0/2", plan.changes.fetch(0).new_description
+    assert_equal ["system-view", "interface Ten-GigabitEthernet1/0/1", "description To_switch-a_Te1/0/2",
                   "quit", "return", "dis cur", "save force"], plan.commands
 
     error = assert_raises(Net::Connector::UnsupportedOperation) { topology.apply_interface_descriptions(plan) }
@@ -303,7 +303,7 @@ class TopologyTest < Minitest::Test
     assert_nil device.script
 
     device.config_output = device.config_output.sub("changed by another admin", "old uplink")
-    device.on_execute = ->(_) { device.config_output = device.config_output.sub("old uplink", "To switch-a Te1/0/2") }
+    device.on_execute = ->(_) { device.config_output = device.config_output.sub("old uplink", "To_switch-a_Te1/0/2") }
     result = topology.apply_interface_descriptions(plan, confirmed: true)
     assert result.success?
     assert_equal plan.commands, (result.steps.map { |step| step.command.text })

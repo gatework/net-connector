@@ -97,7 +97,7 @@ debug Logger 计数目标样本；不关闭协议检查、丢弃步骤或共享�
 | --- | --- | --- |
 | 核心引擎 | `lib/net/connector/engine/**/*.rb` | 80% / 80% |
 | 脱敏与错误处理 | `lib/net/connector/engine/errors.rb`，包含 `Redactor` | 80% / 80% |
-| 批量并发 | `lib/net/connector/netdisco/worker.rb` | 80% / 80% |
+| 批量并发 | `lib/net/connector/background_task.rb`、`execution_pool.rb`、`device_session.rb`、`netdisco/worker.rb` | 80% / 80% |
 
 关键组为空、任一关键文件未测量或组内没有可执行行时均失败。没有分支的组
 不需要分支命中，但仍须通过行覆盖率及文件加载检查。

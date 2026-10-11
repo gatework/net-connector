@@ -111,24 +111,38 @@ rows = saved.parse(host: "192.0.2.10", template: "/path/to/template.textfsm")
 ```ruby
 Net::Connector.open(:h3c, host: "192.0.2.10", username: ENV.fetch("NC_DEVICE_USERNAME"),
                     password: ENV.fetch("NC_DEVICE_PASSWORD")) do |device|
-  plan = device.plan_interface_descriptions
-  plan.changes.each { |change| puts "#{change.interface}: #{change.old_description.inspect} -> #{change.new_description.inspect}" }
-  puts plan.commands.join("\n")
-  # 核对将要下发的命令，并完成操作审批。
-  result = device.apply_interface_descriptions(plan, confirmed: true)
-  result.value!
+  device.sync_interface_descriptions.value!
 end
 ```
 
-默认描述为 `To <邻居名称> <邻居接口简称>`。接口缩写默认开启并保留大小写：`ethernet1/1` 变为 `eth1/1`，`Ethernet1/1` 变为 `Eth1/1`，`GigabitEthernet1/0/1` 变为 `Gi1/0/1`；未知形式保持原样。原始邻居记录、计划证据和本机下发接口名不会被缩写。`abbreviate: false` 关闭缩写，`lowercase: true` 才会转为小写；也可传入代码块自行生成完整描述。公共纯函数是 `Net::Connector::Topology::InterfaceDescription.format`。
+显式调用 `sync_interface_descriptions`，在同一连接中完成发现、修改、读回和保存，不需要处理计划或二次确认；已有描述一致时不修改、不保存。需要单独预览审批时，后端仍可使用 `plan_interface_descriptions` 与 `apply_interface_descriptions(plan, confirmed: true)`。
 
-规划会拒绝歧义邻居、缺少对端身份、不安全文本和无法识别的输出。下发必须传 `confirmed: true`，操作会再次读取邻居和旧描述；证据变化在写入前抛出 `DeviceError`，其 `code` 为 `:stale_plan`。IOS/NX-OS、H3C 和山石采用“修改 → 退出配置视图 → 读回 → 保存”的顺序；读回不匹配返回 `:description_unconfirmed`，解析不完整或查询命令不符合审批时也不会保存。
+默认描述为 `To_<邻居名称>_<接口简称>`，例如 `To_Core-SW_Gi1/0/1`。同类接口的厂商全称、简称和大小写统一，显示文本中的空格替换为下划线。端口、拆分通道与子接口编号完整保留；原始邻居记录和本机下发接口拼写不改变。`abbreviate: false` 保留对端接口全称，`lowercase: true` 仅将对端接口简称转为小写；后端也可用代码块定制。公共纯函数是 `Net::Connector::Topology::InterfaceDescription.format`。
+
+| 接口类型 | 厂商名称与别名 | 描述简称 |
+| --- | --- | --- |
+| Ethernet | `Ethernet`、`ethernet` | `Eth` |
+| 1G | `GigabitEthernet`、`GE`、`Gi` | `Gi` |
+| 10G | `Ten-GigabitEthernet`、`TenGigabitEthernet`、`TenGigE`、`XGE`、山石 `xethernet` / `xe` | `Te` |
+| 25G | H3C `Twenty-FiveGigE` / `WGE`、Cisco `TwentyFiveGigE`、`25GE` | `Twe` |
+| 40G | `FortyGigE`、`FortyGigabitEthernet`、`FGE`、`40GE` | `Fo` |
+| 100G | `HundredGigE`、`HundredGigabitEthernet`、`HGE`、`100GE` | `Hu` |
+| H3C 二层聚合 | `Bridge-Aggregation`、`BAGG` | `BAGG` |
+| H3C 三层聚合 | `Route-Aggregation`、`RAGG` | `RAGG` |
+| Cisco 聚合 | `Port-channel`、`Po` | `Po` |
+| 山石聚合 | `aggregate`、`Agg` | `Agg` |
+
+命名依据：[H3C 接口名称](https://www.h3c.com/en/d_202307/1892442_294551_0.htm)、[Cisco 接口命令](https://www.cisco.com/c/en/us/td/docs/switches/lan/catalyst9600/software/release/17-13/command_reference/b_1713_9600_cr/interface_and_hardware_commands.html)、[山石接口示例](https://kb.hillstonenet.com/en/wp-content/uploads/2016/05/Hillstone-All-Series-Device-Troubleshooting-and-Debug-Guide.pdf)。未知前缀保持原样，不猜测速率。二层与三层聚合身份保持区分；命名规则不代表设备固件已经现场验证。
+
+规划会拒绝歧义邻居、缺少对端身份、不安全文本和无法识别的输出。独立计划应用须传 `confirmed: true`；同步和计划应用都会再次读取邻居和旧描述；证据变化在写入前抛出 `DeviceError`，其 `code` 为 `:stale_plan`。IOS/NX-OS、H3C 和山石采用“修改 → 退出配置视图 → 读回 → 保存”的顺序；读回不匹配返回 `:description_unconfirmed`，解析不完整或查询命令不符合审批时也不会保存。
 
 `plan.commands` 现在包括读回命令，旧版计划必须重新生成、审核；执行仍返回 `Result`，保留修改、读回及保存阶段已经完成的步骤。只有设备提供明确保存完成行才成功，保存超时、失败或只有提示符会返回 `:persistence_unconfirmed`，此时描述可能已生效，不能自动重放或回滚。现场下发前仍应按设备固件核对命令与回显。
 
 PAN-OS 的自动描述计划及改写暂不提供，`supports?(:interface_description_changes)` 为 false，入口在设备 I/O 前抛出 `:candidate_isolation_unavailable`。候选配置的归属、验证及提交需要经目标固件实验确认的独立流程；目前可继续只读查询邻居和描述。Radware 支持读取端口名称，但不提供邻居发现或自动改写，其 `neighbors` 返回 `:neighbor_discovery_unsupported`。
 
 PAN-OS 在导出前后检查候选配置差异，并拒绝 XML 或非 set 格式输出，避免将未提交配置误作运行配置。
+
+同一审批计划中的规范接口只能出现一次；接口缩写与全称也按同一接口判重。在新增设备 I/O 前拒绝重复审批；Fleet 应用整批计划时，在建立任一设备会话前执行相同预检。
 
 ## 命令脚本与自动交互
 

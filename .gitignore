@@ -16,6 +16,7 @@
 /reports/
 /coverage/
 *.log
+/.cache/
 /.rubocop_cache/
 /.ruby-lsp/
 /.yardoc/

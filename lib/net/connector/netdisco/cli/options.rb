@@ -47,6 +47,7 @@ module Net
 
           # 正式 CLI 与批次示例共用并发、抽样、核验和成功策略选项。
           def self.add_execution(opts, values)
+            opts.on("--refresh-inventory", "强制刷新清单；远端失败时回退已验证历史") { values[:force_refresh] = true }
             opts.on("-c", "--concurrency N", Integer, "并发设备数，1 至 50") do |count|
               raise OptionParser::InvalidArgument unless (1..Settings::MAX_CONCURRENCY).cover?(count)
 

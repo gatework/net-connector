@@ -39,6 +39,45 @@ class ConnectorTransportTest < Minitest::Test
     end
   end
 
+  def test_write_preserves_primary_failure_when_timeout_restoration_also_fails
+    [IOError.new("write failed"), Interrupt.new("write interrupted")].each do |original|
+      configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test")
+      transport = Connector::Transports::Pty.new(configuration)
+      channel = Object.new
+      timeouts = []
+      channel.define_singleton_method(:write_timeout) { 5 }
+      channel.define_singleton_method(:write_timeout=) do |value|
+        timeouts << value
+        raise IOError, "restoration failed" if timeouts.size == 2
+      end
+      channel.define_singleton_method(:write) { |_bytes| raise original }
+      transport.instance_variable_set(:@channel, channel)
+
+      raised = assert_raises(original.class) { transport.write("show status\n", timeout: 2) }
+      assert_same original, raised
+      assert_equal [2, 5], timeouts
+    end
+  end
+
+  def test_successful_write_reports_timeout_restoration_failure_without_replaying
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test")
+    transport = Connector::Transports::Pty.new(configuration)
+    channel = Object.new
+    timeouts, writes = [], []
+    original = IOError.new("restoration failed")
+    channel.define_singleton_method(:write_timeout) { 5 }
+    channel.define_singleton_method(:write_timeout=) do |value|
+      timeouts << value
+      raise original if timeouts.size == 2
+    end
+    channel.define_singleton_method(:write) { |bytes| writes << bytes; bytes.bytesize }
+    transport.instance_variable_set(:@channel, channel)
+
+    assert_same original, assert_raises(IOError) { transport.write("show status\n", timeout: 2) }
+    assert_equal [2, 5], timeouts
+    assert_equal ["show status\n"], writes
+  end
+
   def test_ssh_close_attempts_both_resources_and_keeps_the_first_failure
     configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test")
     transport = Connector::Transports::Ssh.new(configuration)

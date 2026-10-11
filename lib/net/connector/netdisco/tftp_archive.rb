@@ -68,7 +68,8 @@ module Net
             receipt = outcome.backup
             return outcome unless receipt.is_a?(TftpReceipt) && receipt.path
 
-            verified = @verifier.verify_outcome(outcome.with(started_at: started_at), started_at: upload_started_at, previous: previous)
+            verified = @verifier.verify_outcome(outcome.with(started_at: started_at), started_at: upload_started_at,
+                                                previous: previous, expected_path: remote_filename)
             return outcome.success? ? archive_failure(outcome) : outcome unless verified.backup.verification == :server_verified
 
             archive_uploaded_file(verified)

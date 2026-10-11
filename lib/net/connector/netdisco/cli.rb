@@ -27,8 +27,7 @@ module Net
           return 0 if options[:done]
 
           validate_options!(options)
-          mode = options[:export] ? :export : (options[:tftp] ? :tftp : :backup)
-          settings = settings_for(options).for_run(mode: mode)
+          settings = settings_for(options)
 
           if options[:show_config]
             @output.puts JSON.pretty_generate(settings.public_config)
@@ -44,6 +43,7 @@ module Net
 
           fleet = @fleet_factory.call(settings)
           plan = backup_plan(fleet, settings, options)
+          inventory_warning(fleet)
           if options[:plan]
             @output.puts JSON.pretty_generate(plan_summary(plan))
             return 0
@@ -71,9 +71,10 @@ module Net
 
         private
 
-        # 公开 CLI 参数覆盖 YAML 与 ND_URL；设备凭据按环境或显式 CLI 参数解析。
+        # CLI 覆盖支持的环境变量与 YAML；设备凭据按环境或显式 CLI 参数解析。
         def settings_for(options)
-          Options.settings(options, env: @env)
+          mode = options[:export] ? :export : (options[:tftp] ? :tftp : :backup)
+          Options.settings(options, env: @env).for_run(mode: mode)
         end
 
         # 导出已有配置不创建清单或设备连接。
@@ -86,16 +87,26 @@ module Net
         # 预览与执行共用计划和主机存在性检查。
         def backup_plan(fleet, settings, options)
           limit = options[:all] ? nil : options[:limit] || settings.limit_per_vendor(tftp: options[:tftp])
+          refresh = options[:force_refresh] ? { force_refresh: true } : {}
           plan = if options[:tftp]
-                   fleet.plan_tftp_backup(limit_per_vendor: limit)
+                   fleet.plan_tftp_backup(limit_per_vendor: limit, **refresh)
                  else
-                   fleet.plan_backup(limit_per_vendor: limit)
+                   fleet.plan_backup(limit_per_vendor: limit, **refresh)
                  end
           if options[:host]
             host = IPAddr.new(options[:host]).to_s
             raise ArgumentError, "清单中未找到设备 #{options[:host]}" unless plan.inventory.any? { |device| device.host == host }
           end
           plan
+        end
+
+        # 回退历史只描述清单来源，不把缓存命中误报为远端已恢复。
+        def inventory_warning(fleet)
+          status = fleet.inventory_status if fleet.respond_to?(:inventory_status)
+          if status && status[:source] == :stale_cache
+            @error.puts "net-backup: 清单刷新失败，使用历史缓存（#{status[:refresh_error_code]}）"
+          end
+          @error.puts "net-backup: 清单缓存写入失败（#{status[:write_error_type]}）" if status && status[:write_error_type]
         end
 
         # 仅执行已经校验的计划，保留本地与 TFTP 两种结果语义。
@@ -158,7 +169,7 @@ module Net
             raise ArgumentError, "--export 不能与清单查询选项同时使用"
           end
           if options[:export] && (options[:tftp] || options[:all] || options[:limit] || options[:environment].key?("NC_CONCURRENCY") || options[:host] ||
-            options[:success_policy] || options[:tftp_root] || options[:max_script_output_bytes])
+            options[:success_policy] || options[:tftp_root] || options[:max_script_output_bytes] || options[:force_refresh])
             raise ArgumentError, "--export 不能与备份选项同时使用"
           end
         end

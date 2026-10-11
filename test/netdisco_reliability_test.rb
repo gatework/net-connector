@@ -8,6 +8,24 @@ require_relative "../lib/net/connector/netdisco"
 class NetdiscoReliabilityTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
 
+  def test_fleet_factory_return_handoff_is_owned_and_closed_on_cancel
+    rows = [{ "ip" => "192.0.2.1", "name" => "core-a", "vendor" => "H3C" }]
+    closed = Queue.new
+    failure = Interrupt.new("factory return cancelled")
+    factory = lambda do |*_arguments|
+      connector = Object.new
+      connector.define_singleton_method(:close) { closed << true }
+      connector.define_singleton_method(:tftp_backup) { |**| flunk "upload must not run" }
+      Thread.current.raise(failure)
+      connector
+    end
+    fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), result_store: nil,
+                               credentials: ->(_) { { username: "backup" } }, connector_factory: factory)
+    observed = assert_raises(Interrupt) { fleet.tftp_backup_all(server: "192.0.2.10", concurrency: 1) }
+    assert_same failure, observed
+    assert_equal 1, closed.size
+  end
+
   def test_worker_interrupt_stops_other_device_tasks_before_returning
     first = Struct.new(:host).new("192.0.2.1")
     second = Struct.new(:host).new("192.0.2.2")
@@ -40,17 +58,19 @@ class NetdiscoReliabilityTest < Minitest::Test
     threads = []
     thread_new = Thread.method(:new)
     worker = Netdisco::Worker.new(concurrency: 2)
-    # 等首个线程确实进入设备任务后再创建第二个，固定复现等待顺序。
+    # 两个线程建立后才放行；第二台等待第一台进入任务再中断。
     spawn = lambda do |&operation|
       thread_new.call(&operation).tap do |thread|
         threads << thread
-        started.pop if threads.size == 1
       end
     end
     runner = thread_new.call do
       Thread.stub(:new, spawn) do
         worker.run([[0, first], [1, second]], outcomes: Array.new(2), on_error: ->(*) { flunk "unexpected error callback" }) do |device|
-          raise Interrupt, "later device interrupted" if device == second
+          if device == second
+            started.pop
+            raise Interrupt, "later device interrupted"
+          end
 
           started << true
           blocker.pop
@@ -69,18 +89,16 @@ class NetdiscoReliabilityTest < Minitest::Test
     runner&.join
   end
 
-  def test_worker_startup_failure_stops_already_started_device_tasks
+  def test_worker_startup_failure_does_not_start_any_device_task
     first = Struct.new(:host).new("192.0.2.1")
     second = Struct.new(:host).new("192.0.2.2")
     started = Queue.new
-    blocker = Queue.new
     thread_new = Thread.method(:new)
     thread = nil
     spawn = lambda do |&operation|
       raise ThreadError, "cannot create worker" if thread
 
       thread = thread_new.call(&operation)
-      started.pop
       thread
     end
     worker = Netdisco::Worker.new(concurrency: 2)
@@ -88,9 +106,9 @@ class NetdiscoReliabilityTest < Minitest::Test
       error = assert_raises(ThreadError) do
         worker.run([[0, first], [1, second]], outcomes: Array.new(2), on_error: ->(*) { flunk "unexpected error callback" }) do
           started << true
-          blocker.pop
         end
       end
+      assert_empty started, "线程池未建立完成前，不应执行任何设备操作"
       assert_equal "cannot create worker", error.message
       refute thread.alive?, "线程创建失败后，已启动的设备任务必须完成清理"
     end

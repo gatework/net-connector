@@ -61,7 +61,7 @@ class DeviceReliabilityTest < Minitest::Test
 
     assert_equal "existing uplink", plan.changes.fetch(0).old_description
     assert topology.apply_interface_descriptions(plan, confirmed: true).success?
-    assert_equal "To peer Eth1/2", device.description
+    assert_equal "To_peer_Eth1/2", device.description
   end
 
   def test_panos_requires_verified_candidate_ownership_instead_of_unconditionally_committing

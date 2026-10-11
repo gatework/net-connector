@@ -6,39 +6,30 @@ module Net
       # 接口身份匹配与描述展示共用名称规则；展示简称不能直接用作下发命令。
       module InterfaceName
         RULES = [
-          [/\A(?:xge|ten-gigabitethernet|tengigabitethernet|te)(?=\d)/i, "tengigabitethernet", "Te"],
+          [/\A(?:bridge-aggregation|bagg)(?=\d)/i, "bridge-aggregation", "BAGG"],
+          [/\A(?:route-aggregation|ragg)(?=\d)/i, "route-aggregation", "RAGG"],
+          [/\A(?:aggregate|agg)(?=\d)/i, "aggregate", "Agg"],
+          [/\A(?:hundredgigabitethernet|hundredgige|hge|100ge|hu)(?=\d)/i, "hundredgigabitethernet", "Hu"],
+          [/\A(?:fortygigabitethernet|fortygige|fge|40ge|fo)(?=\d)/i, "fortygigabitethernet", "Fo"],
+          [/\A(?:twenty-?fivegigabitethernet|twenty-?fivegige|wge|25ge|twe)(?=\d)/i, "twentyfivegigabitethernet", "Twe"],
+          [/\A(?:xge|10ge|xgigabitethernet|ten-gigabitethernet|tengigabitethernet|ten-?gige|xethernet|xe|te)(?=\d)/i, "tengigabitethernet", "Te"],
           [/\A(?:gigabitethernet|ge|gi)(?=\d)/i, "gigabitethernet", "Gi"],
           [/\A(?:fastethernet|fa)(?=\d)/i, "fastethernet", "Fa"],
           [/\A(?:ethernet|eth)(?=\d)/i, "ethernet", "Eth"],
           [/\A(?:port-channel|po)(?=\d)/i, "port-channel", "Po"]
         ].map(&:freeze).freeze
 
-        # 用于本机邻居表与配置的关联；保留已有证据键的拼写契约。
+        # 用于本机邻居表与配置的关联；同类别名归一，不混淆速率、聚合类型或端口编号。
         def self.key(name)
           rule = RULES.find { |pattern, _key, _short| pattern.match?(name) }
           rule ? name.sub(rule.first, rule[1]).downcase : name.downcase
         end
 
         # 仅缩短已识别的前缀，保留端口、子接口编号及未知命名。
-        # 默认延续输入的大写、小写或首字母大写形式；统一小写由调用方选择。
+        # 厂商全称、缩写与大小写统一展示；原始身份和本机下发拼写不参与替换。
         def self.short(name, lowercase: false)
           rule = RULES.find { |pattern, _key, _short| pattern.match?(name) }
-          formatted = if rule
-                        name.sub(rule.first) do |prefix|
-                          abbreviation = rule.last
-                          if prefix == prefix.downcase
-                            abbreviation.downcase
-                          elsif prefix == prefix.upcase
-                            abbreviation.upcase
-                          elsif prefix.casecmp?(abbreviation)
-                            prefix
-                          else
-                            abbreviation
-                          end
-                        end
-                      else
-                        name.dup
-                      end
+          formatted = rule ? name.sub(rule.first, rule.last) : name.dup
           lowercase ? formatted.downcase : formatted
         end
 

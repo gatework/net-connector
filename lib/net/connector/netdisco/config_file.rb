@@ -6,10 +6,13 @@ require "yaml"
 module Net
   module Connector
     module Netdisco
-      # 无凭据 YAML 配置；仅 ND_URL 允许从进程环境覆盖，其他策略由 CLI 覆盖。
+      # 无凭据 YAML 配置；ND_URL、ND_CACHE_TTL、NC_CONCURRENCY 允许环境覆盖，其余策略由 CLI 覆盖。
       class ConfigFile
         FIELDS = {
-          "netdisco" => { "source" => ["ND_SOURCE", :string],
+          "netdisco" => { "cache_directory" => ["ND_CACHE_DIRECTORY", :string],
+                          "cache_ttl" => ["ND_CACHE_TTL", :number],
+                          "cache_enabled" => ["ND_CACHE_ENABLED", :boolean],
+                          "source" => ["ND_SOURCE", :string],
                           "query" => ["ND_QUERY", :string],
                           "query_params" => ["ND_QUERY_PARAMS", :json_array],
                           "url" => ["ND_URL", :string],

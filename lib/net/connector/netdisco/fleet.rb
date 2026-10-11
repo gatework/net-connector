@@ -2,10 +2,12 @@
 
 require "fileutils"
 require_relative "../storage"
+require_relative "../device_session"
 require_relative "client"
 require_relative "settings"
 require_relative "device"
 require_relative "worker"
+require_relative "operations"
 require_relative "result_store"
 require_relative "planner"
 require_relative "report"
@@ -17,6 +19,8 @@ module Net
     module Netdisco
       # 基于已验证的清单快照组织有上限的并发备份。
       class Fleet
+        attr_reader :inventory_status
+
         DEFAULT_SETTING = Object.new.freeze
         private_constant :DEFAULT_SETTING
 
@@ -34,19 +38,19 @@ module Net
         end
 
         # 拉取并标记重复管理地址的设备清单。
-        def devices
-          inventory(@settings.snapshot(mode: :inventory))
+        def devices(force_refresh: false)
+          inventory(@settings.snapshot(mode: :inventory), force_refresh: force_refresh)
         end
 
         # 规划本地配置备份的设备集合。
-        def plan_backup(limit_per_vendor: nil)
-          build_plan(:backup, limit_per_vendor, @settings.snapshot(mode: :backup))
+        def plan_backup(limit_per_vendor: nil, force_refresh: false)
+          build_plan(:backup, limit_per_vendor, @settings.snapshot(mode: :backup), force_refresh: force_refresh)
         end
 
         # 规划 TFTP 配置备份的设备集合。
-        def plan_tftp_backup(limit_per_vendor: 5, allow_fixed_name_reuse: false)
+        def plan_tftp_backup(limit_per_vendor: 5, allow_fixed_name_reuse: false, force_refresh: false)
           build_plan(:tftp, limit_per_vendor, @settings.snapshot(mode: :tftp),
-                     allow_fixed_name_reuse: allow_fixed_name_reuse)
+                     allow_fixed_name_reuse: allow_fixed_name_reuse, force_refresh: force_refresh)
         end
 
         # 先拉取完整清单，再并发采集并保存设备配置。
@@ -108,23 +112,59 @@ module Net
           end
           archive = TftpArchive.new(directory: report_directory, root: verification_root) if preserve_history
           run_batch(:tftp, plan, concurrency: concurrency, report_directory: report_directory,
-                    settings_snapshot: settings_snapshot, success_policy: success_policy, on_start: on_start, on_result: on_result,
-                    verification: preserve_history ? nil : verification) do |device, log_directory|
+                    settings_snapshot: settings_snapshot, success_policy: success_policy, on_start: on_start, on_result: on_result) do |device, log_directory|
             if archive
               archive.upload_and_archive(device, started_at: Time.now.utc) do |remote_filename|
                 tftp_backup_device(device, server, source_files, log_directory, vrfs, settings_snapshot, path: remote_filename)
               end
             else
-              tftp_backup_device(device, server, source_files, log_directory, vrfs, settings_snapshot)
+              verification.upload_and_verify(device) do |remote_filename|
+                tftp_backup_device(device, server, source_files, log_directory, vrfs, settings_snapshot, path: remote_filename)
+              end
             end
           end
         end
 
+        # 配置批次在任何连接之前验证全部脚本与目标，写操作须显式确认。
+        def execute_scripts(**options)
+          operations.execute_scripts(**options)
+        end
+
+        # 默认连贯同步，不要求调用方管理计划或重新建立设备连接。
+        def sync_interface_descriptions(**options, &)
+          operations.sync_interface_descriptions(**options, &)
+        end
+
+        # 并发生成接口描述计划，不执行配置变更。
+        def plan_interface_descriptions(**options, &)
+          operations.plan_interface_descriptions(**options, &)
+        end
+
+        # 每台设备独立重验审批证据、回读并保存，不将计划当作普通脚本执行。
+        def apply_interface_descriptions(**options)
+          operations.apply_interface_descriptions(**options)
+        end
+
         private
 
+        def operations
+          Operations.new(settings: @settings, inventory: method(:inventory), credentials: @credentials,
+                         connector_factory: @connector_factory)
+        end
+
         # 策略在清单请求之前固定；注入的清单客户端仍由调用方负责其自身生命周期。
-        def inventory(settings_snapshot)
-          rows = (@client || @settings.client(policy: settings_snapshot)).devices
+        def inventory(settings_snapshot, force_refresh: false)
+          @inventory_status = nil
+          raise ArgumentError, "force_refresh must be true or false" unless [true, false].include?(force_refresh)
+
+          client = @client || @settings.client(policy: settings_snapshot)
+          rows = client.is_a?(InventoryCache) ? client.devices(force_refresh: force_refresh) : client.devices
+          @inventory_status = if client.is_a?(InventoryCache)
+                                { source: client.status, fetched_at: client.fetched_at,
+                                  refresh_error_code: client.refresh_error_code, write_error_type: client.write_error_type }.freeze
+                              else
+                                { source: :uncached }.freeze
+                              end
           raise Client::Error, "Netdisco returned an invalid device inventory" unless rows.is_a?(Array)
 
           rules = @rules || settings_snapshot.rules
@@ -133,14 +173,14 @@ module Net
           devices.map { |device| host_counts[device.host] > 1 ? device.with(issue: :duplicate_host) : device }.freeze
         end
 
-        def build_plan(mode, limit, settings_snapshot, allow_fixed_name_reuse: false)
+        def build_plan(mode, limit, settings_snapshot, allow_fixed_name_reuse: false, force_refresh: false)
           Planner.validate_limit!(limit)
-          Planner.new(inventory(settings_snapshot)).call(mode: mode, limit_per_vendor: limit,
+          Planner.new(inventory(settings_snapshot, force_refresh: force_refresh)).call(mode: mode, limit_per_vendor: limit,
                                                allow_fixed_name_reuse: allow_fixed_name_reuse)
         end
 
         # 统一组织设备任务、日志目录与报告；Worker 保证单台设备失败不影响其他设备。
-        def run_batch(mode, plan, concurrency:, report_directory:, settings_snapshot:, success_policy:, on_start:, on_result:, output_directory: nil, verification: nil)
+        def run_batch(mode, plan, concurrency:, report_directory:, settings_snapshot:, success_policy:, on_start:, on_result:, output_directory: nil)
           worker = Worker.new(concurrency: concurrency)
           started_at = Time.now.utc
           started = monotonic
@@ -156,7 +196,6 @@ module Net
                             finished_at: Time.now.utc, callback_errors: callback_errors,
                             report_location: nil, report_error: nil)
           report = Report.new(batch, policy: success_policy, duration_ms: ((monotonic - started) * 1000).round, log_directory: log_directory)
-          report = verification.call(report) if verification
           save_report(report, directory: report_directory)
         end
 
@@ -218,7 +257,7 @@ module Net
         end
 
         # 隔离单台设备的凭据、连接、操作和关闭异常。
-        def run_device(device, log_directory, settings_snapshot, success_status:, partial_status:, backup_class:)
+        def run_device(device, log_directory, settings_snapshot, success_status:, partial_status:, backup_class:, &operation)
           connection_settings = @credentials ? @credentials.call(device) : @settings.device_credentials_for(device)
           return build_outcome(device, :missing_credentials) if connection_settings.nil?
           unless connection_settings.is_a?(Hash) && connection_settings.keys.all?(Symbol) &&
@@ -232,8 +271,9 @@ module Net
           if log_directory
             connection_settings = connection_settings.merge(log_file: File.join(log_directory, "#{log_name}.log"))
           end
-          connector = @connector_factory.call(device, connection_settings)
-          backup, failure = perform_one(connector, backup_class) { yield connector }
+          backup, failure = perform_one(backup_class, factory: -> { @connector_factory.call(device, connection_settings) }) do |connector|
+            operation.call(connector)
+          end
           return build_outcome(device, success_status, backup: backup) unless failure
 
           build_outcome(device, backup ? partial_status : :failed, backup: backup, error: failure)
@@ -242,26 +282,18 @@ module Net
         end
 
         # 仅信任库定义且产物类型匹配的提交后错误；普通第三方异常上的 backup 字段不代表完成。
-        def perform_one(connector, backup_class)
-          backup = nil
-          failure = nil
-          begin
-            result = yield
+        def perform_one(backup_class, factory:)
+          backup, failure = DeviceSession.call(factory: factory) do |session|
+            result = yield session
             raise TypeError, "backup operation did not return #{backup_class}" unless result.is_a?(backup_class)
 
-            backup = result
-          rescue StandardError => error
-            failure = error
-            if backup_class == Backup && error.instance_of?(BackupPersistenceError) && error.backup.instance_of?(Backup)
-              backup = error.backup
-            elsif backup_class == TftpReceipt && error.instance_of?(TftpCompletionError) && error.receipt.instance_of?(TftpReceipt)
-              backup = error.receipt
-            end
-          ensure
-            begin
-              connector.close
-            rescue StandardError => error
-              failure ||= error
+            result
+          end
+          if failure && backup.nil?
+            if backup_class == Backup && failure.instance_of?(BackupPersistenceError) && failure.backup.instance_of?(Backup)
+              backup = failure.backup
+            elsif backup_class == TftpReceipt && failure.instance_of?(TftpCompletionError) && failure.receipt.instance_of?(TftpReceipt)
+              backup = failure.receipt
             end
           end
           [backup, failure]

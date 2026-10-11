@@ -68,7 +68,7 @@ class TopologyConcurrencyTest < Minitest::Test
 
   def test_facade_forwards_description_format_options
     plan = @device.plan_interface_descriptions(abbreviate: false, lowercase: true)
-    assert_equal "To peer gigabitethernet1/0/2", plan.changes.first.new_description
+    assert_equal "To_peer_gigabitethernet1/0/2", plan.changes.first.new_description
     assert_equal "GigabitEthernet1/0/1", plan.changes.first.interface
     assert_equal "GigabitEthernet1/0/2", plan.changes.first.neighbor.neighbor_interface
   end

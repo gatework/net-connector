@@ -100,10 +100,9 @@ begin
     raise "Installed encoding error changed" unless error.code == :invalid_output_encoding && error.cause.nil?
   end
 
-  plan = device.plan_interface_descriptions { "installed topology" }
-  raise "Installed plan omitted verification" unless plan.commands.last(3) == ["terminal length 0", "show running-config", "copy running-config startup-config"]
-  applied = device.apply_interface_descriptions(plan, confirmed: true)
+  applied = device.sync_interface_descriptions
   raise "Installed staged topology failed" unless applied.success?
+  raise "Installed description format changed" unless device.interface_descriptions.fetch("ethernet1/1") == "To_peer_Eth1/2"
   raise "Installed topology omitted readback steps" unless applied.steps.any? { |step| step.command.text == "show running-config" && step.command.output_sensitive? }
 
   transfer = device.tftp_backup(host: "192.0.2.10", path: "installed.cfg")
@@ -175,8 +174,37 @@ batch = Net::Connector::Netdisco::Batch.new(mode: :backup, outcomes: outcomes, s
 report = batch.build_report(policy: :selected)
 raise "Installed selected policy failed" unless report.policy_success? && !report.success? && report.status == :incomplete
 raise "Installed v2 coverage missing" unless report.summary.fetch(:schema_version) == 2 && !report.summary.fetch(:coverage).fetch(:complete)
-options = Net::Connector::Netdisco::CLI::Options.parse(argv: ["--concurrency", "2"])
+options = Net::Connector::Netdisco::CLI::Options.parse(argv: ["--concurrency", "2", "--refresh-inventory"])
 raise "Installed backup options missing" unless options.fetch(:environment).fetch("NC_CONCURRENCY") == "2"
+raise "Installed inventory refresh option missing" unless options.fetch(:force_refresh)
+
+# 安装后的公共并发、配置编排和清单缓存走真实入口，设备仍使用本地 PTY。
+pool = Net::Connector::ExecutionPool.new(concurrency: 2)
+raise "Installed execution pool lost ordering" unless pool.map([2, 1]) { |item| item * 2 } == [4, 2]
+settings = Net::Connector::Netdisco::Settings.new(env: { "NC_CONCURRENCY" => "2", "ND_CACHE_TTL" => "3600" })
+raise "Installed concurrency environment missing" unless settings.snapshot.concurrency == 2
+raise "Installed cache environment missing" unless settings.snapshot.inventory_cache_options.fetch(:ttl) == 3600
+Dir.mktmpdir do |cache_directory|
+  calls = 0
+  client = Object.new
+  client.define_singleton_method(:devices) do
+    calls += 1
+    [{ "ip" => "192.0.2.1", "vendor" => "Cisco", "os" => "ios" }]
+  end
+  cache = Net::Connector::Netdisco::InventoryCache.new(client: client, directory: cache_directory, identity: "installed")
+  rows = cache.devices
+  raise "Installed inventory cache lost rows" unless rows == cache.devices && calls == 1
+  cache.devices(force_refresh: true)
+  raise "Installed forced refresh missing" unless calls == 2 && cache.status == :refreshed
+  fleet = Net::Connector::Netdisco::Fleet.new(client: cache, settings: settings,
+    credentials: ->(_) { { username: "audit" } }, connector_factory: lambda { |_, _|
+      config = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit", command_timeout: 5)
+      Net::Connector.build(:cisco_ios, configuration: config, transport: InstalledTransport.new(config))
+    })
+  batch = fleet.execute_scripts(scripts: { "192.0.2.1" => ["show status"] }, confirmed: true)
+  raise "Installed configuration batch failed" unless batch.success? && batch.outcomes.first.value.steps.size == 1
+  raise "Installed configuration report missing" unless batch.to_h.fetch(:summary).values_at(:total, :succeeded, :failed) == [1, 1, 0]
+end
 Dir.mktmpdir do |root|
   directory = Net::Connector::Storage::BatchDirectory.create(root, time: Time.utc(2026, 1, 1))
   raise "Installed batch files missing" unless File.basename(directory) == "2026-01-01_08-00-00"

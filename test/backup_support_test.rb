@@ -30,7 +30,7 @@ class BackupSupportTest < Minitest::Test
     input = StringIO.new(JSON.generate(netdisco_username: "reader", netdisco_password: "secret",
                                        device_username: "audit", device_password: "device-secret") + "\nRUN\n")
     client, resolver = Netdisco::Connection.build(settings, stdin_credentials: true, input: input)
-    assert_instance_of Netdisco::Client, client
+    assert_instance_of Netdisco::InventoryCache, client
     assert_equal({ username: "audit", password: "device-secret" }, resolver.call(nil))
     assert_equal "RUN\n", input.gets
     ["{secret", "[]", '"secret"'].each do |text|
@@ -48,7 +48,7 @@ class BackupSupportTest < Minitest::Test
     input = StringIO.new(JSON.generate(netdisco_username: "reader", netdisco_password: "secret",
                                        device_username: "audit", device_password: "device-secret") + "\nRUN\n")
     client, resolver = Netdisco::Connection.build(settings, stdin_credentials: true, input: input)
-    assert_instance_of Netdisco::DatabaseClient, client
+    assert_instance_of Netdisco::InventoryCache, client
     assert_equal({ username: "audit", password: "device-secret" }, resolver.call(nil))
     assert_equal "RUN\n", input.gets
   end

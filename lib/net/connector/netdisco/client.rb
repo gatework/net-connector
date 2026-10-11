@@ -6,6 +6,7 @@ require "openssl"
 require "timeout"
 require "uri"
 require_relative "inventory_budget"
+require_relative "../background_task"
 
 module Net
   module Connector
@@ -196,11 +197,11 @@ module Net
 
         # 异步超时展开栈时，Net::HTTP 的 chunked ensure 可能再次等待读取。
         # 只关闭本次自有连接来解除这类阻塞；结束时唤醒并 join 观察线程，不遗留后台任务。
-        def with_http_deadline(http, budget)
+        def with_http_deadline(http, budget, &)
           mutex = Mutex.new
           changed = ConditionVariable.new
           finished = false
-          timer = Thread.new do
+          task = lambda do
             begin
               mutex.synchronize { changed.wait(mutex, budget.remaining) until finished }
             rescue InventoryTimeout
@@ -212,10 +213,8 @@ module Net
               end
             end
           end
-          yield
-        ensure
-          mutex&.synchronize { finished = true; changed.broadcast }
-          timer&.join
+          stop = -> { mutex.synchronize { finished = true; changed.broadcast } }
+          BackgroundTask.run(task: task, stop: stop, &)
         end
 
         def read_response(http, request, budget)

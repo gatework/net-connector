@@ -138,6 +138,9 @@ class ModuleLoadingTest < Minitest::Test
     cases = {
       "settings" => "N::Settings.new(env: {}).public_config.fetch(:backup).fetch(:concurrency) == 4",
       "cli/options" => 'N::CLI::Options.settings(N::CLI::Options.parse(argv: ["--concurrency", "7"]), env: {}).concurrency == 7',
+      "inventory_cache" => 'client = Struct.new(:devices).new([]); N::InventoryCache.new(client: client, directory: "unused-cache", identity: "test").status.nil?',
+      "operations" => 'N::Operations.new(settings: N::Settings.new(env: {}), inventory: ->(_) { raise "empty batch must not read inventory" }).execute_scripts(scripts: {}, confirmed: true).status == :no_devices',
+      "operation_batch" => "now = Time.now.utc; N::OperationBatch.new(operation: :execute_scripts, outcomes: [], callback_errors: [], started_at: now, finished_at: now).to_h.fetch(:status) == :no_devices",
       "planner" => "N::Planner.new([]).call(mode: :backup, limit_per_vendor: nil).validate!.selected.empty?",
       "fleet" => "client = Object.new; def client.devices = []; N::Fleet.new(client: client, settings: N::Settings.new(env: {})).plan_backup.selected.empty?",
       "progress" => 'require "stringio"; N::Progress.new(io: StringIO.new).event(nil).nil?',

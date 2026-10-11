@@ -23,8 +23,8 @@ class TopologyFixture
   attr_reader :transport, :device, :sample, :observed
   attr_accessor :description, :mismatch, :fail_on, :save_output, :partial_readback, :on_command
 
-  def initialize(vendor, **settings)
-    @sample = SAMPLES.fetch(vendor)
+  def initialize(vendor, interface: nil, neighbor: nil, **settings)
+    @sample = SAMPLES.fetch(vendor).merge({ interface: interface, neighbor: neighbor }.compact)
     @vendor = vendor
     @mode = :exec
     @description = "original"

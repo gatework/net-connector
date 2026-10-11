@@ -328,6 +328,62 @@ class NetdiscoDatabaseTest < Minitest::Test
     assert_predicate connection, :closed
   end
 
+  # 分配完成但尚未交给调用者的连接，同样必须纳入显式清理所有权。
+  def test_interrupt_during_connection_handoff_closes_the_owned_connection
+    connection = Connection.new([])
+    original = Interrupt.new("cancel connection handoff")
+    client = Client.new(connection_options: connection_options, query: QUERY)
+    PG::Connection.stub(:connect_start, lambda { |_options|
+      Thread.current.raise(original)
+      connection
+    }) do
+      assert_same original, assert_raises(Interrupt) { client.devices }
+    end
+    assert_predicate connection, :closed
+    assert_empty connection.commands
+  end
+
+  # 真实 libpq 句柄的 finish 状态证明释放不依赖垃圾回收或模拟连接的实现。
+  def test_interrupt_during_real_connection_handoff_finishes_the_libpq_handle
+    connection = nil
+    connect_start = PG::Connection.method(:connect_start)
+    original = Interrupt.new("cancel real connection handoff")
+    options = connection_options.merge(host: "127.0.0.1", port: 9, sslmode: "disable")
+    client = Client.new(connection_options: options, query: QUERY)
+    PG::Connection.stub(:connect_start, lambda { |values|
+      connection = connect_start.call(values)
+      Thread.current.raise(original)
+      connection
+    }) do
+      assert_same original, assert_raises(Interrupt) { client.devices }
+    end
+    assert_predicate connection, :finished?
+  ensure
+    connection&.finish unless connection&.finished?
+  end
+
+  def test_connection_cleanup_failure_keeps_the_original_query_failure
+    [Interrupt.new("cancel query"), Netdisco::Client::Error.new("query failed", code: :query_failed)].each do |original|
+      connection = Connection.new([])
+      connection.before_result = -> { raise original }
+      connection.define_singleton_method(:finish) { @closed = true; raise IOError, "cleanup failure" }
+      streaming_client(connection) do |client|
+        assert_same original, assert_raises(original.class) { client.devices }
+      end
+      assert_predicate connection, :closed
+    end
+  end
+
+  def test_connection_cleanup_failure_after_a_completed_query_is_not_success
+    connection = Connection.new([])
+    original = IOError.new("cleanup failure")
+    connection.define_singleton_method(:finish) { @closed = true; raise original }
+    streaming_client(connection) do |client|
+      assert_same original, assert_raises(IOError) { client.devices }
+    end
+    assert_predicate connection, :closed
+  end
+
   def test_total_timeout_closes_socket_even_during_authentication_without_garbage_collection
     server = TCPServer.new("127.0.0.1", 0)
     accepted = Queue.new

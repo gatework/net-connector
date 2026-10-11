@@ -23,6 +23,34 @@ class NetdiscoBudgetTest < Minitest::Test
     Client.new(url: "https://inventory.example", api_key: "test", **options)
   end
 
+  def test_http_watchdog_failure_is_observable_without_replacing_primary_interrupt
+    Timeout.timeout(1) { Thread.pass }
+    [nil, Interrupt.new("foreground cancellation")].each do |failure|
+      finished = Queue.new
+      watchdog_failure = RuntimeError.new("watchdog failure")
+      calls = 0
+      budget = Object.new
+      budget.define_singleton_method(:remaining) do
+        calls += 1
+        calls == 1 ? 0.001 : (raise Client::InventoryTimeout)
+      end
+      http = Object.new
+      http.define_singleton_method(:finish) { finished << true; raise watchdog_failure }
+      before = Thread.list
+      operation = lambda do
+        client.send(:with_http_deadline, http, budget) do
+          Timeout.timeout(3) { finished.pop }
+          raise failure if failure
+
+          :completed_response
+        end
+      end
+      expected = failure || watchdog_failure
+      assert_same expected, assert_raises(expected.class, &operation)
+      assert_empty Thread.list - before
+    end
+  end
+
   def assert_inventory_failure(client, code)
     calls = []
     fleet = Netdisco::Fleet.new(client: client, settings: Netdisco::Settings.new(env: {}), result_store: nil,

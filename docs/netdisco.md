@@ -18,6 +18,8 @@ export NC_DEVICE_PASSWORD='replace-me'
 
 Use `ND_API_KEY` instead of the HTTP username/password pair when available. HTTPS retains standard certificate verification. HTTP is allowed by default for compatibility; set `netdisco.allow_insecure_http: false` to reject it before sending credentials.
 
+`NC_CONCURRENCY` sets the default worker count for backups, configuration scripts and interface changes (1–50, default 4). An explicit API argument or CLI option takes precedence over the environment, then YAML.
+
 YAML contains only non-sensitive settings. Unknown fields, Ruby object tags, and credentials in YAML are rejected. Settings precedence is CLI, supported environment variables, YAML, then defaults. Files load only through `--config FILE` or `NC_CONFIG`. Start with [backup.yml](../examples/backup.yml):
 
 ```yaml
@@ -37,6 +39,25 @@ tftp:
   vrfs:
     cisco_nxos: management
 ```
+
+## Inventory cache
+
+HTTP and PostgreSQL inventory use a local cache by default, valid for three days (259,200 seconds). The default directory is `.cache/net-connector/inventory`, relative to the current working directory. Configure it through YAML:
+
+```yaml
+netdisco:
+  cache_directory: /var/cache/network/inventory
+  cache_ttl: 259200
+  cache_enabled: true
+```
+
+`ND_CACHE_TTL=86400` sets a one-day lifetime. Explicit settings overrides take precedence over the environment, then YAML, then the three-day default. TTL must be finite and positive; each batch fixes its policy snapshot before scheduling.
+
+The directory must belong to the current user with mode `0700`; cache and lock files use `0600`. Source, account, database and SQL parameters partition the cache. Only inventory fields are stored; passwords, API keys, SQL and extra response fields are excluded. Each read applies current filtering and vendor rules. A successful empty inventory replaces history.
+
+Expired inventory refreshes automatically. A remote inventory failure falls back to validated history without changing its original timestamp. Configuration errors, missing credentials, interruption and unsafe files remain errors. Failed cache writes preserve newly fetched inventory. `fleet.inventory_status` reports `:fresh_cache`, `:refreshed`, `:stale_cache` or `:uncached`, the original `fetched_at`, and safe failure metadata; the CLI warns on history fallback or cache write failure.
+
+Use `net-backup --refresh-inventory`, `fleet.devices(force_refresh: true)`, or `fleet.plan_backup(force_refresh: true)` to bypass freshness. TFTP planning accepts the same keyword. A forced refresh also falls back to valid history if the remote request fails. `cache_enabled: false` disables caching. Injected clients stay uncached unless explicitly wrapped in `Netdisco::InventoryCache`; shared wrapper status describes the latest call, so synchronize concurrent access to the same instance. Cache locks bound waiting and coalesce ordinary expired-cache refreshes across processes; independently requested forced refreshes still query the source.
 
 ## CLI planning and execution
 
@@ -89,6 +110,34 @@ Local backups compare SHA-256. `on_change:` fires for created or changed artifac
 
 `ResultStore::Json` writes private JSON by default. Use `ResultStore::Database.new(repository: YourModel)` with a `create!(attributes)` repository, or `result_store: nil` to persist yourself. Custom stores receive `write(report, directory:)`. Report errors retain known committed locations and prevent success.
 
+## Configuration batches and interface changes
+
+```ruby
+fleet = Net::Connector::Netdisco::Fleet.new
+batch = fleet.execute_scripts(
+  scripts: { "192.0.2.1" => ["system-view", "interface GigabitEthernet1/0/1", "description uplink", "quit", "quit"] },
+  confirmed: true,
+  concurrency: 4
+)
+puts JSON.pretty_generate(batch.to_h)
+puts "Total=#{batch.summary[:total]} succeeded=#{batch.summary[:succeeded]} failed=#{batch.summary[:failed]}"
+
+batch = fleet.sync_interface_descriptions(hosts: ["192.0.2.1"])
+puts "Total=#{batch.summary[:total]} succeeded=#{batch.summary[:succeeded]} failed=#{batch.summary[:failed]}"
+```
+
+Scripts accept `Script`, command arrays or multiline text. The full batch is parsed and target addresses are normalized before credentials or device connections; duplicate, unknown, filtered and unsupported targets are rejected. Scripts contain the vendor's complete commands, including mode transitions and save commands where required. An empty batch reports `:no_devices` and is unsuccessful.
+
+Interface application calls the existing topology operation, retaining evidence revalidation, configuration readback and persistence confirmation. It does not execute an approved plan as an ordinary script. Both write operations require `confirmed: true`, and never automatically retry commands. Each task owns and closes its connector. Ordinary failures remain per-device outcomes; `Interrupt` stops and joins all owned workers. Confirmed work is not rolled back across devices.
+
+`OperationBatch` is separate from backup reports. `outcomes` retain the original `Result` or plan, completed steps and the first failure; `:partial` preserves work followed by an error, and missing credentials prevent success. `plans` selects only fully successful planning results. `to_h` includes safe diagnostics and counts, excluding commands, outputs, credentials and evidence. `on_start` and `on_result` run on workers and must be thread safe; ordinary callback faults are recorded without repeating device operations. Logging uses the configured `ssh.log_directory`.
+
+`sync_interface_descriptions` is the direct update entry: one request and one connection per device, from discovery through readback and save. Matching descriptions cause no writes or saves; a no-op does not confirm an earlier save. The default format is `To_<peer name>_<interface abbreviation>`; formatting options and blocks remain backend choices. Separate preview/approval workflows remain available through `plan_interface_descriptions` and `apply_interface_descriptions(plans: planned.plans, confirmed: true)`.
+
+Each device publishes one immutable outcome after execution and connection cleanup. Ordinary credential, connection, execution and cleanup failures affect that device while active and queued siblings continue. Once scheduling completes, `summary` and `to_h[:summary]` report `total`, `succeeded` and `failed`, with total = succeeded + failed. Total counts the devices requested and scheduled in this batch; partial completion and missing credentials count as failures and also appear in `partial` and `missing_credentials`. `callback_errors` counts notification faults separately without changing device outcomes. Empty batches report zero counts and `no_devices`. The library returns the report; callers choose terminal output or JSON export. Whole-batch approval validation and interruption retain their existing boundaries, and completed device changes cannot be rolled back.
+
+For other independent tasks, load `net/connector/execution_pool` and use `Net::Connector::ExecutionPool.new(concurrency: 4).map(items) { |item| ... }`. Results preserve input order, all threads must start before any block runs, and uncaught exceptions stop the pool and propagate to its caller. Business code decides which ordinary errors become per-task results.
+
 ## PostgreSQL inventory
 
 Set `netdisco.source: postgres` and provide your own SELECT query. Table names and business filters are not built into the library. See [inventory_sql.yml](../examples/inventory_sql.yml):
@@ -134,7 +183,9 @@ Explicit host mappings, device rules, and vendor overrides take precedence over 
 
 ## TFTP history and verification
 
-Direct upload receipts only establish `device_reported`. Fleet can verify a local/mounted TFTP directory via `verification_root:`; the CLI accepts `--tftp-root DIR` or YAML `tftp.verification_root`. A verified receipt requires a current, nonempty regular file matching the actual receipt path, with SHA-256 evidence. Missing evidence prevents `verified` success.
+Direct upload receipts only establish `device_reported`. Fleet can verify a local/mounted TFTP directory via `verification_root:`; the CLI accepts `--tftp-root DIR` or YAML `tftp.verification_root`. A verified receipt requires a current, nonempty regular file matching the actual receipt path, with SHA-256 evidence. Missing evidence prevents `verified` success. A mismatched receipt path is retained as device evidence, but cannot be verified or archived without a baseline for that locked target.
+
+Verification holds a target lock across the pre-upload file-state/time baseline, upload and fingerprint check, including batches without history preservation. An unchanged old file cannot qualify through a future timestamp. The server directory must be writable for lock files and the filesystem-time probe. Result callbacks receive the verified outcome, and file evidence never substitutes for a failed device operation or cleanup.
 
 Batch examples enable history preservation. With an accessible server directory, uploads use hostname/IP names and are retained in both `<batch>/tftp/` and server `archive/<batch>/`; pre-existing same-name files are archived under `previous/` before upload. File-state and filesystem-time baselines are captured under the upload lock. Verification or archival failure preserves available receipts and committed paths without reporting success.
 
@@ -163,10 +214,12 @@ Examples load the project `.env` through `dotenv` without overriding existing en
 | Variables | Purpose / default |
 | --- | --- |
 | `ND_URL` | HTTP inventory base URL |
+| `ND_CACHE_TTL` | Inventory cache lifetime in seconds; finite positive number, default 259200 (three days) |
 | `ND_USERNAME`, `ND_PASSWORD` | HTTP login without API key |
 | `ND_API_KEY` | Existing API key |
 | `ND_DB_HOST`, `ND_DB_NAME`, `ND_DB_USER`, `ND_DB_PASS` | Required database connection fields |
 | `NC_CONFIG` | Non-sensitive YAML file |
+| `NC_CONCURRENCY` | Default batch worker count; integer 1–50, default 4 |
 | `NC_DEVICE_USERNAME`, `NC_DEVICE_PASSWORD` | Default device credentials |
 | `NC_<VENDOR>_USERNAME`, `NC_<VENDOR>_PASSWORD` | Vendor credentials, e.g. `CISCO_IOS` |
 | `NC_ENABLE_PASSWORD`, `NC_<VENDOR>_ENABLE_PASSWORD` | Optional privilege credentials |

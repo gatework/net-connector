@@ -50,7 +50,7 @@ exit 1 unless batch.success?
 
 gem 安装后的命令为 `net-backup`；源码入口为 `bin/net-backup`，可在项目目录运行 `bundle exec bin/net-backup --help`。原命令 `net-connector-backup` 已改名。
 
-命令行程序 `net-backup` 的 YAML 文件只允许非敏感设置；Netdisco 和设备凭据留在环境变量中。仅 `ND_URL` 可从环境覆盖 YAML 地址；其他非敏感策略通过 YAML 或 CLI 设置。批量示例也支持 `NC_CONFIG`，可从 [完整配置示例](../examples/backup.yml) 开始。只有传入 `--config FILE` 或设置 `NC_CONFIG` 时才加载文件：
+命令行程序 `net-backup` 的 YAML 文件只允许非敏感设置；Netdisco 和设备凭据留在环境变量中。`ND_URL` 从环境覆盖 YAML 地址，`NC_CONCURRENCY` 覆盖 YAML 并发数；其他非敏感策略通过 YAML 或 CLI 设置。批量示例也支持 `NC_CONFIG`，可从 [完整配置示例](../examples/backup.yml) 开始。只有传入 `--config FILE` 或设置 `NC_CONFIG` 时才加载文件：
 
 ```yaml
 netdisco:
@@ -136,7 +136,7 @@ CLI 的计划与批次摘要使用 JSON。默认 `--success-policy strict` 使�
 
 显式使用 `--success-policy selected` 后，CLI 按上述 selected 规则决定退出码，保留严格的 `status: incomplete` 与跳过计数，另列 `policy_success`。例如 `net-backup --config config.yml --host 192.0.2.7 --success-policy selected`。成功策略由本次 CLI/API 参数指定，不改变已批准的清单选择，也不触发重试。
 
-本地批量示例和 TFTP 批量示例默认全量；显式 `--sample N` 或 YAML `backup.limit_per_vendor` 才限制每厂商数量（示例允许 1 至 5）。优先级为 CLI > YAML。并发默认 4，可用 `--concurrency N` 或 YAML `backup.concurrency` 覆盖。两类示例在备份目录下创建唯一批次目录。TFTP 批量示例在可访问服务器目录时使用 hostname-ip 远端文件名并逐批归档；无法访问服务器目录时使用带批次标识的远端文件名，避免覆盖旧文件；上传完成与服务器文件验证是不同状态。
+本地批量示例和 TFTP 批量示例默认全量；显式 `--sample N` 或 YAML `backup.limit_per_vendor` 才限制每厂商数量（示例允许 1 至 5）。优先级为 CLI > YAML。并发默认 4，可用 `--concurrency N`、环境变量 `NC_CONCURRENCY` 或 YAML `backup.concurrency` 覆盖，优先级依次降低。两类示例在备份目录下创建唯一批次目录。TFTP 批量示例在可访问服务器目录时使用 hostname-ip 远端文件名并逐批归档；无法访问服务器目录时使用带批次标识的远端文件名，避免覆盖旧文件；上传完成与服务器文件验证是不同状态。
 
 全量 TFTP 计划保存为 `plan.json`。目标文件名通常为 `<设备名>-<IP>.cfg`，Radware 用 `.tgz`，山石用 `.dat`。可访问本机 TFTP 服务器目录时，批量示例直接使用 `<设备名>-<IP>.<扩展名>` 上传，并在服务器的 `archive/<批次>/` 与本地 `<批次目录>/tftp/` 各保留一份；上传前已有的同名文件先保存到新归档目录的 `previous/`。无法访问服务器目录时，远端文件名增加东八区批次标识及同秒序号，避免覆盖旧文件；实际文件名见 `summary.json` 的 `remote_path`。计划仍检查同批目标名冲突。PAN-OS 固定使用 `running-config.xml`，还要求 `Sent ... bytes` 完成行；为避免下次上传覆盖它，运行批量示例时必须能访问本机 TFTP 服务器目录，否则该设备会明确失败且不会发起上传。H3C 从 `display startup` 发现源文件，可用 YAML `tftp.h3c_source_file` 覆盖；华为默认 `flash:/startup.cfg`。Nexus 9000 默认 VRF 为 `management`，山石为 `mgt-vr`；YAML `tftp.vrfs` 接受按厂商键配置的映射。山石命令在 `vrouter` 参数后追加唯一的 `.dat` 文件名；直接调用山石连接器且不指定 `path:` 时，由设备生成文件名并在结果中返回。通过 `--tftp-root DIR` 或 YAML `tftp.verification_root` 指定本机或已挂载的服务器目录时，批量示例在每台设备完成后核验实际回执路径、非空文件、修改时间和 SHA-256，并立即保存两份历史文件；报告的 `local_file` 和 `server_archive_file` 分别指向本地批次副本和服务器归档副本。核验或归档失败不会报告成功。未提供本机目录时，可命名设备仍使用不覆盖旧文件的远端文件名，回执保留为 `device_reported`，本地批次不包含配置副本。默认示例使用 `selected` 策略；要求服务器文件核验时使用 `--success-policy verified`，并提供本机服务器目录。可运行 `ruby examples/review_tftp.rb <批次目录>`，根据会话日志复核剩余失败，而不改写原始结果。日志、`events.jsonl` 和逐台结果均以私有权限保存。
 
@@ -147,6 +147,8 @@ CLI 的计划与批次摘要使用 JSON。默认 `--success-policy strict` 使�
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `ND_URL` | HTTP 模式必填 | Netdisco 服务根地址，可包含租户路径 |
+| `NC_CONCURRENCY` | 默认 4，范围 1 至 50 | 备份、配置批次和接口修正共用的并发数 |
+| `ND_CACHE_TTL` | 默认 259200 秒（三天） | 清单缓存有效期，须为有限正数，优先于 YAML `netdisco.cache_ttl` |
 | `NC_CONFIG` | 未设置 | CLI / 批量示例的非敏感 YAML 配置文件 |
 | `ND_USERNAME`, `ND_PASSWORD` | 未提供 API 密钥时必填 | 清单 API 登录 |
 | `ND_API_KEY` | 未设置 | 直接使用已有 API 密钥 |
@@ -245,3 +247,45 @@ TFTP 的 `verification` 汇总与设备条目的 `server_file_verified` 区分�
 使用 `accept_new` / `replace` 时，SSH 在每个会话的临时 known_hosts 中协商，认证后通过独立锁文件合并到共享文件。
 网络登录不占用共享锁；失败登录不删除原信任记录，`replace` 只替换当前主机。该同步协调本库进程，外部手工工具应避免同时改写同一文件。
 认证后的合并锁另有最多 `login_timeout` 秒的等待预算，超时返回 `ConnectionError`（`code: :known_hosts_busy`），关闭会话且保留共享信任记录；此预算只约束锁等待，不是整批任务的期限。
+
+提供 `verification_root:` 时，即使不保留历史，TFTP 核验也在目标锁内采集上传前文件状态与文件系统时间、执行上传并检查指纹。未变化的旧文件不能凭未来时间戳获得服务器核验；服务器目录须可写以建立锁和时间探针。结果回调与最终报告采用核验后的结果，文件证据不覆盖设备操作或关闭故障。回执路径与锁定目标不一致时保留设备证据，但缺少该路径的上传前基线，不核验或归档旧文件。
+
+## 清单缓存
+
+HTTP 和 PostgreSQL 默认启用本地清单缓存，有效期三天（259200 秒），目录为当前工作目录下的 `.cache/net-connector/inventory`。YAML `netdisco.cache_directory`、`cache_ttl` 和 `cache_enabled` 分别控制目录、秒数和是否启用；TTL 须为有限正数，设置 `cache_enabled: false` 关闭缓存。
+
+环境变量 `ND_CACHE_TTL=86400` 可将有效期改为一天。优先级为显式设置覆盖 > 环境变量 > YAML > 三天默认值；批次启动时固定有效期，修改环境不会改变正在执行的批次。
+
+目录必须属于当前用户且权限为 `0700`，缓存和锁文件为 `0600`。不同来源、地址、账号、数据库和 SQL 参数隔离缓存，只保存白名单清单字段，不保存密码、API key、SQL 或额外响应字段。每次读取仍应用当前筛选和厂商规则，远端成功返回空数组时替换旧清单。
+
+过期后自动刷新；远端请求失败时回退已验证历史，不更新原获取时间。配置错误、缺少凭据、中断和不安全文件不会被回退掩盖。缓存写入失败仍交付刚取得的新清单。`fleet.inventory_status` 提供 `:fresh_cache`、`:refreshed`、`:stale_cache`、`:uncached`、原始 `fetched_at` 和安全故障字段，CLI 对历史回退和缓存写入失败单独提示。
+
+强刷使用 `net-backup --refresh-inventory`、`fleet.devices(force_refresh: true)`、`fleet.plan_backup(force_refresh: true)`；TFTP 规划也支持此参数。强刷失败同样回退已验证历史。直接注入客户端时不自动缓存，可显式包裹 `Netdisco::InventoryCache`。一个包装器的状态描述最近调用，并发共享实例须由调用方同步。有界跨进程锁合并普通过期刷新，独立强刷请求各自访问远端。
+
+## 配置批次与接口修正
+
+```ruby
+fleet = Net::Connector::Netdisco::Fleet.new
+batch = fleet.execute_scripts(
+  scripts: { "192.0.2.1" => ["system-view", "interface GigabitEthernet1/0/1", "description uplink", "quit", "quit"] },
+  confirmed: true,
+  concurrency: 4
+)
+puts JSON.pretty_generate(batch.to_h)
+puts "总数=#{batch.summary[:total]} 成功=#{batch.summary[:succeeded]} 失败=#{batch.summary[:failed]}"
+
+batch = fleet.sync_interface_descriptions(hosts: ["192.0.2.1"])
+puts "清单 #{batch.summary[:total]}，成功 #{batch.summary[:succeeded]}，失败 #{batch.summary[:failed]}"
+```
+
+脚本接受 `Script`、命令数组或多行文本。全批先解析并固定脚本、规范化地址，再读取凭据或连接设备；重复、未知、过滤和不支持的目标提前拒绝。脚本须包含对应厂商的完整命令，包括进入/退出配置视图及需要的保存命令。空批次为 `:no_devices`，不判为成功。
+
+默认使用 `sync_interface_descriptions` 一次完成发现、修改、读回与保存，每台设备只建立一个连接，描述一致时不修改、不保存。默认格式为 `To_<邻居名称>_<接口简称>`，各厂商规则见[设备指南](usage.zh-CN.md#邻居发现与接口描述)；定制规则留给后端参数或代码块。无变化成功不证明先前已保存。需要单独预览审批时，后端仍可使用 `plan_interface_descriptions` 与 `apply_interface_descriptions(plans: planned.plans, confirmed: true)`。
+
+接口应用复用单设备拓扑操作，保留证据重验、配置回读和持久化确认，不将审批计划当作普通脚本执行。脚本与独立计划应用要求 `confirmed: true`；显式同步调用本身表达修改意图，不自动重放命令。每台任务独占并关闭连接器；普通失败隔离为设备结果，中断停止并等待全部工作线程。跨设备已完成的变更不会自动回滚。
+
+`OperationBatch` 独立于备份报告，`outcomes` 保留原 `Result` 或计划、完成步骤和第一故障；`:partial` 表示已有工作后出错，缺少凭据也使批次不成功。`plans` 只选完整成功的规划结果。`to_h` 仅输出安全诊断和数量，不展开命令、回显、凭据或证据。`on_start` 和 `on_result` 在工作线程执行，回调须线程安全；普通回调故障记录后继续，不重复设备操作。日志使用 `ssh.log_directory`。
+
+每台设备独占会话，在操作和关闭完成后发布一个不可变终态。连接、凭据、执行和关闭的普通故障只影响该设备，其他运行中或排队任务继续。整批调度结束后返回完整结果；`summary` 和 `to_h[:summary]` 提供 `total`、`succeeded`、`failed`，满足总数 = 成功 + 失败，并细分 `partial`、`missing_credentials` 和 `callback_errors`。总数是本次请求并调度的设备数量；部分完成与缺少凭据计入失败，回调故障单列，不改写设备执行结果。空批次各项为零且状态为 `no_devices`。库不直接输出终端内容，调用方可将 `to_h` 导出 JSON 报告。设备上的已完成变更不能回滚；全批审批预检和显式中断仍维持原有失败边界。
+
+其他独立任务可加载 `net/connector/execution_pool`，通过 `Net::Connector::ExecutionPool.new(concurrency: 4).map(items) { |item| ... }` 执行。结果按输入顺序返回，全部线程建立成功才运行块，未处理异常会停止线程池并回到调用线程。业务代码负责决定哪些普通错误转换为单任务结果。显式参数优先于 `NC_CONCURRENCY` 环境变量，默认 4、上限 50。

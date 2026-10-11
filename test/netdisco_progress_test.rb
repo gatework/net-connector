@@ -181,6 +181,61 @@ class NetdiscoProgressTest < Minitest::Test
     end
   end
 
+  def test_unexpected_heartbeat_failure_is_reported_without_replacing_result_or_interrupt
+    Timeout.timeout(1) { Thread.pass }
+    [nil, Interrupt.new("foreground cancellation")].each do |failure|
+      started = Queue.new
+      output = StringIO.new
+      output.define_singleton_method(:tty?) { true }
+      progress = Netdisco::Progress.new(io: output)
+      progress.define_singleton_method(:tick) { started << true; raise RuntimeError, "private display error" }
+      before = Thread.list
+      operation = lambda do
+        progress.with_updates do
+          Timeout.timeout(3) { started.pop }
+          raise failure if failure
+
+          :completed_report
+        end
+      end
+      if failure
+        assert_same failure, assert_raises(Interrupt, &operation)
+      else
+        assert_equal :completed_report, operation.call
+      end
+      assert_equal({ host: nil, error_type: "RuntimeError" }, progress.output_error)
+      assert_empty Thread.list - before
+      refute_includes output.string, "private display error"
+    end
+  end
+
+  def test_final_display_cancellation_preserves_primary_and_propagates_after_normal_result
+    [nil, Interrupt.new("foreground cancellation")].each do |failure|
+      output = StringIO.new
+      output.define_singleton_method(:tty?) { true }
+      actual_write = output.method(:write)
+      cleanup = Interrupt.new("clear display cancellation")
+      output.define_singleton_method(:write) do |text|
+        raise cleanup if text.start_with?("\r\e[2K")
+
+        actual_write.call(text)
+      end
+      progress = Netdisco::Progress.new(io: output)
+      before = Thread.list
+      operation = lambda do
+        progress.with_updates do
+          progress.tick
+          raise failure if failure
+
+          :completed_report
+        end
+      end
+      assert_same failure || cleanup, assert_raises(Interrupt, &operation)
+      assert_empty Thread.list - before
+      assert_nil progress.output_error
+    end
+  end
+
   def test_terminal_clear_and_nonterminal_flush_failures_disable_only_progress
     %i[clear flush].each do |stage|
       output = StringIO.new

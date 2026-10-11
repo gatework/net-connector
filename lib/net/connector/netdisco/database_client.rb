@@ -76,44 +76,62 @@ module Net
           budget = InventoryBudget.new(@options, clock: method(:monotonic))
           connection = nil
           connected = false
+          failed = false
           begin
             Timeout.timeout(budget.remaining, Client::InventoryTimeout) do
-              # 先取得连接句柄再交付超时，确保异常到达时 ensure 能显式关闭连接。
-              Thread.handle_interrupt(Client::InventoryTimeout => :never) do
+              # 只在取得句柄并登记所有权期间延后异步异常，离开后仍立即传播原中断。
+              Thread.handle_interrupt(Exception => :never) do
                 connection = PG::Connection.connect_start(@connection_options)
               end
               # PostgreSQL NOTICE 可能包含 SQL 或数据，不交给 libpq 默认的 stderr 输出器。
               connection.set_notice_processor { |_notice| nil }
               wait_for_connection(connection, budget)
               connected = true
-              # 使用 pg 可中断的 Ruby 等待接口；底层 socket 仍以非阻塞方式工作。
-              connection.setnonblocking(false)
-              connection.set_client_encoding("UTF8")
-              connection.exec("BEGIN READ ONLY").clear
-              set_statement_timeout(connection, budget)
-              # 即使没有参数也走扩展查询协议，由 PostgreSQL 拒绝多语句和非查询命令。
-              connection.exec_params("DECLARE net_connector_inventory NO SCROLL CURSOR FOR\n#{@options.fetch(:query)}",
-                                     @options.fetch(:query_params)).clear
-              rows = inventory(connection, budget)
-              connection.exec("ROLLBACK").clear
-              budget.remaining
-              rows
+              query_inventory(connection, budget)
             end
           rescue Client::Error => error
+            failed = true
             raise error, cause: nil
           rescue PG::QueryCanceled
+            failed = true
             raise Client::InventoryTimeout, cause: nil
           rescue PG::Error, IOError, SystemCallError
+            failed = true
             code = connected ? :query_failed : :connection_failed
             raise Client::Error.new("Netdisco database #{code.to_s.tr("_", " ")}", code: code), cause: nil
+          rescue Exception # rubocop:disable Lint/RescueException -- 清理继续保留未知异常和用户中断。
+            failed = true
+            raise
           ensure
-            connection&.finish
+            close_connection(connection, failed: failed)
           end
         end
 
         def inspect = "#<#{self.class}>"
 
         private
+
+        # 连接始终尝试关闭；收尾故障不能覆盖查询失败或中断，完成后的关闭失败仍须传播。
+        def close_connection(connection, failed:)
+          connection&.finish
+        rescue Exception # rubocop:disable Lint/RescueException -- 保留先发生的查询失败和用户中断。
+          raise unless failed
+        end
+
+        # 使用 pg 可中断的等待与扩展查询协议，只读游标共享本次清单的总预算。
+        def query_inventory(connection, budget)
+          connection.setnonblocking(false)
+          connection.set_client_encoding("UTF8")
+          connection.exec("BEGIN READ ONLY").clear
+          set_statement_timeout(connection, budget)
+          # 即使没有参数也走扩展查询协议，由 PostgreSQL 拒绝多语句和非查询命令。
+          connection.exec_params("DECLARE net_connector_inventory NO SCROLL CURSOR FOR\n#{@options.fetch(:query)}",
+                                 @options.fetch(:query_params)).clear
+          rows = inventory(connection, budget)
+          connection.exec("ROLLBACK").clear
+          budget.remaining
+          rows
+        end
 
         def wait_for_connection(connection, budget)
           deadline = monotonic + @connection_options.fetch(:connect_timeout, budget.remaining).to_f

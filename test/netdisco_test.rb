@@ -125,7 +125,7 @@ class NetdiscoTest < Minitest::Test
     defaults = policy_keys.to_h { |key| [key, env.delete(key)] }
     settings = Settings.new(env: env, defaults: defaults)
     assert_equal 2, settings.concurrency
-    assert_instance_of Client, settings.client
+    assert_instance_of Net::Connector::Netdisco::InventoryCache, settings.client
     device = Net::Connector::Netdisco::Device.from_row({ "ip" => "192.0.2.5", "vendor" => "custom maker" },
                                                        rules: settings.rules)
     assert_equal :huawei, device.vendor

@@ -10,7 +10,7 @@ require_relative "tools"
 # 只输出文件、行号与规则名；匹配文本、密钥值和原始扫描日志都不进入 CI 日志。
 module SecretScan
   CONFIG = File.join(BuildTools::ROOT, ".gitleaks.toml")
-  LOCAL_DIRECTORIES = %w[.git .bundle .idea .vscode .ssh .gem .secrets secrets tmp pkg vendor
+  LOCAL_DIRECTORIES = %w[.git .cache .bundle .idea .vscode .ssh .gem .secrets secrets tmp pkg vendor
                          backups exports logs log reports coverage .rubocop_cache .ruby-lsp .yardoc doc rdoc].freeze
   SOURCE_DIRECTORIES = %w[lib bin test examples docs script gemfiles .github].freeze
   SOURCE_FILES = %w[Gemfile Rakefile net-connector.gemspec README.md README.zh-CN.md CHANGELOG.md LICENSE

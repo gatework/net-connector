@@ -53,6 +53,61 @@ class KnownHostsTest < Minitest::Test
     refute File.exist?(path + ".old")
   end
 
+  def test_cancel_at_snapshot_handoff_releases_the_file
+    file = Tempfile.new(["snapshot-", ""], @directory)
+    path = file.path
+    original = Interrupt.new("snapshot handoff cancelled")
+    config = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit", known_hosts: @destination)
+    Tempfile.stub(:new, ->(*) { Thread.current.raise(original); file }) do
+      assert_same original, assert_raises(Interrupt) { Net::Connector::KnownHosts.new(config) }
+    end
+    assert file.closed?
+    refute File.exist?(path)
+  ensure
+    file&.close!
+  end
+
+  def test_snapshot_constructor_failure_precedes_deferred_cancellation
+    original = IOError.new("snapshot construction failed")
+    config = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit", known_hosts: @destination)
+    Tempfile.stub(:new, ->(*) { Thread.current.raise(Interrupt.new("secondary cancellation")); raise original }) do
+      assert_same original, assert_raises(Exception) { Net::Connector::KnownHosts.new(config) }
+    end
+  end
+
+  def test_cancel_during_snapshot_close_waits_for_removal
+    config = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit", known_hosts: @destination)
+    entry = Net::Connector::KnownHosts.new(config)
+    path = entry.path
+    file = entry.instance_variable_get(:@file)
+    close = file.method(:close!)
+    original = Interrupt.new("snapshot close cancelled")
+    file.define_singleton_method(:close!) { Thread.current.raise(original); close.call }
+    assert_same original, assert_raises(Interrupt) { entry.close }
+    refute File.exist?(path)
+    assert file.closed?
+  ensure
+    close&.call
+  end
+
+  def test_snapshot_close_preserves_first_failure_before_deferred_cancellation
+    config = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit", known_hosts: @destination)
+    entry = Net::Connector::KnownHosts.new(config)
+    file = entry.instance_variable_get(:@file)
+    close = file.method(:close!)
+    original = IOError.new("snapshot close failed")
+    file.define_singleton_method(:close!) do
+      Thread.current.raise(Interrupt.new("secondary cancellation"))
+      close.call
+      raise original
+    end
+    assert_same original, assert_raises(IOError) { entry.close }
+    assert file.closed?
+    assert_nil original.cause
+  ensure
+    close&.call
+  end
+
   def test_lock_wait_expires_without_changing_trust_and_can_be_retried_after_unlock
     original = "192.0.2.9 #{@key}\n"
     File.write(@destination, original)

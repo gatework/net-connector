@@ -63,6 +63,21 @@ class DeviceSessionTest < Minitest::Test
     assert closed
   end
 
+  def test_factory_failure_wins_over_a_pending_cancellation
+    original = IOError.new("factory failed")
+    factory = lambda do
+      Thread.current.raise(Interrupt.new("pending cancellation"))
+      raise original
+    end
+
+    observed = begin
+      Session.call(factory: factory) { flunk "operation must not run" }
+    rescue Exception => error # rubocop:disable Lint/RescueException -- 旧实现错误传播 Interrupt，须转换为可断言结果而非中止测试。
+      error
+    end
+    assert_equal [nil, original], observed
+  end
+
   def test_blocking_factory_remains_interruptible_and_owns_partial_resources
     entered = Queue.new
     cleaned = Queue.new

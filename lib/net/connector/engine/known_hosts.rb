@@ -20,7 +20,7 @@ module Net
         @host = "[#{@host}]:#{configuration.port}" if configuration.port && configuration.port != 22
         @replace = replace
         @original = read_shared
-        @file = Tempfile.new([".nc-known-hosts-", ""], File.dirname(@destination))
+        create_snapshot
         @path = @file.path
         @file.write(@original)
         @file.flush
@@ -57,6 +57,36 @@ module Net
       end
 
       def close
+        failure = nil
+        # 清除引用至删除快照期间延后异步取消，不能留下失去所有者的临时文件。
+        Thread.handle_interrupt(Exception => :never) do
+          close_snapshot
+        rescue Exception => error # rubocop:disable Lint/RescueException -- 保存同步清理故障，退出屏蔽范围后继续传播。
+          failure = error
+          raise
+        end
+      rescue Exception => error # rubocop:disable Lint/RescueException -- 延迟取消不能覆盖清理过程中已经发生的故障。
+        raise failure || error, cause: nil
+      end
+
+      private
+
+      # 临时文件返回后先登记所有权，阻塞构造期间仍允许取消。
+      def create_snapshot
+        failure = nil
+        begin
+          Thread.handle_interrupt(Exception => :on_blocking) do
+            @file = Tempfile.new([".nc-known-hosts-", ""], File.dirname(@destination))
+          rescue Exception => error # rubocop:disable Lint/RescueException -- 构造故障先于退出屏蔽范围时递送的二次取消。
+            failure = error
+          end
+        rescue Exception => error # rubocop:disable Lint/RescueException -- 成功交接后取消仍传播，但不覆盖已登记的构造故障。
+          failure ||= error
+        end
+        raise failure, cause: nil if failure
+      end
+
+      def close_snapshot
         file = @file
         @file = nil
         File.unlink(@path + ".old") if @path && File.exist?(@path + ".old")
@@ -70,8 +100,6 @@ module Net
           raise unless failed
         end
       end
-
-      private
 
       # 初始化失败时保留原始异常，同时尽力清理已经创建的临时文件。
       def close_preserving_failure

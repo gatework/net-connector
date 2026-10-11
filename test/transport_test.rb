@@ -39,6 +39,135 @@ class ConnectorTransportTest < Minitest::Test
     end
   end
 
+  def test_channel_factory_cancellation_closes_the_returned_channel
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test")
+    closed = 0
+    channel = Object.new
+    channel.define_singleton_method(:hard_close) { closed += 1 }
+    original = Interrupt.new("cancel during channel handoff")
+    factory = lambda do
+      Thread.current.raise(original)
+      channel
+    end
+    transport = Connector::Transports::Pty.new(configuration, channel_factory: factory)
+
+    assert_same original, assert_raises(Interrupt) { transport.open }
+    assert_equal 1, closed
+    assert transport.closed?
+  end
+
+  def test_channel_factory_failure_wins_over_a_pending_cancellation
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test")
+    original = IOError.new("channel factory failed")
+    factory = lambda do
+      Thread.current.raise(Interrupt.new("pending cancellation"))
+      raise original
+    end
+    transport = Connector::Transports::Pty.new(configuration, channel_factory: factory)
+
+    assert_same original, assert_raises(Exception) { transport.open }
+    assert transport.closed?
+  end
+
+  def test_channel_close_finishes_before_delivering_async_cancellation
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test")
+    transport = Connector::Transports::Pty.new(configuration)
+    closed = 0
+    original = Interrupt.new("cancel during channel close")
+    channel = Object.new
+    channel.define_singleton_method(:hard_close) do
+      Thread.current.raise(original)
+      closed += 1
+    end
+    transport.instance_variable_set(:@channel, channel)
+
+    assert_same original, assert_raises(Interrupt) { transport.close }
+    assert_equal 1, closed
+    assert transport.closed?
+    transport.close
+    assert_equal 1, closed
+  end
+
+  def test_ssh_trust_factory_cancellation_closes_the_returned_snapshot
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test", host_key_policy: :accept_new)
+    closed = 0
+    trust = Object.new
+    trust.define_singleton_method(:close) { closed += 1 }
+    original = Interrupt.new("cancel during trust handoff")
+    factory = lambda do |*_, **_|
+      Thread.current.raise(original)
+      trust
+    end
+    transport = Connector::Transports::Ssh.new(configuration)
+
+    Connector::KnownHosts.stub(:new, factory) do
+      assert_same original, assert_raises(Interrupt) { transport.open }
+    end
+    assert_equal 1, closed
+    assert transport.closed?
+  end
+
+  def test_ssh_trust_factory_failure_wins_over_a_pending_cancellation
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test", host_key_policy: :accept_new)
+    original = IOError.new("trust factory failed")
+    factory = lambda do |*_, **_|
+      Thread.current.raise(Interrupt.new("pending cancellation"))
+      raise original
+    end
+    transport = Connector::Transports::Ssh.new(configuration)
+
+    Connector::KnownHosts.stub(:new, factory) do
+      assert_same original, assert_raises(Exception) { transport.open }
+    end
+    assert transport.closed?
+  end
+
+  def test_blocking_channel_factory_remains_cancelable_and_cleans_its_partial_resource
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test")
+    entered, cleaned, blocker = Queue.new, Queue.new, Queue.new
+    transport = Connector::Transports::Pty.new(configuration, channel_factory: lambda {
+      entered << true
+      begin
+        blocker.pop
+      ensure
+        cleaned << true
+      end
+    })
+    thread = Thread.new do
+      transport.open
+    rescue Interrupt => error
+      error
+    end
+    entered.pop
+    original = Interrupt.new("cancel blocked channel factory")
+    thread.raise(original)
+
+    assert_same original, thread.value
+    assert cleaned.pop
+    assert transport.closed?
+  ensure
+    thread&.kill
+    thread&.join
+  end
+
+  def test_ssh_close_keeps_channel_failure_after_deferred_trust_cancellation
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test")
+    transport = Connector::Transports::Ssh.new(configuration)
+    closed = []
+    original = IOError.new("channel close failed")
+    channel, trust = Object.new, Object.new
+    channel.define_singleton_method(:hard_close) { closed << :channel; raise original }
+    trust.define_singleton_method(:close) do
+      Thread.current.raise(Interrupt.new("cancel trust cleanup"))
+      closed << :trust
+    end
+    transport.instance_variable_set(:@channel, channel)
+    transport.instance_variable_set(:@known_hosts, trust)
+
+    assert_same original, assert_raises(IOError) { transport.close }
+    assert_equal %i[channel trust], closed
+  end
+
   def test_write_preserves_primary_failure_when_timeout_restoration_also_fails
     [IOError.new("write failed"), Interrupt.new("write interrupted")].each do |original|
       configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test")

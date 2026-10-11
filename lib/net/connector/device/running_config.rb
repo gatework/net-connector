@@ -103,9 +103,11 @@ module Net
       # 排除命令回显和提示符，确认响应确实包含配置正文。
       def config_body?(step)
         body = TerminalRenderer.render(step.output.delete_suffix(step.prompt.to_s)).strip
-        lines = body.lines
-        lines.shift if lines.first&.strip == step.command.text
-        !lines.join.strip.empty?
+        # 只需确认首个正文行；不为大配置创建全部行对象或重新拼接整份响应。
+        body.each_line.with_index.any? do |line, index|
+          text = line.strip
+          !text.empty? && !(index.zero? && text == step.command.text)
+        end
       end
 
       # 将缺少配置的情况统一映射为可识别的设备错误码。

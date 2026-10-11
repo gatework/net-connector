@@ -10,17 +10,43 @@ module Net
         Fingerprint = Data.define(:path, :sha256, :mode, :dev, :ino)
 
         def self.open(path, missing: false, replace_symlink: false)
-          file = open_handle(path, missing: missing, replace_symlink: replace_symlink)
-          return nil unless file
-
+          file = acquisition_error = nil
           begin
+            # 取得描述符与登记所有权共用短暂边界；读取和业务块仍可中断。
+            Thread.handle_interrupt(Exception => :never) do
+              begin
+                file = open_handle(path, missing: missing, replace_symlink: replace_symlink)
+              rescue Exception => error # rubocop:disable Lint/RescueException -- 取得失败先于边界退出时递送的中断。
+                acquisition_error = error
+              end
+            end
+            raise acquisition_error, cause: nil if acquisition_error
+            return nil unless file
+
             stat = file.stat
             raise ArgumentError, "saved configuration is not a regular file" unless stat.file?
 
             file.binmode
             yield file, stat
+          rescue Exception # rubocop:disable Lint/RescueException -- 收尾不能覆盖读取故障或用户中断。
+            failed = true
+            raise acquisition_error, cause: nil if acquisition_error
+
+            raise
           ensure
-            file.close
+            cleanup_error = nil
+            begin
+              Thread.handle_interrupt(Exception => :never) do
+                begin
+                  file&.close
+                rescue Exception => error # rubocop:disable Lint/RescueException -- 在递送待处理中断前登记关闭故障。
+                  cleanup_error = error
+                end
+              end
+            rescue Exception => error # rubocop:disable Lint/RescueException -- 待处理中断不能覆盖已登记的关闭故障。
+              cleanup_error ||= error
+            end
+            raise cleanup_error, cause: nil if cleanup_error && !failed
           end
         end
 

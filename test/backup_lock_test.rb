@@ -13,6 +13,202 @@ class BackupLockTest < Minitest::Test
   Storage = Net::Connector::Storage
   LocalBackup = Net::Connector::LocalBackup
 
+  def test_storage_handle_handoff_closes_a_returned_file_before_propagating_cancellation
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "device.txt")
+      File.write(path, "configuration")
+      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
+        file = nil
+        real_open = File.method(:open)
+        cancellation = Interrupt.new("handoff cancelled")
+        intercept = lambda do |target, *arguments, **options, &block|
+          next real_open.call(target, *arguments, **options, &block) if block
+
+          file = real_open.call(target, *arguments, **options)
+          Thread.current.raise(cancellation)
+          file
+        end
+        begin
+          error = File.stub(:open, intercept) do
+            assert_raises(Interrupt) { storage_operation(owner, path) { flunk "cancelled handoff reached body" } }
+          end
+          assert_same cancellation, error
+          assert file.closed?, "#{owner.class} leaked its acquired descriptor"
+        ensure
+          file&.close unless file&.closed?
+        end
+      end
+    end
+  end
+
+  def test_storage_acquisition_failure_precedes_cancellation_queued_before_return
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "device.txt")
+      File.write(path, "configuration")
+      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
+        failure = IOError.new("open failed first")
+        intercept = lambda do |*|
+          Thread.current.raise(Interrupt.new("queued cancellation"))
+          raise failure
+        end
+        error = File.stub(:open, intercept) do
+          assert_raises(Exception) { storage_operation(owner, path) { flunk "failed acquisition reached body" } }
+        end
+        assert_same failure, error
+      end
+    end
+  end
+
+  def test_storage_close_finishes_before_propagating_cancellation
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "device.txt")
+      File.write(path, "configuration")
+      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
+        file = nil
+        real_open = File.method(:open)
+        cancellation = Interrupt.new("close cancelled")
+        intercept = lambda do |target, *arguments, **options, &block|
+          next real_open.call(target, *arguments, **options, &block) if block
+
+          file = real_open.call(target, *arguments, **options)
+          close = file.method(:close)
+          file.define_singleton_method(:close) do
+            Thread.current.raise(cancellation)
+            close.call
+          end
+          file
+        end
+        begin
+          error = File.stub(:open, intercept) do
+            assert_raises(Interrupt) { storage_operation(owner, path) { :finished } }
+          end
+          assert_same cancellation, error
+          assert file.closed?, "#{owner.class} detached its descriptor before closing it"
+        ensure
+          File.instance_method(:close).bind_call(file) if file && !file.closed?
+        end
+      end
+    end
+  end
+
+  def test_storage_cleanup_faults_preserve_the_first_operation_error
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "device.txt")
+      File.write(path, "configuration")
+      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
+        [IOError.new("operation failed"), Interrupt.new("operation cancelled")].each do |original|
+          real_open = File.method(:open)
+          intercept = lambda do |target, *arguments, **options, &block|
+            next real_open.call(target, *arguments, **options, &block) if block
+
+            file = real_open.call(target, *arguments, **options)
+            close = file.method(:close)
+            file.define_singleton_method(:close) do
+              Thread.current.raise(Interrupt.new("secondary cancellation"))
+              close.call
+              raise IOError, "cleanup failed"
+            end
+            file
+          end
+          error = File.stub(:open, intercept) do
+            assert_raises(original.class) { storage_operation(owner, path) { raise original } }
+          end
+          assert_same original, error
+        end
+      end
+    end
+  end
+
+  def test_storage_close_failure_precedes_cancellation_queued_during_close
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "device.txt")
+      File.write(path, "configuration")
+      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
+        failure = IOError.new("close failed first")
+        real_open = File.method(:open)
+        intercept = lambda do |target, *arguments, **options, &block|
+          next real_open.call(target, *arguments, **options, &block) if block
+
+          file = real_open.call(target, *arguments, **options)
+          close = file.method(:close)
+          file.define_singleton_method(:close) do
+            close.call
+            Thread.current.raise(Interrupt.new("queued cancellation"))
+            raise failure
+          end
+          file
+        end
+        error = File.stub(:open, intercept) do
+          assert_raises(Exception) { storage_operation(owner, path) { :done } }
+        end
+        assert_same failure, error
+      end
+    end
+  end
+
+  def test_storage_body_remains_interruptible_and_releases_the_descriptor
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "device.txt")
+      File.write(path, "configuration")
+      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
+        lock = owner != Storage::SafeFile
+        target = lock ? Storage::BackupLock.lock_path(path) : path
+        file = File.open(target, lock ? File::RDWR | File::CREAT : File::RDONLY, 0o600)
+        entered, errors = Queue.new, Queue.new
+        cancellation = Interrupt.new("body cancelled")
+        worker = nil
+        begin
+          owner.stub(lock ? :open_lock : :open_handle, ->(*) { file }) do
+            worker = Thread.new do
+              storage_operation(owner, path) { entered << true; Queue.new.pop }
+            rescue Interrupt => error
+              errors << error
+            end
+            Timeout.timeout(3) { entered.pop }
+            worker.raise(cancellation)
+            assert worker.join(3), "storage body ignored cancellation"
+          end
+          assert_same cancellation, errors.pop
+          assert file.closed?
+        ensure
+          worker.kill.join if worker&.alive?
+          file.close unless file.closed?
+        end
+      end
+    end
+  end
+
+  def test_storage_success_and_nonlocal_exit_still_propagate_cleanup_faults
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "device.txt")
+      File.write(path, "configuration")
+      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
+        [false, true].each do |nonlocal|
+          failure = IOError.new("cleanup failed")
+          real_open = File.method(:open)
+          intercept = lambda do |target, *arguments, **options, &block|
+            next real_open.call(target, *arguments, **options, &block) if block
+
+            file = real_open.call(target, *arguments, **options)
+            close = file.method(:close)
+            file.define_singleton_method(:close) { close.call; raise failure }
+            file
+          end
+          error = File.stub(:open, intercept) do
+            assert_raises(IOError) do
+              catch(:finished) { storage_operation(owner, path) { nonlocal ? throw(:finished, :done) : :done } }
+            end
+          end
+          assert_same failure, error
+        end
+      end
+    end
+  end
+
+  def storage_operation(owner, path, &)
+    owner == Storage::SafeFile ? owner.open(path, &) : owner.synchronize(&)
+  end
+
   def collector(&block)
     Object.new.tap do |device|
       device.define_singleton_method(:host) { "192.0.2.1" }

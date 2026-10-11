@@ -112,6 +112,149 @@ class EngineReliabilityTest < Minitest::Test
     end
   end
 
+  def test_log_open_cancellation_during_file_handoff_closes_the_acquired_file
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "session.log")
+      file = File.open(path, "w")
+      original = Interrupt.new("file acquisition cancelled")
+      acquire = lambda do |*|
+        Thread.handle_interrupt(Exception => :never) do
+          Thread.current.raise(original)
+          file
+        end
+      end
+      log = Net::Connector::Log.new(Net::Connector::Configuration.new(log_file: path),
+                                    redactor: Net::Connector::Redactor.new)
+      File.stub(:open, acquire) do
+        assert_same original, assert_raises(Interrupt) { log.open(ConnectorFake.new) }
+      end
+      assert file.closed?, "cancellation lost ownership of the acquired log file"
+    ensure
+      file&.close
+    end
+  end
+
+  def test_log_open_cancellation_after_file_setup_releases_registered_state
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "session.log")
+      original = Interrupt.new("logger setup cancelled")
+      log = Net::Connector::Log.new(Net::Connector::Configuration.new(log_file: path),
+                                    redactor: Net::Connector::Redactor.new)
+      file = nil
+      logger = lambda do |*args, **|
+        file = args.first
+        raise original
+      end
+      Logger.stub(:new, logger) do
+        assert_same original, assert_raises(Interrupt) { log.open(ConnectorFake.new) }
+      end
+      assert file.closed?, "logger setup cancellation left the log file open"
+      assert_nil log.instance_variable_get(:@io)
+      assert_nil log.instance_variable_get(:@transport)
+    ensure
+      file&.close
+    end
+  end
+
+  def test_log_open_failure_precedes_pending_cancellation
+    Dir.mktmpdir do |directory|
+      original = IOError.new("file open failed")
+      log = Net::Connector::Log.new(Net::Connector::Configuration.new(log_file: File.join(directory, "session.log")),
+                                    redactor: Net::Connector::Redactor.new)
+      acquire = lambda do |*|
+        Thread.handle_interrupt(Exception => :never) { Thread.current.raise(Interrupt.new("open cancelled")) }
+        raise original
+      end
+      File.stub(:open, acquire) do
+        error = assert_raises(Net::Connector::LogError) { log.open(ConnectorFake.new) }
+        assert_equal "IOError", error.underlying.type
+        assert_equal original.message, error.underlying.message
+      end
+    end
+  end
+
+  def test_log_close_failure_precedes_pending_cancellation
+    file = StringIO.new
+    file.define_singleton_method(:close) do
+      super()
+      Thread.current.raise(Interrupt.new("close cancelled"))
+      raise IOError, "file close failed"
+    end
+    log = Net::Connector::Log.new(Net::Connector::Configuration.new, redactor: Net::Connector::Redactor.new)
+    log.instance_variable_set(:@io, file)
+    error = assert_raises(Net::Connector::LogError) { log.close }
+    assert_equal "IOError", error.underlying.type
+    assert_equal "file close failed", error.underlying.message
+    assert file.closed?
+    assert_nil log.instance_variable_get(:@io)
+  end
+
+  def test_log_close_failure_does_not_build_circular_causes_after_cleanup_cancellation
+    original = IOError.new("file close failed")
+    file = StringIO.new
+    file.define_singleton_method(:close) do
+      super()
+      begin
+        raise original
+      rescue IOError
+        Thread.current.raise(Interrupt.new("close cancelled"))
+        raise
+      end
+    end
+    log = Net::Connector::Log.new(Net::Connector::Configuration.new, redactor: Net::Connector::Redactor.new)
+    log.instance_variable_set(:@io, file)
+    error = assert_raises(Net::Connector::LogError) { log.close }
+    assert_equal "IOError", error.underlying.type
+    assert_equal original.message, error.underlying.message
+    assert_nil error.cause
+    assert file.closed?
+    assert_nil log.instance_variable_get(:@io)
+  end
+
+  def test_log_file_setup_failure_survives_secondary_cancellation_during_cleanup
+    [IOError.new("mode change failed"), Interrupt.new("mode change interrupted")].each do |original|
+      Dir.mktmpdir do |directory|
+        path = File.join(directory, "session.log")
+        file = File.open(path, "w")
+        entered, release = Queue.new, Queue.new
+        file.define_singleton_method(:chmod) { |_| raise original }
+        file.define_singleton_method(:close) do
+          entered << true
+          release.pop
+          super()
+        end
+        log = Net::Connector::Log.new(Net::Connector::Configuration.new(log_file: path),
+                                      redactor: Net::Connector::Redactor.new)
+        owner = nil
+        File.stub(:open, file) do
+          owner = Thread.new do
+            log.open(ConnectorFake.new)
+          rescue Exception => error # rubocop:disable Lint/RescueException -- 观察主故障与中断，不能影响其他测试线程。
+            error
+          end
+          entered.pop
+          owner.raise(Interrupt.new("cleanup interrupted"))
+          owner.join(0.05)
+          release << true
+          assert owner.join(5), "log did not finish cleanup"
+          assert file.closed?
+          if original.is_a?(Interrupt)
+            assert_same original, owner.value
+          else
+            assert_instance_of Net::Connector::LogError, owner.value
+            assert_equal "IOError", owner.value.underlying.type
+            assert_equal "mode change failed", owner.value.underlying.message
+          end
+        end
+      ensure
+        release << true if release
+        owner&.join(5)
+        file&.singleton_class&.remove_method(:close)
+        file&.close
+      end
+    end
+  end
+
   def test_log_close_releases_state_after_a_flush_failure
     Dir.mktmpdir do |directory|
       configuration = Net::Connector::Configuration.new(log_file: File.join(directory, "session.log"), log_format: :raw)

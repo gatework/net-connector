@@ -101,7 +101,8 @@ module Net
           end
         end
       rescue Exception => error # rubocop:disable Lint/RescueException -- 恢复交付时保留原故障，二次取消不改变批次失败原因。
-        raise primary_failure || error
+        # 二次取消可能已以原故障为 cause；不能反向关联形成异常原因环。
+        raise primary_failure || error, cause: nil
       end
     end
   end

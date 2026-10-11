@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "forwardable"
+require_relative "../device_session"
 require_relative "../engine/core"
 require_relative "profile"
 require_relative "running_config"
@@ -62,20 +63,13 @@ module Net
       def self.open(**)
         raise ArgumentError, "open requires a block" unless block_given?
 
-        device = new(**)
-        begin
+        value, failure = DeviceSession.call(factory: -> { new(**) }) do |device|
           device.connect
           yield device
-        rescue Exception # rubocop:disable Lint/RescueException -- 本次连接或块失败时仍关闭设备，并保留原始故障或中断。
-          failed = true
-          raise
-        ensure
-          begin
-            device.close
-          rescue Exception # rubocop:disable Lint/RescueException -- 只保留本次作用域的原始异常，不受外层已处理异常影响。
-            raise unless failed
-          end
         end
+        raise failure if failure
+
+        value
       end
 
       # 校验连接配置，创建对话语法、传输层、恢复器和会话对象。

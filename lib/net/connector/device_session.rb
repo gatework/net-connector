@@ -14,11 +14,16 @@ module Net
         begin
           # 构造器在阻塞等待中仍可取消；非阻塞的返回交接须先登记所有权再交付取消。
           # 工厂尚未返回时的部分资源由工厂清理，成功返回后统一由本作用域关闭。
-          Thread.handle_interrupt(Exception => :on_blocking) { connector = factory.call }
+          Thread.handle_interrupt(Exception => :on_blocking) do
+            connector = factory.call
+          rescue Exception => error # rubocop:disable Lint/RescueException -- 工厂同步故障先于退出屏蔽范围时交付的取消。
+            failure = error
+            raise
+          end
           value = yield connector
           completed = true
         rescue Exception => error # rubocop:disable Lint/RescueException -- 收尾后保留最先发生的中断，普通故障单独交付业务层。
-          failure = error
+          failure ||= error
           completed = true
         ensure
           begin

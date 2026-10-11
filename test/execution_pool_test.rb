@@ -146,6 +146,35 @@ class ExecutionPoolTest < Minitest::Test
     created&.each(&:join)
   end
 
+  def test_deferred_cleanup_cancellation_cannot_create_a_circular_error_cause
+    original = IOError.new("task failed")
+    thread_new = Thread.method(:new)
+    created = []
+    spawn = lambda do |&operation|
+      thread = thread_new.call(&operation)
+      created << thread
+      actual_kill = thread.method(:kill)
+      thread.define_singleton_method(:kill) do
+        result = actual_kill.call
+        # 在原故障的 rescue 内排队二次取消，Ruby 会把原故障设为其隐式 cause。
+        Thread.current.raise(Interrupt.new("cancel cleanup"))
+        result
+      end
+      thread
+    end
+
+    Thread.stub(:new, spawn) do
+      operation = ->(_) { raise original }
+      raised = assert_raises(IOError) { Pool.new(concurrency: 1).map([1], &operation) }
+      assert_same original, raised
+      assert_nil raised.cause
+    end
+    assert_empty created.select(&:alive?)
+  ensure
+    created&.each { |thread| Thread.instance_method(:kill).bind_call(thread) }
+    created&.each(&:join)
+  end
+
   def test_async_cancellation_between_creation_and_registration_reclaims_worker
     original = Interrupt.new("cancel while registering worker")
     thread_new = Thread.method(:new)

@@ -46,17 +46,43 @@ module Net
             return yield self
           end
 
-          file = nil
+          file = acquisition_error = nil
           begin
-            file = open_lock
+            # 文件取得与所有权登记不可拆开；竞争锁和业务块仍立即响应中断。
+            Thread.handle_interrupt(Exception => :never) do
+              begin
+                file = open_lock
+              rescue Exception => error # rubocop:disable Lint/RescueException -- 取得失败先于边界退出时递送的中断。
+                acquisition_error = error
+              end
+            end
+            raise acquisition_error, cause: nil if acquisition_error
+
             verify_lock!(file)
             acquire(file)
             verify_lock!(file)
             @owner = [Process.pid, Fiber.current]
             yield self
+          rescue Exception # rubocop:disable Lint/RescueException -- 解锁收尾保留首个操作故障或中断。
+            failed = true
+            raise acquisition_error, cause: nil if acquisition_error
+
+            raise
           ensure
             @owner = nil
-            file&.close
+            cleanup_error = nil
+            begin
+              Thread.handle_interrupt(Exception => :never) do
+                begin
+                  file&.close
+                rescue Exception => error # rubocop:disable Lint/RescueException -- 在递送待处理中断前登记关闭故障。
+                  cleanup_error = error
+                end
+              end
+            rescue Exception => error # rubocop:disable Lint/RescueException -- 待处理中断不能覆盖已登记的关闭故障。
+              cleanup_error ||= error
+            end
+            raise cleanup_error, cause: nil if cleanup_error && !failed
           end
         end
 

@@ -40,6 +40,20 @@ class CollectionPromptTest < Minitest::Test
     assert_includes result.config, "description final-interface"
   end
 
+  def test_cleaning_hook_cannot_turn_echo_only_response_into_configuration
+    ["", "\r\n \t\r\n", "show running-config\r\n \t\r\n"].each do |body|
+      transport = ConnectorFake.new("switch#", "switch#", "#{body}switch#")
+      @device = Net::Connector.build(:cisco_ios, host: "192.0.2.1", username: "audit", transport: transport)
+      @device.define_singleton_method(:clean_config) { |_text| "synthetic configuration" }
+      result = @device.running_config
+      assert result.failure?
+      assert_equal :incomplete_configuration, result.error.code
+      assert_equal 2, result.steps.size
+      assert_nil result.config
+      @device.close
+    end
+  end
+
   def test_missing_real_prompt_does_not_replace_existing_backup
     Dir.mktmpdir do |directory|
       path = File.join(directory, "switch.cfg")

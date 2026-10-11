@@ -137,6 +137,52 @@ class ConnectorTest < Minitest::Test
     assert_equal 1, transport.closes
   end
 
+  def test_open_finishes_close_before_delivering_secondary_cancellation
+    [nil, IOError.new("block failed"), Interrupt.new("block interrupted")].each do |original|
+      entered = Queue.new
+      release = Queue.new
+      transport = ConnectorFake.new("router#")
+      transport.define_singleton_method(:close) do
+        entered << true
+        release.pop
+        super()
+      end
+      secondary = Interrupt.new("cleanup interrupted")
+      owner = Thread.new do
+        Net::Connector.open(:cisco_ios, host: "192.0.2.1", username: "admin", transport: transport) do
+          raise original if original
+
+          :done
+        end
+      rescue Exception => error # rubocop:disable Lint/RescueException -- 测试观察原始中断，不让它影响其他线程。
+        error
+      end
+      entered.pop
+      owner.raise(secondary)
+      owner.join(0.05)
+      release << true
+      assert owner.join(5), "open did not finish cleanup"
+      assert transport.closed?, "secondary cancellation abandoned the transport"
+      assert_equal 1, transport.closes
+      assert_same original || secondary, owner.value
+    ensure
+      release << true if release
+      owner&.join(5)
+    end
+  end
+
+  def test_open_preserves_nonlocal_return_and_closes_transport
+    transport = ConnectorFake.new("router#")
+    call = lambda do
+      Net::Connector.open(:cisco_ios, host: "192.0.2.1", username: "admin", transport: transport) do
+        return :returned
+      end
+    end
+    assert_equal :returned, call.call
+    assert transport.closed?
+    assert_equal 1, transport.closes
+  end
+
   def test_save_config_answers_cisco_confirmation
     transport = ConnectorFake.new("router#", "Destination filename [startup-config]?", "router#")
     device = Net::Connector.build(:cisco_ios, host: "192.0.2.1", username: "admin", transport: transport)

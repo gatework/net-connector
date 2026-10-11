@@ -37,18 +37,23 @@ module Net
 
         # 打开伪终端、设置终端大小并启动设备进程。
         def open
+          failure = nil
           configuration.validate_endpoint!
-          @channel = if @channel_factory
-                       @channel_factory.call
-                     else
-                       if defined?(Expect::Session)
+          # 构造期间的阻塞仍可取消；返回交接先登记信道，再交付异步中断。
+          Thread.handle_interrupt(Exception => :on_blocking) do
+            @channel = if @channel_factory
+                         @channel_factory.call
+                       elsif defined?(Expect::Session)
                          Expect::Session.new(buffer_limit: nil, write_timeout: configuration.write_timeout)
                        else
                          Expect.new(raw_pty: true, reset_timeout_on_read: false, buffer_limit: nil,
-                                  preserve_buffer: false, log_stdout: false, log_listeners: false,
-                                  debug_level: 0, write_timeout: configuration.write_timeout)
+                                    preserve_buffer: false, log_stdout: false, log_listeners: false,
+                                    debug_level: 0, write_timeout: configuration.write_timeout)
                        end
-                     end
+          rescue Exception => error # rubocop:disable Lint/RescueException -- 退出屏蔽范围交付取消之前，先保存构造器的同步故障。
+            failure = error
+            raise
+          end
           # Profile 使用宽、高；PTY 使用行数、列数。
           @channel.slave.winsize = @terminal_size.reverse if @terminal_size
           if @channel.respond_to?(:transcript=)
@@ -65,9 +70,9 @@ module Net
             @channel.spawn(*argv)
           end
           self
-        rescue Exception # rubocop:disable Lint/RescueException -- 中断时也必须释放尚未完成初始化的 PTY。
+        rescue Exception => error # rubocop:disable Lint/RescueException -- 中断时也必须释放尚未完成初始化的 PTY。
           close_preserving_failure
-          raise
+          raise failure || error, cause: nil
         end
 
         # 从信道读取下一事件，并把字符串字段转换为字节字符串。
@@ -107,10 +112,19 @@ module Net
 
         # 清除信道和日志目标，并强制关闭底层进程。
         def close
-          channel = @channel
-          @channel = nil
-          @log_target = nil
-          channel&.hard_close
+          failure = nil
+          # 从字段移交到关闭完成期间不能取消，避免丢失尚未回收的进程。
+          Thread.handle_interrupt(Exception => :never) do
+            channel = @channel
+            @channel = nil
+            @log_target = nil
+            channel&.hard_close
+          rescue Exception => error # rubocop:disable Lint/RescueException -- 延迟取消不能覆盖底层关闭的首个故障。
+            failure = error
+            raise
+          end
+        rescue Exception => error # rubocop:disable Lint/RescueException -- 恢复取消交付时仍保留最先观察到的故障。
+          raise failure || error, cause: nil
         end
 
         # 把人工交互结果转换为设备 EOF、超时或输入状态。
@@ -156,14 +170,21 @@ module Net
         end
 
         def open
+          failure = nil
           configuration.validate_endpoint!
           unless configuration.host_key_policy == :strict
-            @known_hosts = KnownHosts.new(configuration, replace: @replace_host_key)
+            # 临时信任文件的返回交接与信道遵守同一所有权边界。
+            Thread.handle_interrupt(Exception => :on_blocking) do
+              @known_hosts = KnownHosts.new(configuration, replace: @replace_host_key)
+            rescue Exception => error # rubocop:disable Lint/RescueException -- 构造器先失败时，延迟取消不得覆盖其原始异常。
+              failure = error
+              raise
+            end
           end
           super
-        rescue Exception # rubocop:disable Lint/RescueException -- 启动失败或中断时释放临时信任文件。
+        rescue Exception => error # rubocop:disable Lint/RescueException -- 启动失败或中断时释放临时信任文件。
           close_preserving_failure
-          raise
+          raise failure || error, cause: nil
         end
 
         def authenticated
@@ -172,18 +193,29 @@ module Net
         end
 
         def close
-          known_hosts = @known_hosts
-          @known_hosts = nil
-          super
-        rescue Exception # rubocop:disable Lint/RescueException -- 全部资源均须尝试关闭，保留首个失败或中断。
-          failed = true
-          raise
-        ensure
-          begin
-            known_hosts&.close
-          rescue Exception # rubocop:disable Lint/RescueException -- 信任文件收尾不能覆盖传输关闭的原始异常。
-            raise unless failed
+          failure = nil
+          # 一次取消须等待信道和信任快照均完成回收；同步故障仍保留首个。
+          Thread.handle_interrupt(Exception => :never) do
+            known_hosts = @known_hosts
+            @known_hosts = nil
+            begin
+              super
+            rescue Exception => error # rubocop:disable Lint/RescueException -- 全部资源均须尝试关闭，保留首个失败或中断。
+              failure = error
+              raise
+            ensure
+              begin
+                known_hosts&.close
+              rescue Exception => error # rubocop:disable Lint/RescueException -- 信任文件收尾不能覆盖传输关闭的原始异常。
+                unless failure
+                  failure = error
+                  raise
+                end
+              end
+            end
           end
+        rescue Exception => error # rubocop:disable Lint/RescueException -- 恢复取消交付也不能盖掉已经发生的关闭故障。
+          raise failure || error, cause: nil
         end
 
         # 返回 SSH 协议标识。

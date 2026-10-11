@@ -299,6 +299,8 @@ TFTP 策略必须实现 `validate_options!(target, source_file:, vrf:)`、`recei
 
 ## 加载入口与厂商策略
 
+公开设备 `open` 与批量任务共用 `DeviceSession` 的关闭边界。PTY、SSH 信任快照、日志及本地文件在取得资源与登记所有权之间延后异步取消，关闭时保护回收过程；设备命令、文件读取和锁竞争仍可取消。清理保留首个故障，二次取消不能替换主错误或形成循环异常原因。
+
 `require "net/connector"` 加载设备 API 和引擎，厂商由 `vendor_class` 按需加载。TextFSM 能力模块可预先组合，但外部 `textfsm` gem 只在实际解析时加载。仅需会话引擎时使用 `require "net/connector/engine/core"`；离线文件操作使用 `net/connector/storage`，不加载厂商。
 
 `engine/dialogue` 只定义 Interaction、Dialogue 与 Response；读取循环位于 `engine/response_reader`。`engine/errors` 不加载脱敏运行时，`engine/redactor` 负责秘密作用域。Session 明确加载并持有读取器与脱敏器。

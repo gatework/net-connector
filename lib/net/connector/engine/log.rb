@@ -31,15 +31,17 @@ module Net
         @transport = transport
         @session_id = SecureRandom.hex(8).freeze
         @command_sequence = 0
-        @io = open_file(@configuration.log_file) if @configuration.log_file
+        open_file(@configuration.log_file) if @configuration.log_file
         if @configuration.log_format == :raw
           @writer = @output = RedactingWriter.new(@io, @redactor) if @io
         elsif @io || @configuration.logger
           @logger = @configuration.logger || ::Logger.new(@io, formatter: Formatter.new)
           open_transcript if @io && @configuration.log_level == :debug
         end
-      rescue => error
+      rescue Exception => error # rubocop:disable Lint/RescueException -- 文件已登记后的中断也必须释放资源，仍原样交付中断。
         close_preserving_failure
+        raise unless error.is_a?(StandardError)
+
         raise build_error("unable to open session log", error), cause: nil
       end
 
@@ -192,10 +194,16 @@ module Net
           failed = true
           raise
         ensure
+          close_failure = nil
           begin
-            @io&.close
-          rescue Exception # rubocop:disable Lint/RescueException -- 文件关闭不能覆盖首个日志收尾故障或中断。
-            raise unless failed
+            Thread.handle_interrupt(Exception => :never) do
+              @io&.close
+            rescue Exception => error # rubocop:disable Lint/RescueException -- 文件关闭先发生的故障优先于待处理中断。
+              close_failure = error
+              raise
+            end
+          rescue Exception => error # rubocop:disable Lint/RescueException -- 文件关闭不能覆盖首个日志收尾故障或中断。
+            raise close_failure || error, cause: nil unless failed
           ensure
             @writer = @output = @transcript = @logger = @io = @transport = @session_id = nil
             @attached = false
@@ -244,29 +252,28 @@ module Net
 
       # 以私有权限打开设备日志文件。
       def open_file(path)
+        failure = nil
         FileUtils.mkdir_p(File.dirname(path), mode: 0o700)
-        file = File.open(path, File::WRONLY | File::CREAT | File::APPEND | File::NOFOLLOW | File::NONBLOCK, 0o600)
-        begin
-          # FIFO 的打开不受登录截止时间约束；验证同一个 FD 后才能修改权限或写入。
-          raise ArgumentError, "session log must be a regular file" unless file.stat.file?
-
-          file.chmod(0o600)
-          file.binmode
-          file.write("\n") if file.size.positive? && @configuration.log_format == :text
-          file
-        rescue Exception # rubocop:disable Lint/RescueException -- 中断时也释放尚未完成设置的文件。
-          begin
-            file.close
-          rescue Exception # rubocop:disable Lint/RescueException -- 保留文件设置的原始故障或中断。
-            # 保留设置失败的原始原因。
-          end
+        # 返回文件后先登记唯一所有者；后续设置失败由 open 统一释放，不重复交接资源。
+        Thread.handle_interrupt(Exception => :never) do
+          @io = File.open(path, File::WRONLY | File::CREAT | File::APPEND | File::NOFOLLOW | File::NONBLOCK, 0o600)
+        rescue Exception => error # rubocop:disable Lint/RescueException -- 非阻塞打开的主故障不能被待处理中断替换。
+          failure = error
           raise
         end
+        # FIFO 的打开不受登录截止时间约束；验证同一个 FD 后才能修改权限或写入。
+        raise ArgumentError, "session log must be a regular file" unless @io.stat.file?
+
+        @io.chmod(0o600)
+        @io.binmode
+        @io.write("\n") if @io.size.positive? && @configuration.log_format == :text
+      rescue Exception => error # rubocop:disable Lint/RescueException -- 恢复取消交付时仍保留打开阶段的首个故障。
+        raise failure || error, cause: nil
       end
 
       # 在日志打开失败后尽力释放资源。
       def close_preserving_failure
-        close
+        Thread.handle_interrupt(Exception => :never) { close }
       rescue Exception # rubocop:disable Lint/RescueException -- 清理故障或中断不能覆盖日志打开失败。
         nil
       end

@@ -37,9 +37,11 @@ module Net
         end
 
         # 分开保存默认策略、显式覆盖与凭据来源；fixed 实例只承载已复制的公开快照。
-        def initialize(env: ENV, defaults: {}, overrides: {}, policy: nil, fixed: false)
+        def initialize(env: ENV, defaults: {}, overrides: {}, policy: nil, fixed: false, path_context: nil)
           @env, @defaults, @overrides = env, defaults, overrides
           @policy, @fixed = policy, fixed
+          # 路径上下文只在内部固定策略之间传递，不属于用户配置或凭据来源。
+          @path_context = (path_context || [Dir.pwd, Dir.home]).map { |path| path.dup.freeze }.freeze if fixed
         end
 
         # 调用入口补充运行目录等非敏感覆盖，凭据仍从同一来源读取。
@@ -47,7 +49,7 @@ module Net
           if @fixed
             public_values = @env.merge(@overrides).merge(values).slice(*non_secret_keys)
                                 .transform_values { |value| value.is_a?(String) ? value.dup.freeze : value }.freeze
-            return self.class.new(env: public_values, fixed: true).freeze
+            return self.class.new(env: public_values, fixed: true, path_context: @path_context).freeze
           end
 
           policy = @policy.with_overrides(values) if @policy
@@ -150,7 +152,7 @@ module Net
           unless directory.is_a?(String) && !directory.empty? && !directory.include?("\0")
             raise ArgumentError, "netdisco.cache_directory must be a nonempty path without NUL"
           end
-          { directory: File.expand_path(directory), ttl: number("ND_CACHE_TTL", InventoryCache::DEFAULT_TTL),
+          { directory: absolute_path(directory), ttl: number("ND_CACHE_TTL", InventoryCache::DEFAULT_TTL),
             enabled: boolean("ND_CACHE_ENABLED", true) }.freeze
         end
 
@@ -169,7 +171,7 @@ module Net
           path = raw("NC_BACKUP_DIRECTORY", DEFAULT_BACKUP_DIRECTORY)
           raise ArgumentError, "NC_BACKUP_DIRECTORY must be nonempty" unless present?(path)
 
-          File.expand_path(path)
+          absolute_path(path)
         end
 
         # 与 Worker 共用并发上限，非法值在任务与目录创建前失败。
@@ -226,11 +228,13 @@ module Net
         # 本机核验根目录属于策略快照，解析路径不证明文件已经上传。
         def tftp_root
           path = value("NC_TFTP_ROOT")
-          File.expand_path(path) if path
+          absolute_path(path) if path
         end
 
         # 端口、TLS 与连接超时进入固定策略；主机、数据库名和登录凭据仍从环境读取。
         def database_options
+          return @policy.database_options if @policy
+
           options = {}
           %i[port connect_timeout].each do |name|
             key = "ND_DB_#{name.to_s.upcase}"
@@ -242,14 +246,20 @@ module Net
             item = value("ND_DB_#{name.to_s.upcase}")
             options[name] = item if item
           end
-          DatabaseClient.connection_policy(**options)
+          options = DatabaseClient.connection_policy(**options)
+          # libpq 的 system 是系统信任库标记；其他显式路径按字面解析，不展开波浪号。
+          if @fixed && options[:sslrootcert] && options[:sslrootcert] != "system"
+            options = options.merge(sslrootcert: File.absolute_path(options[:sslrootcert], @path_context.first).freeze).freeze
+          end
+          options
         end
 
         # 经 Configuration 复用连接校验；厂商协议覆盖通用协议，不包含设备凭据。
         def connection_options(vendor = nil)
+          known_hosts = value("NC_KNOWN_HOSTS")
           configuration = Configuration.new(
             protocol: vendor_protocols[vendor.to_s] || value("NC_PROTOCOL") || "ssh",
-            log_level: value("NC_LOG_LEVEL") || "info", known_hosts: value("NC_KNOWN_HOSTS"),
+            log_level: value("NC_LOG_LEVEL") || "info", known_hosts: known_hosts && absolute_path(known_hosts),
             host_key_policy: value("NC_HOST_KEY_POLICY") || "strict",
             max_script_output_bytes: optional_integer("NC_MAX_SCRIPT_OUTPUT_BYTES")
           )
@@ -281,7 +291,7 @@ module Net
         # 会话日志目录属于公开策略；调用方和批次入口负责实际创建。
         def log_directory
           path = value("NC_LOG_DIRECTORY")
-          File.expand_path(path) if path
+          absolute_path(path) if path
         end
 
         # 生成已验证的无凭据配置摘要，不展开原环境或 resolver。
@@ -324,6 +334,20 @@ module Net
           end
 
           @defaults.fetch(key, default)
+        end
+
+        # 固定策略及其覆盖共用快照的工作目录和主目录；活设置仍按调用时的环境解析。
+        def absolute_path(path)
+          return @policy.absolute_path(path) if @policy
+          return File.expand_path(path) unless @fixed
+
+          if path == "~" || path.start_with?("~/")
+            home = @path_context.last
+            raise ArgumentError, "non-absolute home" unless home.start_with?(File::SEPARATOR)
+
+            path = home + path.delete_prefix("~")
+          end
+          File.expand_path(path, @path_context.first)
         end
 
         private

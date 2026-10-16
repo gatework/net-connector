@@ -67,7 +67,7 @@ module Net
           device.connect
           yield device
         end
-        raise failure if failure
+        raise failure, cause: failure.cause if failure
 
         value
       end

@@ -67,25 +67,13 @@ module Net
         if @operation_owner == [Thread.current, Fiber.current] && !@performing
           return perform_locked(phase, &)
         end
-        unless @lock.try_lock
-          raise build_error(SessionBusy, "session already belongs to another operation", phase: phase), cause: nil
-        end
-
-        begin
-          perform_locked(phase, &)
-        ensure
-          @lock.unlock
-        end
+        with_session_lock(phase) { perform_locked(phase, &) }
       end
 
       # 业务操作在多次脚本之间持有租约；只有同一线程和 Fiber 可顺序使用。
       def with_operation(phase)
-        unless @lock.try_lock
-          raise build_error(SessionBusy, "session already belongs to another operation", phase: phase), cause: nil
-        end
-        @operation_owner = [Thread.current, Fiber.current]
-        result = nil
-        begin
+        with_session_lock(phase, operation: true) do
+          result = nil
           @log.with_operation_context(phase) { result = yield }
         rescue Error => error
           raise unless result.is_a?(Result)
@@ -93,9 +81,6 @@ module Net
           # 日志收尾失败不能抹去已完成的设备步骤，也不能覆盖原业务错误。
           Result.new(steps: result.steps, config: result.config,
                      error: result.error || normalize_error(error, phase: phase))
-        ensure
-          @operation_owner = nil
-          @lock.unlock
         end
       end
 
@@ -108,15 +93,7 @@ module Net
 
       # 独占关闭会话；已有操作占用时返回会话繁忙错误。
       def close
-        unless @lock.try_lock
-          raise build_error(SessionBusy, "cannot close a session owned by another operation", phase: :close), cause: nil
-        end
-
-        begin
-          close_resources
-        ensure
-          @lock.unlock
-        end
+        with_session_lock(:close, busy_message: "cannot close a session owned by another operation") { close_resources }
       end
 
       # 执行特权认证，并更新提示符及特权状态。
@@ -234,11 +211,44 @@ module Net
 
       private
 
+      # 锁取得与所有权登记不可拆开；只在交接及释放窗口延迟取消，业务等待仍可中断。
+      def with_session_lock(phase, operation: false, busy_message: "session already belongs to another operation")
+        acquired = false
+        failure = nil
+        begin
+          Thread.handle_interrupt(Exception => :never) do
+            acquired = @lock.try_lock
+            @operation_owner = [Thread.current, Fiber.current] if acquired && operation
+          end
+          unless acquired
+            raise build_error(SessionBusy, busy_message, phase: phase), cause: nil
+          end
+
+          yield
+        rescue Exception => error # rubocop:disable Lint/RescueException -- 解锁期间的二次取消不能覆盖原业务故障。
+          failure = error
+          raise
+        ensure
+          if acquired
+            begin
+              Thread.handle_interrupt(Exception => :never) do
+                @operation_owner = nil if operation
+                @lock.unlock
+              end
+            rescue Exception => error # rubocop:disable Lint/RescueException -- 完成释放后再交付取消，并避免原故障形成 cause 环。
+              error = failure || error
+              raise error, cause: error.cause
+            end
+          end
+        end
+      end
+
       # 一次操作从连接到结果处理始终持锁；异常或 throw 中断都关闭未完成会话。
       def perform_locked(phase)
-        @performing = true
         completed = false
+        failure = nil
         begin
+          @performing = true
           unless connected?
             close_resources unless state == :closed
             connect_session
@@ -251,15 +261,34 @@ module Net
           failure = normalize_error(error, phase: phase)
           close_preserving_failure
           raise failure, cause: nil
-        rescue Exception # rubocop:disable Lint/RescueException -- 中断先释放传输资源，再继续向外传播。
+        rescue Exception => error # rubocop:disable Lint/RescueException -- 中断先释放传输资源，再继续向外传播。
+          failure = error
           close_preserving_failure
           raise
         ensure
+          finish_perform(completed, failure)
+        end
+      end
+
+      # 资源查询和关闭仍可取消；不论它们如何退出，都先清除执行标记再交付首个故障。
+      def finish_perform(completed, failure)
+        begin
           # throw/catch 也会离开此块；对话未完成时必须关闭连接，不能把
           # 半途的设备提示符误当成下一条命令的响应。
           close_preserving_failure unless completed || !connected?
-          @state = :ready if connected?
-          @performing = false
+          connected = connected?
+        rescue Exception => error # rubocop:disable Lint/RescueException -- 收尾取消不能覆盖已记录的操作故障。
+          failure ||= error
+        ensure
+          begin
+            Thread.handle_interrupt(Exception => :never) do
+              @state = :ready if connected
+              @performing = false
+            end
+          rescue Exception => error # rubocop:disable Lint/RescueException -- 状态登记完成后才交付二次取消。
+            failure ||= error
+          end
+          raise failure, cause: failure.cause if failure
         end
       end
 

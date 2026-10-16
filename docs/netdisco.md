@@ -181,7 +181,11 @@ HTTP counts actual chunks and closes on excess. Injected `requester:` callbacks 
 
 `Settings#snapshot(mode:)` freezes public policy before side effects. CLI planning and execution share it; later calls can read new settings. Credentials remain dynamic per task. `Settings.new.for_run(mode: :backup)` shares policy across API calls; non-sensitive overrides preserve an existing snapshot. A custom `credentials:` resolver can supply per-device connection options, taking precedence over defaults. Injected clients remain caller-owned.
 
+Snapshot backup, cache, log, TFTP verification, SSH known-hosts and explicit PostgreSQL CA certificate paths resolve against the working directory captured when the snapshot is created, including default paths and later relative overrides. Paths beginning with `~/` and the path `~` use the home directory captured by that snapshot. PostgreSQL CA paths retain libpq's literal path semantics without tilde expansion; `sslrootcert: system` keeps its system trust-store meaning, while `./system` names a file. Live settings continue to resolve paths against the current working directory and home directory.
+
 Explicit host mappings, device rules, and vendor overrides take precedence over automatic detection. Comware plus a branded H3C model can correct stale vendor labels; H3C WX/AC models select the wireless connector.
+
+Host and vendor overrides reject normalized aliases that select different connectors; aliases selecting the same connector can coexist. Required vendor labels must remain nonempty after normalization. Invalid rules fail before device connections begin.
 
 ## TFTP history and verification
 

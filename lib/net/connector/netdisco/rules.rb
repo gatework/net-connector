@@ -39,15 +39,20 @@ module Net
           unless vendor_overrides.is_a?(Hash)
             raise ArgumentError, "vendor_overrides must be a Hash"
           end
-          vendor_overrides.to_h do |label, vendor|
+          vendor_overrides.each_with_object({}) do |(label, vendor), mapping|
             unless label.is_a?(String) && vendor.is_a?(String) && !label.empty?
               raise ArgumentError, "vendor_overrides must map labels to connector names"
             end
             key = normalize(label)
+            raise ArgumentError, "vendor_overrides labels must remain nonempty after normalization" if key.empty?
+
             value = vendor.to_sym
             raise ArgumentError, "vendor_overrides contains an unsupported connector" unless Net::Connector.vendors.include?(value)
+            if mapping.key?(key) && mapping[key] != value
+              raise ArgumentError, "vendor_overrides contains conflicting normalized labels"
+            end
 
-            [key, value]
+            mapping[key] = value
           end.freeze
         end
 
@@ -55,19 +60,22 @@ module Net
         def host_mapping(host_overrides)
           raise ArgumentError, "host_overrides must be a Hash" unless host_overrides.is_a?(Hash)
 
-          host_overrides.to_h do |host, vendor|
+          host_overrides.each_with_object({}) do |(host, vendor), mapping|
             unless host.is_a?(String) && !host.include?("/") && vendor.is_a?(String)
               raise ArgumentError, "host_overrides must map IP addresses to connector names"
             end
             begin
               address = IPAddr.new(host).to_s
             rescue IPAddr::Error
-              raise ArgumentError, "host_overrides contains an invalid IP address"
+              raise ArgumentError, "host_overrides contains an invalid IP address", cause: nil
             end
             connector = vendor.to_sym
             raise ArgumentError, "host_overrides contains an unsupported connector" unless Net::Connector.vendors.include?(connector)
+            if mapping.key?(address) && mapping[address] != connector
+              raise ArgumentError, "host_overrides contains conflicting normalized IP addresses"
+            end
 
-            [address, connector]
+            mapping[address] = connector
           end.freeze
         end
 
@@ -84,8 +92,10 @@ module Net
             end
             connector = rule.fetch("connector").to_sym
             raise ArgumentError, "mapping contains an unsupported connector" unless Net::Connector.vendors.include?(connector)
+            vendor = normalize(rule.fetch("vendor"))
+            raise ArgumentError, "mapping vendor must remain nonempty after normalization" if vendor.empty?
 
-            { vendor: normalize(rule.fetch("vendor")), os: rule["os"] && normalize(rule["os"]),
+            { vendor: vendor, os: rule["os"] && normalize(rule["os"]),
               model_prefix: rule["model_prefix"] && normalize(rule["model_prefix"]), connector: connector }.freeze
           end.freeze
         end
@@ -153,7 +163,7 @@ module Net
 
             [IPAddr.new(value).to_s.freeze, true]
           rescue IPAddr::Error
-            raise ArgumentError, "host list entries must be IP addresses"
+            raise ArgumentError, "host list entries must be IP addresses", cause: nil
           end.freeze
         end
 

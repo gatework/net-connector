@@ -95,8 +95,8 @@ module Net
 
         start = match.begin(0).positive? ? output.rindex(/[\r\n]/, match.begin(0) - 1) : nil
         start = start ? start + 1 : 0
-        finish = output.index(/[\r\n]/, match.end(0)) || output.bytesize
-        output.byteslice(start, finish - start).strip
+        finish = output.index(/[\r\n]/, match.end(0)) || output.length
+        output[start...finish].strip
       end
     end
 

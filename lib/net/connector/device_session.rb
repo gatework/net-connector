@@ -33,7 +33,7 @@ module Net
             failure ||= error
           end
           # break 和非局部 return 跳过尾部返回值；收尾故障必须在展开作用域时交付。
-          raise failure if failure && (!completed || !failure.is_a?(StandardError))
+          raise failure, cause: failure.cause if failure && (!completed || !failure.is_a?(StandardError))
         end
 
         [value, failure]

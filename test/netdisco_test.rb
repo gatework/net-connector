@@ -11,6 +11,61 @@ class NetdiscoTest < Minitest::Test
   Fleet = Net::Connector::Netdisco::Fleet
   Settings = Net::Connector::Netdisco::Settings
 
+  def test_rules_reject_conflicting_normalized_override_keys_in_either_order
+    mappings = {
+      host_overrides: { "2001:db8::1" => "h3c", "2001:0db8:0:0:0:0:0:1" => "huawei" },
+      vendor_overrides: { "Cisco Systems" => "cisco_ios", "cisco-systems" => "cisco_nxos" }
+    }
+    mappings.each do |option, mapping|
+      [mapping, mapping.to_a.reverse.to_h].each do |values|
+        assert_raises(ArgumentError) { Net::Connector::Netdisco::Rules.new(**{ option => values }) }
+      end
+    end
+  end
+
+  def test_rules_merge_equivalent_override_keys_with_the_same_connector
+    rules = Net::Connector::Netdisco::Rules.new(
+      host_overrides: { "2001:db8::1" => "h3c", "2001:0db8:0:0:0:0:0:1" => "h3c" },
+      vendor_overrides: { "Cisco Systems" => "cisco_ios", "cisco-systems" => "cisco_ios" }
+    )
+    assert_equal :h3c, rules.resolve("ip" => "2001:db8::1", "vendor" => "Cisco Systems")
+    assert_equal :cisco_ios, rules.resolve("ip" => "192.0.2.1", "vendor" => "CISCO SYSTEMS")
+  end
+
+  def test_rules_reject_vendor_labels_that_normalize_to_empty
+    ["", " \t", "!!!", "厂商"].each do |label|
+      assert_raises(ArgumentError) do
+        Net::Connector::Netdisco::Rules.new(vendor_overrides: { label => "h3c" })
+      end
+      assert_raises(ArgumentError) do
+        Net::Connector::Netdisco::Rules.new(mappings: [{ "vendor" => label, "connector" => "h3c" }])
+      end
+    end
+  end
+
+  def test_rules_preserve_optional_mapping_field_semantics
+    [nil, ""].each do |prefix|
+      rules = Net::Connector::Netdisco::Rules.new(mappings: [
+        { "vendor" => "Custom", "os" => nil, "model_prefix" => prefix, "connector" => "h3c" }
+      ])
+      assert_equal :h3c, rules.resolve("vendor" => "Custom", "os" => "Any", "model" => "Any")
+    end
+    rules = Net::Connector::Netdisco::Rules.new(mappings: [
+      { "vendor" => "Custom", "os" => "", "connector" => "h3c" }
+    ])
+    assert_equal :h3c, rules.resolve("vendor" => "Custom")
+    assert_nil rules.resolve("vendor" => "Custom", "os" => "Any")
+  end
+
+  def test_rules_invalid_addresses_do_not_retain_raw_parser_causes
+    marker = "private-invalid-address"
+    [{ host_overrides: { marker => "h3c" } }, { include_hosts: [marker] }, { exclude_hosts: [marker] }].each do |options|
+      error = assert_raises(ArgumentError) { Net::Connector::Netdisco::Rules.new(**options) }
+      assert_nil error.cause
+      refute_includes error.full_message, marker
+    end
+  end
+
   def test_address_filters_keep_normalization_exclusion_precedence_and_input_ownership
     included = ["192.0.2.1", "192.0.2.1", "2001:db8:0:0:0:0:0:1", "192.0.2.2"].map(&:dup)
     excluded = ["192.0.2.2".dup]

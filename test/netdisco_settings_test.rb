@@ -103,6 +103,139 @@ class NetdiscoSettingsTest < Minitest::Test
     assert_equal "third-pass", updated.device_credentials_for(device).fetch(:password)
   end
 
+  def test_snapshot_keeps_relative_and_default_paths_while_live_settings_follow_cwd
+    Dir.mktmpdir do |directory|
+      directory = File.realpath(directory)
+      first = File.join(directory, "first")
+      second = File.join(directory, "second")
+      [first, second].each { |path| Dir.mkdir(path) }
+      settings = Settings.new(env: {}, defaults: { "NC_KNOWN_HOSTS" => "known_hosts",
+                                                   "NC_LOG_DIRECTORY" => "logs", "NC_TFTP_ROOT" => "tftp" })
+      read_paths = lambda do |value|
+        [value.backup_directory, value.inventory_cache_options.fetch(:directory),
+         value.connection_options.fetch(:known_hosts), value.log_directory, value.tftp_root]
+      end
+      policy, expected = Dir.chdir(first) { [settings.snapshot, read_paths.call(settings)] }
+      Dir.chdir(second) do
+        assert_equal expected, read_paths.call(policy)
+        assert_equal %w[backups .cache/net-connector/inventory known_hosts logs tftp].map { |path| File.join(second, path) },
+                     read_paths.call(settings)
+        assert_equal read_paths.call(settings), read_paths.call(settings.snapshot)
+      end
+    end
+  end
+
+  def test_run_and_export_overrides_keep_the_original_path_base_and_live_credentials
+    Dir.mktmpdir do |directory|
+      directory = File.realpath(directory)
+      first = File.join(directory, "first")
+      second = File.join(directory, "second")
+      [first, second].each { |path| Dir.mkdir(path) }
+      env = { "NC_DEVICE_USERNAME" => "first", "NC_DEVICE_PASSWORD" => "old" }
+      live = Settings.new(env: env)
+      run, export = Dir.chdir(first) { [live.for_run, live.for_run(mode: :export)] }
+      Dir.chdir(second) do
+        updated = run.with_overrides("NC_BACKUP_DIRECTORY" => "new-backups", "NC_KNOWN_HOSTS" => "new-hosts")
+        assert_equal File.join(first, "new-backups"), updated.backup_directory
+        assert_equal File.join(first, "new-hosts"), updated.snapshot.connection_options.fetch(:known_hosts)
+        assert_equal File.join(first, "backups"), run.backup_directory
+        assert_equal File.join(first, "exports"), export.with_overrides("NC_BACKUP_DIRECTORY" => "exports").snapshot(mode: :export).backup_directory
+        absolute = File.join(second, "absolute")
+        assert_equal absolute, updated.with_overrides("NC_BACKUP_DIRECTORY" => absolute).backup_directory
+        env.merge!("NC_DEVICE_USERNAME" => "second", "NC_DEVICE_PASSWORD" => "new")
+        device = Netdisco::Device.from_row(rows.first, rules: updated.rules)
+        assert_equal({ username: "second", password: "new", enable_password: nil }, updated.device_credentials_for(device))
+      end
+    end
+  end
+
+  def test_credential_callback_cannot_change_the_snapshotted_known_hosts_path
+    original_directory = Dir.pwd
+    Dir.mktmpdir do |directory|
+      directory = File.realpath(directory)
+      first = File.join(directory, "first")
+      second = File.join(directory, "second")
+      [first, second].each { |path| Dir.mkdir(path) }
+      begin
+        Dir.chdir(first)
+        settings = Settings.new(env: {}, defaults: { "NC_KNOWN_HOSTS" => "known_hosts", "NC_CONCURRENCY" => "1" })
+        observed = []
+        fleet = Netdisco::Fleet.new(settings: settings, client: Struct.new(:devices).new(rows), result_store: nil,
+                                    credentials: ->(*) { Dir.chdir(second); { username: "reader" } },
+                                    connector_factory: lambda { |_device, options|
+                                      observed << options.fetch(:known_hosts)
+                                      successful_connector
+                                    })
+        report = fleet.backup_all
+        assert report.success?
+        assert_equal [File.join(first, "known_hosts")] * rows.size, observed
+        assert(report.outcomes.all? { |outcome| File.dirname(outcome.backup.path) == File.join(first, "backups") })
+      ensure
+        Dir.chdir(original_directory)
+      end
+    end
+  end
+
+  def test_database_certificate_snapshot_keeps_file_identity_and_system_semantics
+    Dir.mktmpdir do |directory|
+      directory = File.realpath(directory)
+      first = File.join(directory, "first")
+      second = File.join(directory, "second")
+      [first, second].each do |path|
+        Dir.mkdir(path)
+        File.write(File.join(path, "ca.crt"), File.basename(path))
+      end
+      live = Settings.new(env: {}, defaults: { "ND_DB_SSLROOTCERT" => "ca.crt" })
+      run = Dir.chdir(first) { live.for_run }
+      Dir.chdir(second) do
+        policy = run.snapshot
+        assert_equal "first", File.read(policy.database_options.fetch(:sslrootcert))
+        assert_equal File.join(first, "ca.crt"), run.database_options.fetch(:sslrootcert)
+        assert_equal "second", File.read(live.database_options.fetch(:sslrootcert))
+        assert_equal File.join(second, "ca.crt"), live.snapshot.database_options.fetch(:sslrootcert)
+        assert_equal File.join(first, "other.crt"), run.with_overrides("ND_DB_SSLROOTCERT" => "other.crt").database_options.fetch(:sslrootcert)
+        absolute = File.join(second, "ca.crt")
+        assert_equal absolute, policy.with_overrides("ND_DB_SSLROOTCERT" => absolute).database_options.fetch(:sslrootcert)
+        assert_equal "system", policy.with_overrides("ND_DB_SSLROOTCERT" => "system").database_options.fetch(:sslrootcert)
+        assert_equal File.join(first, "system"), policy.with_overrides("ND_DB_SSLROOTCERT" => "./system").database_options.fetch(:sslrootcert)
+        assert_equal File.join(first, "~/ca.crt"), policy.with_overrides("ND_DB_SSLROOTCERT" => "~/ca.crt").database_options.fetch(:sslrootcert)
+        refute policy.with_overrides("ND_DB_SSLROOTCERT" => nil).database_options.key?(:sslrootcert)
+      end
+    end
+  end
+
+  def test_snapshot_and_overrides_keep_home_paths_while_live_settings_follow_home
+    original_home = ENV["HOME"]
+    Dir.mktmpdir do |directory|
+      first = File.join(directory, "first-home")
+      second = File.join(directory, "second-home")
+      begin
+        ENV["HOME"] = first
+        defaults = { "NC_BACKUP_DIRECTORY" => "~/backups", "ND_CACHE_DIRECTORY" => "~/cache",
+                     "NC_KNOWN_HOSTS" => "~/known_hosts", "NC_LOG_DIRECTORY" => "~/logs", "NC_TFTP_ROOT" => "~" }
+        live = Settings.new(env: {}, defaults: defaults)
+        run = live.for_run
+        paths = lambda do |value|
+          [value.backup_directory, value.inventory_cache_options.fetch(:directory),
+           value.connection_options.fetch(:known_hosts), value.log_directory, value.tftp_root]
+        end
+        expected = paths.call(run)
+        ENV["HOME"] = second
+        assert_equal expected, paths.call(run.snapshot)
+        assert_equal expected, paths.call(run)
+        assert_equal ["backups", "cache", "known_hosts", "logs", ""].map { |path| File.expand_path(path, second) }, paths.call(live)
+        assert_equal paths.call(live), paths.call(live.snapshot)
+        assert_equal File.join(first, "updated"), run.with_overrides("NC_KNOWN_HOSTS" => "~/updated").connection_options.fetch(:known_hosts)
+        assert_equal first, run.snapshot.with_overrides("NC_BACKUP_DIRECTORY" => "~").backup_directory
+        ENV["HOME"] = "relative-home"
+        ordinary = Settings.new(env: {}).snapshot
+        assert_raises(ArgumentError) { ordinary.with_overrides("NC_BACKUP_DIRECTORY" => "~/invalid").backup_directory }
+      ensure
+        ENV["HOME"] = original_home
+      end
+    end
+  end
+
   def test_export_overrides_keep_offline_validation_and_frozen_values
     settings = Settings.new(env: { "ND_URL" => "invalid", "NC_PROTOCOL" => "invalid" }).for_run(mode: :export)
     directory = +"/tmp/net-connector-export"

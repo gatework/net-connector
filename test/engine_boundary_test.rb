@@ -33,9 +33,11 @@ class EngineBoundaryTest < Minitest::Test
     begin
       raise RuntimeError, "already handled by caller"
     rescue RuntimeError
-      assert_raises(Connector::TransportError) do
+      error = assert_raises(Connector::TransportError) do
         Connector.open(:cisco_ios, host: "192.0.2.1", username: "operator", transport: transport) { :completed }
       end
+      assert_nil error.cause
+      refute_includes error.full_message, "already handled by caller"
     end
     assert transport.closed?
     assert_equal 1, transport.closes

@@ -32,7 +32,7 @@ module Net
           end
           # break 和非局部 return 也会展开作用域；异常交付必须在 ensure 内，不能绕过。
           failure ||= completion.pop unless completion.empty?
-          raise failure if failure
+          raise failure, cause: failure.cause if failure
         end
         value
       end

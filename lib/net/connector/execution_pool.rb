@@ -52,6 +52,7 @@ module Net
             Thread.handle_interrupt(Exception => :never) do
               threads << Thread.new do
                 failure = nil
+                exhausted = false
                 begin
                   # 全部线程成功建立后才允许设备操作，创建失败不能留下已发送的变更。
                   Thread.handle_interrupt(Exception => :immediate) do
@@ -60,10 +61,13 @@ module Net
                       index, item = task
                       results[index] = yield item
                     end
+                    exhausted = true
                   end
                 rescue Exception => error # rubocop:disable Lint/RescueException -- 将中断同步交给调用线程，避免全局 abort_on_exception 波及其他线程。
                   failure = error
                 ensure
+                  # Thread.exit/kill 不经过 rescue；不能把尚未完成的任务伪装成合法 nil 结果。
+                  failure ||= RuntimeError.new("execution worker stopped before completing its tasks") unless exhausted
                   finished << [Thread.current, failure]
                 end
               end
@@ -73,7 +77,7 @@ module Net
           count.times do
             thread, failure = finished.pop
             thread.join
-            raise failure if failure
+            raise failure, cause: failure.cause if failure
           end
           completed = true
         rescue Exception => error # rubocop:disable Lint/RescueException -- 记录取消或原任务故障，收尾中再次取消不能覆盖它。
@@ -102,7 +106,8 @@ module Net
         end
       rescue Exception => error # rubocop:disable Lint/RescueException -- 恢复交付时保留原故障，二次取消不改变批次失败原因。
         # 二次取消可能已以原故障为 cause；不能反向关联形成异常原因环。
-        raise primary_failure || error, cause: nil
+        error = primary_failure || error
+        raise error, cause: error.cause
       end
     end
   end

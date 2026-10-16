@@ -164,7 +164,8 @@ module Net
 
       # 删除行尾空白，写出当前行并重置光标。
       def emit_line(newline:)
-        @target.write(utf8_safe(@line.sub(/[ \t]+\z/n, "")))
+        # 其他 ASCII 空白控制字节已由 consume_control 消费，缓冲区只需裁剪空格和制表符。
+        @target.write(utf8_safe(@line.rstrip))
         @target.write("\n") if newline
         @line.clear
         @cursor = 0

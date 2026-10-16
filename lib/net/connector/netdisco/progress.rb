@@ -241,7 +241,7 @@ module Net
           text.each_char.take_while do |character|
             width += character.ord > 255 ? 2 : 1
             width < columns
-          end.join
+          end.join("")
         rescue IOError, SystemCallError
           line
         end

@@ -67,7 +67,7 @@ module Net
         # 邻居字段区只有空行和提示符时，才视为明确的空块。
         def empty_neighbor_block?(block)
           tail = block.split(/^\s*Neighbor information:\s*$/i, 2)
-          tail.size == 2 && tail.last.lines.all? { |line| line.strip.empty? || line.match?(/^\S+[>#]\s*$/) }
+          tail.size == 2 && tail.last.lines("\n").all? { |line| line.strip.empty? || line.match?(/^\S+[>#]\s*$/) }
         end
       end
     end

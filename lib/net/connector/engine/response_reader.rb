@@ -42,7 +42,7 @@ module Net
           end
           next if Expect.monotonic < deadline
 
-          raise build_read_error(nil, phase, command, raw.join), cause: nil
+          raise build_read_error(nil, phase, command, raw.join("")), cause: nil
         end
       end
 
@@ -63,22 +63,22 @@ module Net
       def validate_event!(event, bytes, raw, phase, command)
         if bytes > @session.configuration.max_output_bytes
           raise @session.build_error(OutputLimitExceeded, "device output exceeded max_output_bytes",
-                                     phase: phase, command: command, output: (raw + [event.match]).join), cause: nil
+                                     phase: phase, command: command, output: (raw + [event.match]).join("")), cause: nil
         end
-        raise build_read_error(event, phase, command, raw.join), cause: nil unless event.matched?
+        raise build_read_error(event, phase, command, raw.join("")), cause: nil unless event.matched?
       end
 
       # 完整提示符必须消费字节；交互标记可从业务输出排除，但原始响应始终保留。
       def finish_response(prompt, raw, output, phase, command)
         if prompt.empty?
           raise @session.build_error(PromptError, "prompt pattern did not consume any output",
-                                     phase: phase, command: command, output: raw.join), cause: nil
+                                     phase: phase, command: command, output: raw.join("")), cause: nil
         end
 
         raw << prompt
         output << prompt
-        raw_text = raw.join
-        Response.new(raw: raw_text, output: (output == raw) ? raw_text : output.join, prompt: prompt)
+        raw_text = raw.join("")
+        Response.new(raw: raw_text, output: (output == raw) ? raw_text : output.join(""), prompt: prompt)
       end
 
       # 重复提示和缺失应答必须在写入前失败；所有应答共用读取操作的截止时间。
@@ -91,7 +91,7 @@ module Net
         value = interaction_response(reply, prompt, phase, command)
         raise build_interaction_error("response unavailable", phase, command), cause: nil unless value.is_a?(String)
 
-        @session.redactor.remember(value.chomp) if reply.sensitive?
+        @session.redactor.remember(value.chomp("\n")) if reply.sensitive?
         @session.write(value, deadline: deadline, phase: phase, command: command)
       end
 

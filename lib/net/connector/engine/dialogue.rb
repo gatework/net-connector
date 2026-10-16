@@ -70,10 +70,10 @@ module Net
         [login_prompt, command_prompt, password_prompt, username_prompt, enable_prompt].each do |pattern|
           raise ArgumentError, "prompt must be a nonempty Regexp" unless pattern.is_a?(Regexp) && !pattern.match?("")
         end
-        @authentication_errors = authentication_errors.freeze
-        @command_errors = command_errors.freeze
-        @login_interactions = login_interactions.freeze
-        @command_interactions = command_interactions.freeze
+        @authentication_errors = patterns(authentication_errors, :authentication_errors)
+        @command_errors = patterns(command_errors, :command_errors)
+        @login_interactions = interactions(login_interactions, :login_interactions)
+        @command_interactions = interactions(command_interactions, :command_interactions)
         freeze
       end
 
@@ -87,6 +87,24 @@ module Net
       end
 
       private
+
+      # 自定义对话遵循与 Profile 相同的非空匹配规则，不冻结调用方数组。
+      def patterns(values, name)
+        unless values.is_a?(Array) && values.all? { |value| value.is_a?(Regexp) && !value.match?("") }
+          raise ArgumentError, "#{name} must be an Array of nonempty Regexp objects"
+        end
+
+        values.map { |value| value.frozen? ? value : value.dup.freeze }.freeze
+      end
+
+      # 交互对象自身不可变，只复制所属列表。
+      def interactions(values, name)
+        unless values.is_a?(Array) && values.all?(Interaction)
+          raise ArgumentError, "#{name} must be an Array of Interaction objects"
+        end
+
+        values.dup.freeze
+      end
 
       # 只截取命中错误模式的当前行，避免把整段设备配置写进诊断信息。
       def diagnostic_line(output)

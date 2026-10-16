@@ -52,7 +52,7 @@ module Net
 
         # 去掉命令、表头、总数和提示符，只保留邻居数据行。
         def neighbor_lines(output)
-          output.lines.map(&:strip).reject do |line|
+          output.lines("\n").map(&:strip).reject do |line|
             line.empty? || line == neighbor_command || line.match?(/\ASystem Name\s+Local Interface\b/i) ||
               line.match?(/\ATotal lldp neighbor number:\s*\d+\.?\z/i) ||
               line.match?(/\A[-=+ ]+\z/) || line.match?(/\A\S+(?:#|\([MBF]\))\z/)

@@ -44,7 +44,7 @@ module Net
           preview = plan_summary(plan)
           @output.puts JSON.generate(plan: preview) if options[:json]
           @output.flush
-          return 1 if options[:stdin_credentials] && @input.gets&.strip != "RUN"
+          return 1 if options[:stdin_credentials] && @input.gets("\n")&.strip != "RUN"
 
           Storage::PrivateFile.write(File.join(batch_directory, "plan.json"), JSON.pretty_generate(preview))
           report = execute(fleet, settings, plan, batch_directory, progress, success_policy, server_root)

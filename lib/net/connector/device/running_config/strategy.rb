@@ -18,7 +18,7 @@ module Net
 
         # 普通采集命令保持视图不变；需要切换视图的采集策略显式调整。
         def prompt_text(_command)
-          TerminalRenderer.render(@device.current_prompt.to_s).lines.last.to_s.strip
+          TerminalRenderer.render(@device.current_prompt.to_s).lines("\n").last.to_s.strip
         end
 
         # 公共策略不增加逐命令响应检查。

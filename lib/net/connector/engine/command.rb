@@ -70,8 +70,8 @@ module Net
       def self.parse(text, name: nil)
         raise ArgumentError, "script must be a String" unless text.is_a?(String)
 
-        commands = text.each_line.with_index(1).filter_map do |line, line_number|
-          line = line.chomp
+        commands = text.each_line("\n").with_index(1).filter_map do |line, line_number|
+          line = line.chomp("\n")
           next if line.strip.empty? || line.lstrip.start_with?("#")
 
           Command.new(line, source: name, line: line_number)

@@ -14,7 +14,7 @@ module Net
           end
 
           begin
-            values = JSON.parse(input.gets || "")
+            values = JSON.parse(input.gets("\n") || "")
           rescue JSON::ParserError
             raise ArgumentError, "凭据 JSON 无效", cause: nil
           end

@@ -50,7 +50,7 @@ module Net
 
           pending = +""
           quote = nil
-          text.each_line do |line|
+          text.each_line("\n") do |line|
             next if pending.empty? && line.strip.empty?
             return false if pending.empty? && !line.start_with?("set ")
 

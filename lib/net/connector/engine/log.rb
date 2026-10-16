@@ -138,8 +138,8 @@ module Net
       def log_response_output(bytes)
         return unless debug? && !@writer && !@redactor.output_sensitive?
 
-        @redactor.call(TerminalRenderer.render(@redactor.call(bytes))).each_line do |line|
-          write_event("device_output", level: :debug, output: line.chomp)
+        @redactor.call(TerminalRenderer.render(@redactor.call(bytes))).each_line("\n") do |line|
+          write_event("device_output", level: :debug, output: line.chomp("\n"))
         end
       rescue Error
         raise

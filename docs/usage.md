@@ -122,6 +122,8 @@ warn "#{result.error.code}: #{result.steps.size} completed commands" if result.f
 
 `execute_command` runs one command; `execute_script` accepts a `Script` or command array. `Script.load(path)` reads a file. Commands are validated before I/O; completed steps survive later failures. `save_config` explicitly sends save commands; ordinary scripts do not save automatically.
 
+`result.output` concatenates completed steps as raw bytes without transcoding. Each call returns a mutable binary string; changing it does not change the frozen step outputs. Use `result.config` for the cleaned configuration, or `result.value!` to raise on failure before reading the successful value.
+
 Set `max_script_output_bytes:` to bound cumulative raw responses, including additional queries. Default is `nil`. Exceeding it returns `ScriptOutputLimitExceeded` (`:script_output_limit_exceeded`) and stops subsequent commands; the current command may already have executed. `max_output_bytes` separately limits each response. Neither setting is a process-memory limit.
 
 Per-command prompts use `interactions: [Net::Connector::Interaction.new(/Token:\z/, ->(_) { "value\n" }, sensitive: true)]`. Mark commands containing secrets `sensitive: true`. For safe command text with sensitive output, use `output_sensitive: true`; `running_config` enables this automatically.

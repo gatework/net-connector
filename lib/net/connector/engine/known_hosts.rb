@@ -31,7 +31,7 @@ module Net
       end
 
       def commit
-        additions = File.binread(path).lines - @original.lines
+        additions = File.binread(path).lines("\n") - @original.lines("\n")
         return if additions.empty?
 
         with_lock do
@@ -42,10 +42,10 @@ module Net
             reject_changed_key!(file.path) unless @replace
             remove_host(file.path) if @replace
             contents = File.binread(file.path)
-            entries = contents.lines
+            entries = contents.lines("\n")
             additions.each { |line| entries << line unless entries.include?(line) }
             File.open(file.path, "wb", 0o600) do |replacement|
-              replacement.write(entries.map { |line| line.end_with?("\n") ? line : line + "\n" }.join)
+              replacement.write(entries.map { |line| line.end_with?("\n") ? line : line + "\n" }.join(""))
               replacement.flush
               replacement.fsync
             end
@@ -130,7 +130,7 @@ module Net
         output, status = Open3.capture2e("ssh-keygen", "-f", path, "-F", @host)
         raise IOError, "reading device host key failed" unless [0, 1].include?(status.exitstatus)
 
-        output.lines.reject { |line| line.start_with?("#") }.map { |line| line.split[1, 2] }.uniq
+        output.lines("\n").reject { |line| line.start_with?("#") }.map { |line| line.split[1, 2] }.uniq
       end
 
       def remove_host(path)

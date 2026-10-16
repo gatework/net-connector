@@ -8,9 +8,16 @@ module Net
   module Connector
     # 传输事件使用从零开始的模式索引；最后一个额外索引表示流式数据。
     Event = Struct.new(:index, :before, :match, :error) do
-      # 规范化事件的默认字节字段，便于读取器统一处理。
+      # 固定每次读取的字节快照，传输复用缓冲区时不能改写先前分片。
       def initialize(index: nil, before: "".b, match: "".b, error: nil)
-        super
+        unless before.is_a?(String) && match.is_a?(String)
+          raise ArgumentError, "before and match must be Strings"
+        end
+
+        before = before.b.freeze unless before.frozen? && before.encoding == Encoding::BINARY
+        match = match.b.freeze unless match.frozen? && match.encoding == Encoding::BINARY
+        super(index, before, match, error)
+        freeze
       end
 
       # 判断读取是否命中了模式而不是传输错误。
@@ -79,8 +86,8 @@ module Net
         def read(patterns, timeout:)
           reader = @channel.respond_to?(:expect_result) ? :expect_result : :expect
           result = @channel.public_send(reader, *patterns, STREAM, timeout: timeout)
-          Event.new(index: result.number && (result.number - 1), before: result.before.to_s.b,
-                    match: result.match.to_s.b, error: result.error)
+          Event.new(index: result.number && (result.number - 1), before: result.before.to_s,
+                    match: result.match.to_s, error: result.error)
         end
 
         # 临时设置写入超时，完成写入后恢复原设置。

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "errors"
+require_relative "command"
 
 module Net
   module Connector
@@ -10,6 +11,13 @@ module Net
 
       # 保存命令输出、提示符和耗时，并冻结结果。
       def initialize(command:, output:, prompt:, duration:)
+        raise ArgumentError, "command must be a Command" unless command.is_a?(Command)
+        raise ArgumentError, "output must be a String" unless output.is_a?(String)
+        raise ArgumentError, "prompt must be a String or nil" unless prompt.nil? || prompt.is_a?(String)
+        unless duration.is_a?(Numeric) && duration.real? && duration.finite? && duration >= 0
+          raise ArgumentError, "duration must be a finite nonnegative real number"
+        end
+
         @command = command
         @output = output.frozen? ? output : output.dup.freeze
         @prompt = prompt&.dup&.freeze
@@ -51,7 +59,14 @@ module Net
       def each(&) = steps.each(&)
 
       # 拼接所有已完成步骤的输出字节。
-      def output = steps.map(&:output).join.b
+      def output
+        return steps.first.output.b if steps.size == 1
+
+        # 拼接前统一编码；仅在拼接后调用 b 无法避免不同编码之间的冲突。
+        steps.map do |step|
+          step.output.encoding == Encoding::BINARY ? step.output : step.output.b
+        end.join("").force_encoding(Encoding::BINARY)
+      end
 
       # 成功时返回配置或输出，失败时重新抛出领域错误。
       def value!

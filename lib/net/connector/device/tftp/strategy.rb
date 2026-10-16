@@ -59,10 +59,10 @@ module Net
         # 移除精确命令、静态响应和提示符，保留回车重绘前后的设备消息。
         def evidence_lines(step, output)
           prompt = TerminalRenderer.render(step.prompt.to_s).strip
-          responses = step.command.interactions.filter_map { |reply| reply.static_response&.chomp }
+          responses = step.command.interactions.filter_map { |reply| reply.static_response&.chomp("\n") }
           echoes = [step.command.text, "#{prompt}#{step.command.text}", *responses]
           # 原文中的每次回车分开核对，避免重绘回显误报，也保留被覆盖的诊断。
-          output.each_line.flat_map { |line| line.split(/\r(?!\n)/) }.map do |line|
+          output.each_line("\n").flat_map { |line| line.split(/\r(?!\n)/) }.map do |line|
             # 样式不改变字符历史；光标移动和擦除不能拿来删掉原始失败消息。
             line.gsub(/\e\[[0-9;:]*m/, "").strip
           end.reject { |line| line.empty? || line == prompt || echoes.include?(line) }

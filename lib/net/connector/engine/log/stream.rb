@@ -37,7 +37,7 @@ module Net
         def write(bytes)
           @buffer << bytes
           while (ending = @buffer.index("\n"))
-            @on_line.call(@buffer.slice!(0, ending + 1).chomp)
+            @on_line.call(@buffer.slice!(0, ending + 1).chomp("\n"))
           end
           bytes.bytesize
         end

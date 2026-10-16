@@ -138,7 +138,7 @@ module Net
             require "io/console"
             output.print "#{label}："
             output.flush
-            password = input.noecho(&:gets)&.chomp
+            password = input.noecho { |terminal| terminal.gets("\n") }&.chomp("\n")
             output.puts
             raise ArgumentError, "密码不能为空" if password.nil? || password.empty?
 

@@ -61,7 +61,7 @@ module Net
 
         # 过滤表头、分隔线和设备提示符，保留待解析的邻居行。
         def neighbor_lines(output)
-          output.lines.drop_while { |line| !line.match?(TABLE_HEADER) }.map(&:strip).reject do |line|
+          output.lines("\n").drop_while { |line| !line.match?(TABLE_HEADER) }.map(&:strip).reject do |line|
             line.empty? || line.match?(TABLE_HEADER) || line.match?(/\A[-=+ ]+\z/) ||
               line.match?(/\A(?:<[^>]+>|\[[^\]]+\])\z/)
           end

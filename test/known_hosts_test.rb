@@ -197,6 +197,26 @@ class KnownHostsTest < Minitest::Test
     second&.close
   end
 
+  def test_record_separator_cannot_hide_a_concurrent_host_key_change
+    previous, verbosity = $/, $VERBOSE
+    first = snapshot(1)
+    second = snapshot(1)
+    original = "192.0.2.1 #{@key}\n"
+    File.write(first.path, original)
+    File.write(second.path, "192.0.2.1 #{@new_key}\n")
+    first.commit
+    $VERBOSE = nil
+    $/ = nil
+    error = assert_raises(Net::Connector::ConnectionError) { second.commit }
+    assert_equal :host_key_changed, error.code
+    assert_equal original, File.binread(@destination)
+  ensure
+    $/ = previous
+    $VERBOSE = verbosity
+    first&.close
+    second&.close
+  end
+
   def test_nonstandard_port_and_unchanged_entries
     File.write(@destination, "[192.0.2.1]:2222 #{@key}\n192.0.2.1 #{@key}\n")
     entry = snapshot(1, replace: true, port: 2222)

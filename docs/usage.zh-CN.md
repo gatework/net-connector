@@ -169,6 +169,8 @@ end
 
 `execute_command` 执行一条命令；`execute_script` 接收 `Script` 或命令数组；`Script.load(path)` 读取脚本文件。所有命令在设备 I/O 前校验，后续步骤失败时仍保留已完成结果，库不会自动重放命令。`save_config` 显式执行厂商保存命令，普通脚本不会自动保存。
 
+`result.output` 按顺序拼接已完成步骤的原始字节，不执行字符编码转换。每次调用返回可修改的二进制字符串，修改它不会改变已冻结的步骤输出。清理后的配置使用 `result.config`；需要失败时先抛出错误，再读取成功值时使用 `result.value!`。
+
 创建连接器时可设置 `max_script_output_bytes: 8 * 1024 * 1024`，限制每个脚本及其追加查询累计收到的原始响应字节；默认 `nil` 保持原有完整输出行为。达到上限后不再发送下一命令，当前响应超过上限时保留刚完成的步骤并返回 `ScriptOutputLimitExceeded`（`code: :script_output_limit_exceeded`）。命令可能已经执行，不会自动重试。原有 `max_output_bytes` 继续限制单次读取响应；累计预算不是进程内存上限，详细计数规则见架构文档。
 
 厂商档案处理分页和常见确认提示。特定命令可给 `execute_command` 传入 `interactions: [Net::Connector::Interaction.new(/Token:\z/, ->(_) { "value\n" }, sensitive: true)]`。敏感命令及交互会暂停回显日志并在错误中脱敏；若普通命令文本包含秘密，必须显式标记 `sensitive: true`。

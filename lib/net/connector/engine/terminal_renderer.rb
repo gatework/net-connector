@@ -177,7 +177,7 @@ module Net
         return text.b if text.valid_encoding?
         raise Encoding::InvalidByteSequenceError, "terminal editing produced invalid UTF-8" if @strict_utf8
 
-        text.scrub { |invalid| invalid.bytes.map { |byte| format("\\x%02X", byte) }.join }.b
+        text.scrub { |invalid| invalid.bytes.map { |byte| format("\\x%02X", byte) }.join("") }.b
       end
     end
   end

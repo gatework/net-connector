@@ -43,6 +43,8 @@ end
 
 写入使用 `0600` 临时文件、文件同步、原子替换及父目录同步。替换后同步或收尾失败会抛出 `BackupPersistenceError`，`error.backup` 保留已写文件的元数据，`error.receipt` 区分 `:committed`（持久性未确认）和 `:durable`（同步已完成）。目录同步不受支持对应 `:backup_durability_unsupported`，不会静默报告持久化成功，也不会自动重做设备采集。
 
+备份完成后若路径锁收尾失败，`BackupFinalizeError` 保留 `error.backup` 和安全的 `error.underlying_type`，错误码为 `:backup_finalize_failed`；内容未变时不会声称重新验证过文件持久性，中断仍向调用方传播。
+
 调用方应创建并保护备份目录，运行配置可能含有设备凭据。同目录下的 `.net-connector-<摘要>.lock` 是私有的长期锁文件，正常释放不删除它。所有写入者须使用本库的锁协议；`NOFOLLOW` 不保护被外部替换的祖先目录。锁名保守合并大小写及 Unicode 等价写法，实际备份文件名不变；在区分大小写的文件系统上，这些名称也会串行。
 
 ## 设备发起的 TFTP 备份

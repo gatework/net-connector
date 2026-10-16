@@ -39,6 +39,19 @@ module Net
       end
     end
 
+    # 备份已完成后的路径锁收尾错误；不把未变文件冒充本次完成 fsync 的写入回执。
+    class BackupFinalizeError < Error
+      attr_reader :backup, :underlying_type
+
+      def initialize(backup:, underlying:, host: nil)
+        raise ArgumentError, "backup must be a completed Backup" unless backup.instance_of?(Backup)
+
+        @backup = backup
+        @underlying_type = ErrorMetadata.type(underlying.class.name) || "StandardError"
+        super("backup completed; path lock finalization failed", code: :backup_finalize_failed, host: host, phase: :backup)
+      end
+    end
+
     # 先取得路径锁再采集和原子写入；提交后的收尾错误仍保留备份元数据。
     class LocalBackup
       # 设备入口与功能实现共置，Base 只组合能力，不重复业务流程。
@@ -56,8 +69,13 @@ module Net
 
       # 采集配置、识别变更并原子写入私有文件。
       def call(path:, lock_timeout: 0)
+        backup = nil
         host = @device.host if @device.respond_to?(:host)
-        Storage::BackupLock.synchronize(path, timeout: lock_timeout, host: host) { |lock| collect_and_write(lock.path) }
+        Storage::BackupLock.synchronize(path, timeout: lock_timeout, host: host) { |lock| backup = collect_and_write(lock.path) }
+      rescue StandardError => error
+        raise unless backup
+
+        raise BackupFinalizeError.new(backup: backup, underlying: error, host: host), cause: nil
       end
 
       private

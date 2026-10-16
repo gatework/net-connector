@@ -246,14 +246,20 @@ module Net
 
         # 执行单台设备的本地配置采集。
         def backup_device(device, directory, log_directory, settings_snapshot, filename_style: :ip)
+          outcome = nil
           destination = File.join(directory, device.backup_filename(style: filename_style))
           Storage::BackupLock.synchronize(destination, host: device.host) do |path_lock|
             Storage::SafeFile.open(destination, missing: true) { |_file, _stat| nil }
-            run_device(device, log_directory, settings_snapshot, success_status: :backed_up,
-                       partial_status: :saved_with_error, backup_class: Backup) do |connector|
+            outcome = run_device(device, log_directory, settings_snapshot, success_status: :backed_up,
+                                 partial_status: :saved_with_error, backup_class: Backup) do |connector|
               path_lock.with_delegated_lock { connector.backup(path: destination) }
             end
           end
+        rescue StandardError => error
+          raise unless outcome
+          return outcome unless outcome.success?
+
+          build_outcome(device, :saved_with_error, backup: outcome.backup, error: error)
         end
 
         # 隔离单台设备的凭据、连接、操作和关闭异常。
@@ -290,7 +296,8 @@ module Net
             result
           end
           if failure && backup.nil?
-            if backup_class == Backup && failure.instance_of?(BackupPersistenceError) && failure.backup.instance_of?(Backup)
+            if backup_class == Backup && [BackupPersistenceError, BackupFinalizeError].any? { |type| failure.instance_of?(type) } &&
+               failure.backup.instance_of?(Backup)
               backup = failure.backup
             elsif backup_class == TftpReceipt && failure.instance_of?(TftpCompletionError) && failure.receipt.instance_of?(TftpReceipt)
               backup = failure.receipt

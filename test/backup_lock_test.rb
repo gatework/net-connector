@@ -218,6 +218,86 @@ class BackupLockTest < Minitest::Test
 
   def backup(device, path, **options) = LocalBackup.new(device).call(path: path, **options)
 
+  # 在真实锁 FD 关闭之后注入故障，确保已写入事实能够穿过外层资源作用域。
+  def with_lock_close_failure(failure = IOError.new("private lock cleanup detail"), &block)
+    open = File.method(:open)
+    intercept = lambda do |path, *arguments, **options, &block|
+      next open.call(path, *arguments, **options, &block) unless path.end_with?(".lock") && !block
+
+      file = open.call(path, *arguments, **options)
+      close = file.method(:close)
+      file.define_singleton_method(:close) { close.call; raise failure }
+      file
+    end
+    File.stub(:open, intercept, &block)
+  end
+
+  def test_direct_backup_lock_cleanup_failure_retains_the_completed_backup
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "device.txt")
+      %i[created unchanged changed].each do |change|
+        contents = change == :changed ? "new configuration" : "configuration"
+        error = with_lock_close_failure do
+          assert_raises(Net::Connector::Error) { backup(collector { contents }, path) }
+        end
+        assert_equal :backup_finalize_failed, error.code
+        assert_instance_of Net::Connector::BackupFinalizeError, error
+        diagnostic = Net::Connector::Netdisco::Diagnostic.from(error, backup: error.backup)
+        assert_equal :finalize, diagnostic.artifact_phase
+        assert_equal "IOError", diagnostic.underlying_type
+        assert_nil diagnostic.artifact_state
+        assert_equal path, error.backup.path
+        assert_equal change, error.backup.change
+        assert_equal contents, File.read(path)
+        assert_equal Digest::SHA256.hexdigest(contents), error.backup.sha256
+        assert_nil error.cause
+        refute_includes error.full_message, "private lock cleanup detail"
+      end
+    end
+  end
+
+  def test_completed_backup_does_not_swallow_lock_cleanup_cancellation
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "device.txt")
+      cancellation = Interrupt.new("cancelled")
+      error = with_lock_close_failure(cancellation) do
+        assert_raises(Interrupt) { backup(collector { "configuration" }, path) }
+      end
+      assert_same cancellation, error
+      assert_equal "configuration", File.read(path)
+    end
+  end
+
+  def test_fleet_lock_cleanup_failure_preserves_saved_result_and_prior_error
+    [false, true].each do |device_close_fails|
+      Dir.mktmpdir do |directory|
+        device = collector { "configuration" }
+        calls = 0
+        device.define_singleton_method(:backup) do |path:|
+          calls += 1
+          LocalBackup.new(self).call(path: path)
+        end
+        device.define_singleton_method(:close) { raise ArgumentError, "private device close" if device_close_fails }
+        fleet = Net::Connector::Netdisco::Fleet.new(
+          client: Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }]),
+          result_store: nil, credentials: ->(*) { { username: "audit" } }, connector_factory: ->(*) { device }
+        )
+        observed = []
+        report = with_lock_close_failure do
+          fleet.backup_all(directory: directory, on_result: ->(value) { observed << value })
+        end
+        value = report.outcomes.first
+        assert_equal :saved_with_error, value.status
+        assert_equal(device_close_fails ? "ArgumentError" : "IOError", value.error_type)
+        assert_equal "configuration", File.read(value.backup.path)
+        assert_equal 1, calls
+        assert_same value, observed.first
+        refute report.policy_success?
+        refute_includes JSON.generate(report.summary), "private"
+      end
+    end
+  end
+
   def test_two_instances_contend_before_collecting_and_leave_a_stable_private_lock
     Dir.mktmpdir do |directory|
       path = File.join(directory, "device.txt")

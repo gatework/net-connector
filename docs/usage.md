@@ -39,6 +39,8 @@ Create and protect the parent directory first. `open` closes the session on retu
 
 Writes use mode `0600`, file synchronization, atomic replacement, and parent-directory synchronization. A collection failure leaves the old file intact. Failure after replacement raises `BackupPersistenceError`; `error.backup` retains metadata and `error.receipt` distinguishes `:committed` from `:durable`. Unsupported directory synchronization is reported as `:backup_durability_unsupported`. Do not repeat the device operation to recover file finalization.
 
+If path-lock cleanup fails after backup completes, `BackupFinalizeError` retains `error.backup` and a safe `error.underlying_type`. Its code is `:backup_finalize_failed`; it does not claim a new durability check for an unchanged file. Interruptions still propagate.
+
 Private `.net-connector-<digest>.lock` files remain in the directory. All writers must follow the same locking protocol; ancestor directories remain the caller's responsibility.
 
 For an in-memory configuration, use `device.running_config.value!`. The `Result` retains completed steps on failure. Collection suppresses configuration content in logs and error diagnostics, including debug/raw and application loggers; returned output and backup files remain sensitive.

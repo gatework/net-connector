@@ -236,6 +236,32 @@ class FilePersistenceTest < Minitest::Test
     end
   end
 
+  def test_fleet_accepts_only_the_builtin_backup_finalize_error
+    backup = Net::Connector::Backup.new(path: "retained.txt", bytes: 1, sha256: "fixture", collected_at: Time.now.utc)
+    error_type = Net::Connector::BackupFinalizeError
+    assert_raises(ArgumentError) { error_type.new(backup: Object.new, underlying: IOError.new) }
+    [error_type, Class.new(error_type)].each do |type|
+      error = type.new(backup: backup, underlying: IOError.new(@secret))
+      connector = local_device { "unused" }
+      connector.define_singleton_method(:backup) { |**| raise error, cause: nil }
+      Dir.mktmpdir do |directory|
+        report = fleet_for(connector).backup_all(directory: directory)
+        value = report.outcomes.first
+        if type == error_type
+          assert_equal :saved_with_error, value.status
+          assert_same backup, value.backup
+          assert_equal :finalize, value.diagnostic.artifact_phase
+          assert_equal "IOError", value.diagnostic.underlying_type
+          assert_nil value.diagnostic.artifact_state
+        else
+          assert_equal :failed, value.status
+          assert_nil value.backup
+        end
+        refute_includes JSON.generate(report.summary), @secret
+      end
+    end
+  end
+
   def test_fleet_path_delegation_is_consumed_before_collecting
     Dir.mktmpdir do |directory|
       path = File.join(directory, "192.0.2.1.txt")

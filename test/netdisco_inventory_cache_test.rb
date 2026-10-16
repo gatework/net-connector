@@ -156,6 +156,36 @@ class NetdiscoInventoryCacheTest < Minitest::Test
     assert_equal 2, @calls
   end
 
+  def test_empty_cache_is_a_miss_and_is_replaced_by_a_complete_inventory
+    cache.devices
+    File.write(path, "")
+    instance = cache
+    assert_equal @rows, instance.devices
+    assert_equal :refreshed, instance.status
+    assert_equal 2, @calls
+    assert_equal @rows, cache.devices
+    assert_equal 2, @calls
+  end
+
+  def test_empty_cache_cannot_hide_a_remote_failure
+    cache.devices
+    File.write(path, "")
+    @failure = Client::Error.new("offline", code: :connection_failed)
+    assert_same @failure, assert_raises(Client::Error) { cache.devices }
+  end
+
+  def test_row_copy_preserves_nil_fields_and_excludes_absent_fields
+    @rows = [{ "ip" => "192.0.2.1", "name" => nil, "extra" => "private" }]
+    instance = cache
+    [instance.devices, cache.devices].each do |rows|
+      assert_equal [{ "ip" => "192.0.2.1", "name" => nil }], rows
+      assert rows.frozen?
+      assert rows.first.frozen?
+      assert rows.first.fetch("ip").frozen?
+      refute_same @rows.first.fetch("ip"), rows.first.fetch("ip")
+    end
+  end
+
   def test_future_timestamp_schema_identity_and_invalid_rows_are_misses
     mutations = [->(entry) { entry["fetched_at"] = @now.to_f + 1 },
                  ->(entry) { entry["schema"] = 2 },

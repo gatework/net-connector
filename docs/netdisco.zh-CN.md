@@ -250,6 +250,8 @@ TFTP 的 `verification` 汇总与设备条目的 `server_file_verified` 区分�
 
 提供 `verification_root:` 时，即使不保留历史，TFTP 核验也在目标锁内采集上传前文件状态与文件系统时间、执行上传并检查指纹。未变化的旧文件不能凭未来时间戳获得服务器核验；服务器目录须可写以建立锁和时间探针。结果回调与最终报告采用核验后的结果，文件证据不覆盖设备操作或关闭故障。回执路径与锁定目标不一致时保留设备证据，但缺少该路径的上传前基线，不核验或归档旧文件。
 
+本地备份或 TFTP 归档完成后若路径锁收尾失败，结果以 `:saved_with_error` 或 `:reported_with_error` 保留已保存路径。已有设备错误仍作为首个诊断，回调收到保留回执的结果，命令不自动重放。
+
 ## 清单缓存
 
 HTTP 和 PostgreSQL 默认启用本地清单缓存，有效期三天（259200 秒），目录为当前工作目录下的 `.cache/net-connector/inventory`。YAML `netdisco.cache_directory`、`cache_ttl` 和 `cache_enabled` 分别控制目录、秒数和是否启用；TTL 须为有限正数，设置 `cache_enabled: false` 关闭缓存。
@@ -259,6 +261,8 @@ HTTP 和 PostgreSQL 默认启用本地清单缓存，有效期三天（259200 �
 目录必须属于当前用户且权限为 `0700`，缓存和锁文件为 `0600`。不同来源、地址、账号、数据库和 SQL 参数隔离缓存，只保存白名单清单字段，不保存密码、API key、SQL 或额外响应字段。每次读取仍应用当前筛选和厂商规则，远端成功返回空数组时替换旧清单。
 
 过期后自动刷新；远端请求失败时回退已验证历史，不更新原获取时间。配置错误、缺少凭据、中断和不安全文件不会被回退掩盖。缓存写入失败仍交付刚取得的新清单。`fleet.inventory_status` 提供 `:fresh_cache`、`:refreshed`、`:stale_cache`、`:uncached`、原始 `fetched_at` 和安全故障字段，CLI 对历史回退和缓存写入失败单独提示。
+
+空文件或格式损坏的缓存按未命中处理，重新查询远端；查询失败时，这类文件不能作为回退历史。
 
 强刷使用 `net-backup --refresh-inventory`、`fleet.devices(force_refresh: true)`、`fleet.plan_backup(force_refresh: true)`；TFTP 规划也支持此参数。强刷失败同样回退已验证历史。直接注入客户端时不自动缓存，可显式包裹 `Netdisco::InventoryCache`。一个包装器的状态描述最近调用，并发共享实例须由调用方同步。有界跨进程锁合并普通过期刷新，独立强刷请求各自访问远端。
 

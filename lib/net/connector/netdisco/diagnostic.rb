@@ -52,6 +52,8 @@ module Net
           if error.instance_of?(BackupPersistenceError) && backup.instance_of?(Backup) && error.backup.equal?(backup)
             { artifact_state: error.receipt.state, artifact_phase: error.receipt.phase,
               underlying_type: error.underlying_type }
+          elsif error.instance_of?(BackupFinalizeError) && backup.instance_of?(Backup) && error.backup.equal?(backup)
+            { artifact_phase: :finalize, underlying_type: error.underlying_type }
           elsif error.instance_of?(TftpCompletionError) && backup.instance_of?(TftpReceipt) && error.receipt.equal?(backup)
             { artifact_state: :reported_uploaded, artifact_phase: error.code == :transfer_finalize_failed ? :finalize : :path,
               verification: :device_reported, underlying_type: error.underlying_type }

@@ -57,6 +57,8 @@ The directory must belong to the current user with mode `0700`; cache and lock f
 
 Expired inventory refreshes automatically. A remote inventory failure falls back to validated history without changing its original timestamp. Configuration errors, missing credentials, interruption and unsafe files remain errors. Failed cache writes preserve newly fetched inventory. `fleet.inventory_status` reports `:fresh_cache`, `:refreshed`, `:stale_cache` or `:uncached`, the original `fetched_at`, and safe failure metadata; the CLI warns on history fallback or cache write failure.
 
+An empty or malformed cache file is a cache miss and triggers a remote query. It cannot supply fallback history if that query fails.
+
 Use `net-backup --refresh-inventory`, `fleet.devices(force_refresh: true)`, or `fleet.plan_backup(force_refresh: true)` to bypass freshness. TFTP planning accepts the same keyword. A forced refresh also falls back to valid history if the remote request fails. `cache_enabled: false` disables caching. Injected clients stay uncached unless explicitly wrapped in `Netdisco::InventoryCache`; shared wrapper status describes the latest call, so synchronize concurrent access to the same instance. Cache locks bound waiting and coalesce ordinary expired-cache refreshes across processes; independently requested forced refreshes still query the source.
 
 ## CLI planning and execution
@@ -188,6 +190,8 @@ Direct upload receipts only establish `device_reported`. Fleet can verify a loca
 Verification holds a target lock across the pre-upload file-state/time baseline, upload and fingerprint check, including batches without history preservation. An unchanged old file cannot qualify through a future timestamp. The server directory must be writable for lock files and the filesystem-time probe. Result callbacks receive the verified outcome, and file evidence never substitutes for a failed device operation or cleanup.
 
 Batch examples enable history preservation. With an accessible server directory, uploads use hostname/IP names and are retained in both `<batch>/tftp/` and server `archive/<batch>/`; pre-existing same-name files are archived under `previous/` before upload. File-state and filesystem-time baselines are captured under the upload lock. Verification or archival failure preserves available receipts and committed paths without reporting success.
+
+Path-lock cleanup failures after a completed local backup or TFTP archive retain the saved paths as `:saved_with_error` or `:reported_with_error`. An earlier device error remains the primary diagnostic; callbacks receive the retained outcome and commands are not replayed.
 
 Without a server directory, batch examples add a batch identifier to names, retain `device_reported`, and cannot save local configuration copies. PAN-OS uses the fixed `running-config.xml` name, so the history-preserving example refuses its upload without local server access. Plans still prevent same-batch filename collisions.
 

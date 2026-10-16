@@ -98,6 +98,40 @@ class TftpArchiveTest < Minitest::Test
     N::Device.from_row({ "ip" => "192.0.2.1", "name" => "edge", "vendor" => vendor }, rules: N::Rules.new)
   end
 
+  def test_lock_cleanup_failure_keeps_archives_and_the_original_device_failure
+    [false, true].each do |already_failed|
+      Dir.mktmpdir do |root|
+        server = File.join(root, "server")
+        Dir.mkdir(server)
+        archive = N::TftpArchive.new(directory: root, root: server)
+        item = device("H3C")
+        lock = Net::Connector::Storage::BackupLock
+        synchronize = lock.method(:synchronize)
+        cleanup = lambda do |path, **options, &block|
+          synchronize.call(path, **options, &block)
+        ensure
+          raise IOError, "private lock cleanup detail"
+        end
+        uploads = 0
+        result = lock.stub(:synchronize, cleanup) do
+          archive.upload_and_archive(item, started_at: Time.now.utc) do |remote|
+            uploads += 1
+            File.write(File.join(server, remote), "configuration")
+            value = outcome(item, remote)
+            already_failed ? value.with(status: :reported_with_error, error_code: :log_error) : value
+          end
+        end
+        assert_equal 1, uploads
+        assert_equal :reported_with_error, result.status
+        assert_equal(already_failed ? :log_error : :tftp_archive_failed, result.error_code)
+        assert_equal :server_verified, result.backup.verification
+        assert_equal "configuration", File.read(result.backup.local_path)
+        assert_equal "configuration", File.read(result.backup.archive_path)
+        refute_includes result.inspect, "private lock cleanup detail"
+      end
+    end
+  end
+
   def outcome(device, remote)
     receipt = Net::Connector::TftpReceipt.new(server: "192.0.2.10", path: remote, completed_at: Time.now.utc)
     N::Outcome.new(device: device, status: :reported_uploaded, backup: receipt, error_code: nil, error_type: nil)

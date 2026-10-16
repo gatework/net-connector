@@ -111,7 +111,7 @@ module Net
             return nil if stat.size > @max_inventory_bytes
 
             body = file.read(@max_inventory_bytes + 1)
-            return nil if body.bytesize > @max_inventory_bytes
+            return nil if body.nil? || body.bytesize > @max_inventory_bytes
 
             entry = JSON.parse(body)
             unless entry.is_a?(Hash) && entry.keys.sort == %w[fetched_at identity rows schema] &&
@@ -161,15 +161,21 @@ module Net
 
           bytes = 0
           rows.map do |row|
-            unless row.is_a?(Hash) && row["ip"].is_a?(String) && !row["ip"].strip.empty? &&
-                   Client::FIELDS.all? { |field| row[field].nil? || row[field].is_a?(String) }
+            unless row.is_a?(Hash) && row["ip"].is_a?(String) && !row["ip"].strip.empty?
               raise InvalidCache
             end
-            selected = row.slice(*Client::FIELDS)
-            bytes += selected.sum { |key, value| key.bytesize + (value&.bytesize || 0) }
-            raise InvalidCache if bytes > @max_inventory_bytes
+            # 一次遍历完成白名单、限额与复制，避免中间 Hash 和逐字段求和产生的数组。
+            Client::FIELDS.each_with_object({}) do |field, selected|
+              next unless row.key?(field)
 
-            selected.transform_values { |value| value&.dup&.freeze }.freeze
+              value = row[field]
+              raise InvalidCache unless value.nil? || value.is_a?(String)
+
+              bytes += field.bytesize + (value&.bytesize || 0)
+              raise InvalidCache if bytes > @max_inventory_bytes
+
+              selected[field] = value&.dup&.freeze
+            end.freeze
           end.freeze
         end
 

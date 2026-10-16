@@ -55,6 +55,7 @@ module Net
 
         # 上传与归档在同一目标锁内完成，后续失败仍保留可确认的上传回执和提交路径。
         def upload_and_archive(device, started_at:)
+          outcome = nil
           raise Unavailable.new(host: device.host) if device.vendor == :palo_alto && !@server_root
 
           remote_filename = upload_filename(device)
@@ -66,14 +67,22 @@ module Net
             upload_started_at = server_timestamp
             outcome = yield remote_filename
             receipt = outcome.backup
-            return outcome unless receipt.is_a?(TftpReceipt) && receipt.path
+            next outcome unless receipt.is_a?(TftpReceipt) && receipt.path
 
             verified = @verifier.verify_outcome(outcome.with(started_at: started_at), started_at: upload_started_at,
                                                 previous: previous, expected_path: remote_filename)
-            return outcome.success? ? archive_failure(outcome) : outcome unless verified.backup.verification == :server_verified
+            unless verified.backup.verification == :server_verified
+              outcome = outcome.success? ? archive_failure(outcome) : outcome
+              next outcome
+            end
 
-            archive_uploaded_file(verified)
+            outcome = archive_uploaded_file(verified)
           end
+        rescue StandardError => error
+          raise unless outcome
+
+          # 目标锁的关闭发生在块返回之后；保存最新回执，不能丢失已完成的归档路径。
+          outcome.success? ? archive_failure(outcome, persistence_error: error) : outcome
         end
 
         private

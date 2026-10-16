@@ -7,7 +7,7 @@ module Net
       CONNECTOR_TYPES = %w[Error ConnectionError AuthenticationError LoginTimeout CommandTimeout WriteTimeout
                            PromptError ConnectionClosed TransportError DeviceError ScriptError InternalError
                            OutputLimitExceeded ScriptOutputLimitExceeded SessionBusy UnsupportedOperation LogError ParsingError BackupBusy
-                           BackupPersistenceError TftpCompletionError].freeze
+                           BackupPersistenceError BackupFinalizeError TftpCompletionError].freeze
       TYPES = (CONNECTOR_TYPES.map { |name| "Net::Connector::#{name}" } +
         %w[StandardError RuntimeError ArgumentError TypeError IOError EOFError SystemCallError ThreadError
            RangeError KeyError IndexError NoMethodError NameError FrozenError NotImplementedError

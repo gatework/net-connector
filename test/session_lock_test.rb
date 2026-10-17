@@ -200,6 +200,113 @@ class SessionLockTest < Minitest::Test
     end
   end
 
+  def test_operation_owner_can_close_without_releasing_its_lease
+    with_session do |session, lock, _transport|
+      session.connect
+      session.with_operation(:nested_device) do
+        session.close
+        refute session.connected?
+        assert lock.owned?
+        assert_equal [Thread.current, Fiber.current], session.instance_variable_get(:@operation_owner)
+      end
+      refute lock.locked?
+      assert_nil session.instance_variable_get(:@operation_owner)
+    end
+  end
+
+  def test_other_fibers_and_threads_cannot_close_an_owned_operation
+    with_session do |session, _lock, _transport|
+      session.connect
+      session.with_operation(:nested_device) do
+        Fiber.new { assert_raises(Net::Connector::SessionBusy) { session.close } }.resume
+        worker = Thread.new { assert_raises(Net::Connector::SessionBusy) { session.close } }
+        assert worker.join(2)
+        assert session.connected?
+        session.close
+      end
+    end
+  end
+
+  def test_close_callbacks_cannot_reenter_an_owned_session
+    with_session do |session, _lock, transport|
+      session.connect
+      transport.on_close = lambda do
+        assert_raises(Net::Connector::SessionBusy) { session.close }
+        assert_raises(Net::Connector::SessionBusy) { session.perform(:callback) { flunk "reentered close" } }
+      end
+      session.with_operation(:nested_device) { session.close }
+      refute session.connected?
+      refute session.instance_variable_get(:@closing)
+    end
+  end
+
+  def test_owned_close_failure_preserves_error_and_releases_owner_state
+    with_session do |session, lock, transport|
+      session.connect
+      transport.on_close = -> { raise IOError, "synthetic close failure" }
+      error = assert_raises(Net::Connector::TransportError) do
+        session.with_operation(:nested_device) { session.close }
+      end
+      assert_equal "IOError", error.underlying.type
+      refute session.connected?
+      refute session.instance_variable_get(:@closing)
+      refute lock.locked?
+      assert_nil session.instance_variable_get(:@operation_owner)
+    end
+  end
+
+  def test_cancellation_during_owned_close_releases_close_and_owner_state
+    with_session do |session, lock, transport|
+      session.connect
+      entered, blocked = Queue.new, Queue.new
+      transport.on_close = -> { entered << true; blocked.pop }
+      worker = Thread.new do
+        session.with_operation(:nested_device) { session.close }
+      rescue Interrupt => error
+        error
+      end
+      entered.pop
+      cancellation = Interrupt.new("cancel owned close")
+      worker.raise(cancellation)
+      assert worker.join(2), "owned close must remain cancellable"
+      assert_same cancellation, worker.value
+      refute session.connected?
+      refute session.instance_variable_get(:@closing)
+      refute lock.locked?
+      assert_nil session.instance_variable_get(:@operation_owner)
+    ensure
+      worker&.kill&.join
+    end
+  end
+
+  def test_owned_close_state_cleanup_preserves_the_first_cancellation
+    [nil, Interrupt.new("first cancellation")].each do |primary|
+      with_session do |session, lock, transport|
+        session.connect
+        transport.on_close = -> { raise primary if primary }
+        source, start_line = Net::Connector::Session.instance_method(:close).source_location
+        lines = File.readlines(source)
+        reset_line = lines.each_index.find { |index| index >= start_line - 1 && lines[index].include?("Thread.handle_interrupt(Exception => :never) { @closing = false }") }
+        secondary = Interrupt.new("cancel closing state cleanup")
+        trace = TracePoint.new(:line) do |event|
+          next unless event.path == source && event.lineno == reset_line + 1 && event.self.equal?(session)
+
+          trace.disable
+          Thread.handle_interrupt(Exception => :never) { Thread.current.raise(secondary) }
+        end
+        error = trace.enable do
+          assert_raises(Interrupt) { session.with_operation(:nested_device) { session.close } }
+        end
+        assert_same primary || secondary, error
+        refute session.instance_variable_get(:@closing)
+        refute lock.locked?
+        assert_nil session.instance_variable_get(:@operation_owner)
+      ensure
+        trace&.disable
+      end
+    end
+  end
+
   private
 
   def invoke(session, entry, &)

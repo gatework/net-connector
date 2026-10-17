@@ -64,7 +64,7 @@ module Net
 
       # 锁覆盖完整操作而不是单次写入，保证批处理命令不会交错。
       def perform(phase, &)
-        if @operation_owner == [Thread.current, Fiber.current] && !@performing
+        if @operation_owner == [Thread.current, Fiber.current] && !@performing && !@closing
           return perform_locked(phase, &)
         end
         with_session_lock(phase) { perform_locked(phase, &) }
@@ -91,9 +91,28 @@ module Net
         raise build_error(SessionBusy, "backup path ownership must be acquired before a session operation", phase: phase), cause: nil
       end
 
-      # 独占关闭会话；已有操作占用时返回会话繁忙错误。
+      # 同一操作所有者可在命令结束后关闭借用会话，关闭回调及其他执行者仍不得重入。
       def close
-        with_session_lock(:close, busy_message: "cannot close a session owned by another operation") { close_resources }
+        if @operation_owner == [Thread.current, Fiber.current] && !@performing && !@closing
+          failure = nil
+          begin
+            @closing = true
+            close_resources
+          rescue Exception => error # rubocop:disable Lint/RescueException -- 状态收尾的二次取消不能覆盖原始关闭故障。
+            failure = error
+            raise
+          ensure
+            begin
+              Thread.handle_interrupt(Exception => :never) { @closing = false }
+            rescue Exception => error # rubocop:disable Lint/RescueException -- 先清除重入标记，再交付原始取消或收尾取消。
+              Thread.handle_interrupt(Exception => :never) { @closing = false }
+              error = failure || error
+              raise error, cause: error.cause
+            end
+          end
+        else
+          with_session_lock(:close, busy_message: "cannot close a session owned by another operation") { close_resources }
+        end
       end
 
       # 执行特权认证，并更新提示符及特权状态。

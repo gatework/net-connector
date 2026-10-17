@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "engine/errors"
-require_relative "engine/terminal_text"
+require_relative "engine/terminal/text"
 
 module Net
   module Connector
@@ -38,7 +38,7 @@ module Net
       def call(text, template: nil, vendor: nil, command: nil, host: nil)
         require "textfsm"
 
-        text = TerminalText.render(text, host: host)
+        text = Terminal::Text.render(text, host: host)
         if template
           raise ArgumentError, "template must be a nonempty String" unless template.is_a?(String) && !template.empty?
 

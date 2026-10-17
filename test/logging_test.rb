@@ -289,8 +289,8 @@ class LoggingTest < Minitest::Test
     receipt = Net::Connector::TftpReceipt.new(server: "192.0.2.10", path: "backup.cfg", completed_at: Time.now.utc)
     transfer_error = Net::Connector::TftpCompletionError.new(receipt: receipt)
     backup = Net::Connector::Backup.new(path: "/fixture/backup.cfg", bytes: 6, sha256: "a" * 64, collected_at: Time.now.utc)
-    write_receipt = Net::Connector::Storage::PrivateFile::Receipt.new(path: backup.path, state: :committed, phase: :directory_sync)
-    write_error = Net::Connector::Storage::PrivateFile::PersistenceError.new(receipt: write_receipt, underlying_type: "Errno::EIO")
+    write_receipt = Net::Connector::Storage::AtomicFile::Receipt.new(path: backup.path, state: :committed, phase: :directory_sync)
+    write_error = Net::Connector::Storage::AtomicFile::PersistenceError.new(receipt: write_receipt, underlying_type: "Errno::EIO")
     backup_error = Net::Connector::BackupPersistenceError.new(backup: backup, write_error: write_error)
     [transfer_error, backup_error].each do |failure|
       secret = "private-original-cause"

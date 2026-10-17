@@ -9,11 +9,13 @@ class ModuleLoadingTest < Minitest::Test
   LIBRARY = File.expand_path("../lib", __dir__)
   VENDORS = { "h3c" => "H3c", "h3c_wireless" => "H3cWireless", "cisco_ios" => "CiscoIos",
               "cisco_nxos" => "CiscoNxos", "huawei" => "Huawei", "hillstone" => "Hillstone",
-              "palo_alto" => "PaloAlto", "radware" => "Radware" }.freeze
+              "palo_alto" => "PaloAlto", "radware" => "Radware",
+              "topsec" => "Topsec", "fortinet" => "Fortinet", "juniper" => "Juniper" }.freeze
 
   def test_device_entry_points_load_before_or_after_the_public_api
     paths = %w[net/connector/device/profile net/connector/device/running_config/strategy
-               net/connector/device/running_config net/connector/device/local_backup
+               net/connector/device/running_config net/connector/device/local_backup net/connector/device/remote_backup/target
+               net/connector/device/remote_backup/receipt net/connector/device/remote_backup
                net/connector/device/tftp/strategy net/connector/device/tftp
                net/connector/device/topology/strategy net/connector/device/topology
                net/connector/device/save_config net/connector/textfsm net/connector/device/base net/connector]
@@ -45,6 +47,7 @@ class ModuleLoadingTest < Minitest::Test
   def test_protocol_objects_load_without_the_response_loop_or_redaction_runtime
     result = isolated(<<~'RUBY')
       require "net/connector/engine/dialogue"
+      require "net/connector/engine/response"
       interaction = Net::Connector::Interaction.new(/Continue:\z/, "yes\n")
       response = Net::Connector::Response.new(raw: "router#", output: "router#", prompt: "router#")
       error = Net::Connector::DeviceError.new("rejected", phase: :command)
@@ -86,14 +89,14 @@ class ModuleLoadingTest < Minitest::Test
     VENDORS.each do |vendor, name|
       result = isolated(<<~RUBY)
         require "net/connector/vendor/#{vendor}"
-        klass = Net::Connector::#{name}::Connector
+        klass = Net::Connector::Vendor::#{name}
         puts JSON.generate(vendor: klass.vendor, commands: klass.profile.config_commands,
                            features: $LOADED_FEATURES)
       RUBY
       assert_equal vendor, result.fetch("vendor")
       refute_empty result.fetch("commands"), vendor
-      # 无线 H3C 与 NX-OS 分别复用 H3C 和 IOS 的已有规则。
-      allowed = [vendor, { "h3c_wireless" => "h3c", "cisco_nxos" => "cisco_ios" }[vendor]].compact
+      # 无线 H3C 复用 H3C；IOS 与 NX-OS 复用 Cisco 公共协议。
+      allowed = [vendor, { "h3c_wireless" => "h3c", "cisco_nxos" => "cisco", "cisco_ios" => "cisco" }[vendor]].compact
       loaded = result.fetch("features").filter_map { |path| path[%r{/net/connector/vendor/([^/.]+)}, 1] }.uniq
       assert_empty loaded - allowed, vendor
       refute result.fetch("features").any? { |path| path.match?(%r{/lib/textfsm(?:/|\.rb)}) }, vendor
@@ -103,7 +106,7 @@ class ModuleLoadingTest < Minitest::Test
   def test_storage_entry_points_are_independent_of_devices_and_support_both_load_orders
     paths = %w[net/connector/storage
                net/connector/storage/saved_config net/connector/storage/backup_lock
-               net/connector/storage/private_file net/connector/storage/safe_file
+               net/connector/storage/atomic_file net/connector/storage/file_reader
                net/connector/storage/batch_directory]
     [paths, paths.reverse].each do |order|
       result = isolated(<<~RUBY)
@@ -118,14 +121,14 @@ class ModuleLoadingTest < Minitest::Test
   end
 
   def test_netdisco_helpers_support_both_load_orders
-    paths = %w[net/connector/netdisco/cli/options net/connector/netdisco/connection
+    paths = %w[net/connector/netdisco/cli/options net/connector/netdisco/cli/credentials net/connector/netdisco/cli/backup
                net/connector/netdisco/report/text net/connector/netdisco]
     [paths, paths.reverse].each do |order|
       result = isolated(<<~RUBY)
         #{order.map { |path| "require #{path.inspect}" }.join("\n")}
         values = Net::Connector::Netdisco::CLI::Options.parse(argv: ["--concurrency", "7"])
         puts JSON.generate(concurrency: values[:environment]["NC_CONCURRENCY"],
-                           connection: Net::Connector::Netdisco::Connection.respond_to?(:build),
+                           connection: Net::Connector::Netdisco::CLI::Credentials.respond_to?(:resolve),
                            text: Net::Connector::Netdisco::Report::Text.respond_to?(:write))
       RUBY
       assert_equal "7", result.fetch("concurrency")
@@ -136,13 +139,23 @@ class ModuleLoadingTest < Minitest::Test
 
   def test_netdisco_entry_points_declare_their_dependencies
     cases = {
+      "inventory" => "N::Inventory.options.fetch(:page_size) == 500",
+      "inventory/budget" => "N::Inventory::Budget.new(N::Inventory.options, clock: -> { 0 }).remaining == 300",
+      "inventory/http" => 'N::Inventory::HTTP.new(url: "https://inventory.example", api_key: "fixture").respond_to?(:devices)',
+      "inventory/postgres" => "N::Inventory::Postgres.options(query: 'SELECT ip FROM device').fetch(:page_size) == 500",
+      "device/access" => "N::Device::Access.respond_to?(:resolve)",
       "settings" => "N::Settings.new(env: {}).public_config.fetch(:backup).fetch(:concurrency) == 4",
       "cli/options" => 'N::CLI::Options.settings(N::CLI::Options.parse(argv: ["--concurrency", "7"]), env: {}).concurrency == 7',
-      "inventory_cache" => 'client = Struct.new(:devices).new([]); N::InventoryCache.new(client: client, directory: "unused-cache", identity: "test").status.nil?',
+      "cli/credentials" => "N::CLI::Credentials.respond_to?(:resolve)",
+      "cli/backup" => 'require "stringio"; output = StringIO.new; N::CLI::Backup.new(argv: ["--help"], output: output).run.zero? && output.string.include?("--concurrency")',
+      "inventory/cache" => 'inventory = Struct.new(:devices).new([]); N::Inventory::Cache.new(inventory: inventory, directory: "unused-cache", identity: "test").status.nil?',
+      "report/store" => "N::Report::Store::Json.new.respond_to?(:write)",
+      "tftp/verifier" => "N::Tftp::Verifier.new.respond_to?(:upload_and_verify)",
+      "tftp/archive" => "N::Tftp::Archive.instance_methods.include?(:upload_filename)",
       "operations" => 'N::Operations.new(settings: N::Settings.new(env: {}), inventory: ->(_) { raise "empty batch must not read inventory" }).execute_scripts(scripts: {}, confirmed: true).status == :no_devices',
-      "operation_batch" => "now = Time.now.utc; N::OperationBatch.new(operation: :execute_scripts, outcomes: [], callback_errors: [], started_at: now, finished_at: now).to_h.fetch(:status) == :no_devices",
+      "operations/batch" => "now = Time.now.utc; N::Operations::Batch.new(operation: :execute_scripts, outcomes: [], callback_errors: [], started_at: now, finished_at: now).to_h.fetch(:status) == :no_devices",
       "planner" => "N::Planner.new([]).call(mode: :backup, limit_per_vendor: nil).validate!.selected.empty?",
-      "fleet" => "client = Object.new; def client.devices = []; N::Fleet.new(client: client, settings: N::Settings.new(env: {})).plan_backup.selected.empty?",
+      "fleet" => "inventory = Object.new; def inventory.devices = []; N::Fleet.new(inventory: inventory, settings: N::Settings.new(env: {})).plan_backup.selected.empty?",
       "progress" => 'require "stringio"; N::Progress.new(io: StringIO.new).event(nil).nil?',
       "cli" => 'require "stringio"; output = StringIO.new; N::CLI.new(argv: ["--version"], env: {}, output: output).run.zero? && output.string.strip == Net::Connector::VERSION'
     }
@@ -155,6 +168,38 @@ class ModuleLoadingTest < Minitest::Test
       RUBY
       assert result.fetch("value"), entry
       refute(result.fetch("features").any? { |path| path.end_with?("/net/connector/netdisco.rb") }, entry)
+    end
+  end
+
+  def test_inventory_domain_and_postgres_do_not_load_the_http_adapter
+    %w[inventory inventory/budget inventory/cache inventory/postgres device].each do |entry|
+      result = isolated(<<~RUBY)
+        require "net/connector/netdisco/#{entry}"
+        puts JSON.generate(features: $LOADED_FEATURES)
+      RUBY
+      refute result.fetch("features").any? { |path| path.end_with?("/netdisco/inventory/http.rb") }, entry
+    end
+  end
+
+  def test_engine_values_load_from_their_own_files
+    cases = {
+      "script" => 'C::Script.parse("show version\n").size == 1',
+      "interaction" => 'C::Interaction.new(/confirm/, "yes").response("confirm") == "yes"',
+      "response" => 'C::Response.new(raw: "raw", output: "out", prompt: "#").prompt == "#"',
+      "command/result" => 'C::Command::Result.new(command: C::Command.new("show"), output: "out", prompt: "#", duration: 0).output == "out"',
+      "terminal/text" => 'C::Terminal::Text.render("ready") == "ready"',
+      "terminal/renderer" => 'C::Terminal::Renderer.render("before\rready") == "readye"',
+      "error/metadata" => "C::Error::Metadata.code(:command_timeout) == :command_timeout",
+      "transports" => 'C::Event.new(index: 0, match: "ready").matched?'
+    }
+    cases.each do |entry, expression|
+      result = isolated(<<~RUBY)
+        require "net/connector/engine/#{entry}"
+        C = Net::Connector
+        puts JSON.generate(value: (#{expression}), features: $LOADED_FEATURES)
+      RUBY
+      assert result.fetch("value"), entry
+      refute(result.fetch("features").any? { |path| path.end_with?("/net/connector/device/base.rb") }, entry)
     end
   end
 
@@ -204,7 +249,7 @@ class ModuleLoadingTest < Minitest::Test
         ).run
         loaded_after_export = parser_loaded.call
         saved = Net::Connector::Storage::SavedConfig.new(directory: directory)
-        rows = saved.parse(host: "192.0.2.1", template: "cisco_ios_running_config_interfaces.textfsm")
+        rows = saved.parse(host: "192.0.2.1", template: "cisco/show_running_config.textfsm")
         puts JSON.generate(entry: loaded_at_entry, exported: loaded_after_export, parsed: parser_loaded.call,
                            postgres_loaded: $LOADED_FEATURES.any? { |path| path.end_with?("/pg.rb") },
                            status: status, errors: errors.string, exact_export: output.string == config, rows: rows)
@@ -231,19 +276,24 @@ class ModuleLoadingTest < Minitest::Test
           klass = Net::Connector.vendor_class(#{vendor.inspect})
           profile = klass.profile
           raise "missing collection strategy" unless profile.running_config_strategy
-          raise "missing transfer strategy" unless profile.tftp_strategy
+          raise "wrong transfer capability" unless !!profile.tftp_strategy == #{!%w[topsec juniper].include?(vendor)}
           raise "topology workflow missing" unless Net::Connector::Topology.instance_methods.include?(:plan_interface_descriptions)
           raise "legacy operations namespace" if Net::Connector.const_defined?(:Operations, false)
           raise "legacy collection strategy" if (Net::Connector::RunningConfig.constants(false) & %i[Cisco CiscoNxos Hillstone PaloAlto]).any?
           raise "legacy transfer strategy" if (Net::Connector::Tftp.constants(false) & #{VENDORS.values.map(&:to_sym).inspect}).any?
           raise "legacy topology strategy" if (Net::Connector::Topology.constants(false) & %i[Cisco H3c Hillstone PaloAlto Radware]).any?
-          puts JSON.generate(connector: klass.name, strategy: profile.tftp_strategy.name,
-                             filename: profile.tftp_strategy.filename("192.0.2.1"), features: $LOADED_FEATURES)
+          puts JSON.generate(connector: klass.name, strategy: profile.tftp_strategy&.name,
+                             filename: profile.tftp_strategy&.filename("192.0.2.1"), features: $LOADED_FEATURES)
         RUBY
-        assert_equal "Net::Connector::#{name}::Connector", result.fetch("connector")
-        assert_match(/::TftpBackup\z/, result.fetch("strategy"))
-        refute_empty result.fetch("filename")
-        allowed = [vendor, { "h3c_wireless" => "h3c", "cisco_nxos" => "cisco_ios" }[vendor]].compact
+        assert_equal "Net::Connector::Vendor::#{name}", result.fetch("connector")
+        if %w[topsec juniper].include?(vendor)
+          assert_nil result.fetch("strategy")
+          assert_nil result.fetch("filename")
+        else
+          assert_match(/::Tftp\z/, result.fetch("strategy"))
+          refute_empty result.fetch("filename")
+        end
+        allowed = [vendor, { "h3c_wireless" => "h3c", "cisco_nxos" => "cisco", "cisco_ios" => "cisco" }[vendor]].compact
         loaded = result.fetch("features").filter_map { |path| path[%r{/net/connector/vendor/([^/.]+)}, 1] }.uniq
         assert_empty loaded - allowed, vendor
         refute result.fetch("features").any? { |path| path.match?(%r{/lib/textfsm(?:/|\.rb)}) }, vendor

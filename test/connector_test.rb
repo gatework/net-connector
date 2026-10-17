@@ -8,7 +8,7 @@ require_relative "support/fake_transport"
 
 class ConnectorTest < Minitest::Test
   def test_all_vendor_profiles_load_and_expose_collection_commands
-    assert_equal 8, Net::Connector.vendors.size
+    assert_equal 11, Net::Connector.vendors.size
     Net::Connector.vendors.each do |vendor|
       klass = Net::Connector.vendor_class(vendor)
       assert_kind_of Net::Connector::Base, klass.new(host: "192.0.2.1", username: "admin",
@@ -25,7 +25,7 @@ class ConnectorTest < Minitest::Test
       assert_equal key, klass.vendor
       refute_includes klass.instance_methods(false), :backup
       refute_includes klass.instance_methods(false), :tftp_backup
-      assert klass.profile.tftp_strategy
+      assert_equal !%i[topsec juniper].include?(key), !klass.profile.tftp_strategy.nil?
     end
   end
 

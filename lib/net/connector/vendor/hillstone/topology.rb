@@ -1,61 +1,64 @@
 # frozen_string_literal: true
 
+require_relative "../../device/base"
 require_relative "../../device/topology/immediate_strategy"
 
 module Net
   module Connector
-    module Hillstone
-      # 核对山石 LLDP 数据与总数，接口描述读回一致后才保存配置。
-      class Topology < Topology::ImmediateStrategy
-        # 山石提供 LLDP 邻居、配置描述读取和描述变更。
-        def self.supports?(capability)
-          %i[neighbors interface_descriptions interface_description_changes].include?(capability)
-        end
+    module Vendor
+      class Hillstone < Net::Connector::Base
+        # 核对山石 LLDP 数据与总数，接口描述读回一致后才保存配置。
+        class Topology < Net::Connector::Topology::ImmediateStrategy
+          # 山石提供 LLDP 邻居、配置描述读取和描述变更。
+          def self.supports?(capability)
+            %i[neighbors interface_descriptions interface_description_changes].include?(capability)
+          end
 
-        # 读取 LLDP 邻居信息。
-        def neighbor_command = "show lldp neighbor-information"
+          # 读取 LLDP 邻居信息。
+          def neighbor_command = "show lldp neighbor-information"
 
-        # 从运行配置解析接口描述。
-        def description_template = "hillstone_interface_descriptions.textfsm"
+          # 从运行配置解析接口描述。
+          def description_template = "hillstone/show_configuration_running.textfsm"
 
-        # 进入配置视图。
-        def enter_configuration_command = "configure"
+          # 进入配置视图。
+          def enter_configuration_command = "configure"
 
-        # 退出配置视图后先读回，保存动作随后单独执行。
-        def leave_configuration_commands = ["exit"]
+          # 退出配置视图后先读回，保存动作随后单独执行。
+          def leave_configuration_commands = ["exit"]
 
-        # 只认可本厂商明确的保存完成行，设备提示符返回本身不能证明持久化。
-        def persistence_pattern = /\ASaving configuration is finished\.?\z/i
+          # 只认可本厂商明确的保存完成行，设备提示符返回本身不能证明持久化。
+          def persistence_pattern = /\ASaving configuration is finished\.?\z/i
 
-        # 用数据行和设备报告的总数交叉核对，避免遗漏邻居。
-        def expected_neighbor_count(output, _template)
-          reported = output[/Total lldp neighbor number:\s*(\d+)/i, 1]
-          lines = neighbor_lines(output)
-          return unless lines.all? { |line| line.match?(/\A\S+\s+(?:(?:x?ethernet|eth|xe)\d+\/\d+|(?:aggregate|agg)\d+)(?:\.\d+)?\s/i) }
-          return if reported && reported.to_i != lines.size
+          # 用数据行和设备报告的总数交叉核对，避免遗漏邻居。
+          def expected_neighbor_count(output, _template)
+            reported = output[/Total lldp neighbor number:\s*(\d+)/i, 1]
+            lines = neighbor_lines(output)
+            return unless lines.all? { |line| line.match?(/\A\S+\s+(?:(?:x?ethernet|eth|xe)\d+\/\d+|(?:aggregate|agg)\d+)(?:\.\d+)?\s/i) }
+            return if reported && reported.to_i != lines.size
 
-          lines.size
-        end
+            lines.size
+          end
 
-        # 仅在列表为空且有明确零邻居证据时认可空表。
-        def empty_neighbor_output?(output)
-          neighbor_lines(output).empty? && (output.match?(/Total lldp neighbor number:\s*0\b/i) ||
-            output.match?(/System Name\s+Local Interface/i))
-        end
+          # 仅在列表为空且有明确零邻居证据时认可空表。
+          def empty_neighbor_output?(output)
+            neighbor_lines(output).empty? && (output.match?(/Total lldp neighbor number:\s*0\b/i) ||
+              output.match?(/System Name\s+Local Interface/i))
+          end
 
-        # 复用公共接口描述命令。
-        def change_commands(change)
-          Net::Connector::Topology::InterfaceDescription.commands(interface: change.interface, description: change.new_description)
-        end
+          # 复用公共接口描述命令。
+          def change_commands(change)
+            Net::Connector::Topology::InterfaceDescription.commands(interface: change.interface, description: change.new_description)
+          end
 
-        private
+          private
 
-        # 去掉命令、表头、总数和提示符，只保留邻居数据行。
-        def neighbor_lines(output)
-          output.lines("\n").map(&:strip).reject do |line|
-            line.empty? || line == neighbor_command || line.match?(/\ASystem Name\s+Local Interface\b/i) ||
-              line.match?(/\ATotal lldp neighbor number:\s*\d+\.?\z/i) ||
-              line.match?(/\A[-=+ ]+\z/) || line.match?(/\A\S+(?:#|\([MBF]\))\z/)
+          # 去掉命令、表头、总数和提示符，只保留邻居数据行。
+          def neighbor_lines(output)
+            output.lines("\n").map(&:strip).reject do |line|
+              line.empty? || line == neighbor_command || line.match?(/\ASystem Name\s+Local Interface\b/i) ||
+                line.match?(/\ATotal lldp neighbor number:\s*\d+\.?\z/i) ||
+                line.match?(/\A[-=+ ]+\z/) || line.match?(/\A\S+(?:#|\([MBF]\))\z/)
+            end
           end
         end
       end

@@ -7,10 +7,14 @@ require_relative "../storage"
 module Net
   module Connector
     Backup = Data.define(:path, :bytes, :sha256, :collected_at, :change, :previous_sha256) do
-      # 保存配置备份的路径、摘要和变更状态。
+      # 完成回执拥有自己的元数据；调用方和结果回调不能原地改写已保存文件的证据。
       def initialize(path:, bytes:, sha256:, collected_at:, change: nil, previous_sha256: nil)
-        super
+        super(path: path&.dup&.freeze, bytes: bytes, sha256: sha256&.dup&.freeze,
+              collected_at: collected_at&.dup&.freeze, change: change, previous_sha256: previous_sha256&.dup&.freeze)
       end
+
+      # Ruby 3.2 的原生 Data#with 不调用初始化；更新也须重新复制并冻结元数据。
+      def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
 
       # 判断本次采集是否产生新的配置内容。
       def changed? = [:created, :changed].include?(change)
@@ -21,14 +25,14 @@ module Net
       attr_reader :backup, :receipt, :underlying_type
 
       def initialize(backup:, write_error:, host: nil)
-        unless backup.instance_of?(Backup) && Storage::PrivateFile.receipt_error?(write_error) &&
+        unless backup.instance_of?(Backup) && Storage::AtomicFile.receipt_error?(write_error) &&
                write_error.receipt.committed? && write_error.receipt.path == backup.path
           raise ArgumentError, "backup persistence error requires a matching committed backup receipt"
         end
 
         @backup, @receipt = backup, write_error.receipt
         @underlying_type = write_error.underlying_type
-        code = if write_error.instance_of?(Storage::PrivateFile::DirectorySyncUnsupported)
+        code = if write_error.instance_of?(Storage::AtomicFile::DirectorySyncUnsupported)
                  :backup_durability_unsupported
                elsif receipt.durable?
                  :backup_finalize_failed
@@ -47,7 +51,7 @@ module Net
         raise ArgumentError, "backup must be a completed Backup" unless backup.instance_of?(Backup)
 
         @backup = backup
-        @underlying_type = ErrorMetadata.type(underlying.class.name) || "StandardError"
+        @underlying_type = Error::Metadata.type(underlying.class.name) || "StandardError"
         super("backup completed; path lock finalization failed", code: :backup_finalize_failed, host: host, phase: :backup)
       end
     end
@@ -83,7 +87,7 @@ module Net
       def collect_and_write(destination)
         contents = @device.running_config.value!
         digest = Digest::SHA256.hexdigest(contents)
-        previous = Storage::SafeFile.fingerprint(destination, missing: true, replace_symlink: true)
+        previous = Storage::FileReader.fingerprint(destination, missing: true, replace_symlink: true)
         previous_digest = previous&.sha256
         change = if previous_digest.nil?
                    :created
@@ -97,7 +101,7 @@ module Net
                             sha256: digest, collected_at: Time.now.utc, change: change,
                             previous_sha256: previous_digest)
         # 内容未变也须核对权限与目录项身份；只在两者仍有效时保留原文件和 mtime。
-        if change != :unchanged || previous.mode != 0o600 || !Storage::SafeFile.same_entry?(destination, previous)
+        if change != :unchanged || previous.mode != 0o600 || !Storage::FileReader.same_entry?(destination, previous)
           write_backup(backup, contents)
         end
         backup
@@ -105,9 +109,9 @@ module Net
 
       # 替换后失败仍交付已提交的备份回执，不能让调用方误判为没有产物。
       def write_backup(backup, contents)
-        Storage::PrivateFile.write(backup.path, contents)
-      rescue Storage::PrivateFile::WriteError => error
-        raise unless Storage::PrivateFile.receipt_error?(error) && error.receipt.committed?
+        Storage::AtomicFile.write(backup.path, contents)
+      rescue Storage::AtomicFile::WriteError => error
+        raise unless Storage::AtomicFile.receipt_error?(error) && error.receipt.committed?
 
         host = @device.host if @device.respond_to?(:host)
         raise BackupPersistenceError.new(backup: backup, write_error: error, host: host), cause: nil

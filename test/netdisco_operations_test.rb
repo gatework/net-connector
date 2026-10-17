@@ -151,7 +151,7 @@ class NetdiscoOperationsTest < Minitest::Test
 
   def test_failed_result_preserves_steps_and_first_error_when_close_fails
     error = Connector::DeviceError.new("private-message", code: :stale_plan, phase: :apply)
-    step = Connector::CommandResult.new(command: Connector::Command.new("private-command"), output: "private-output", prompt: "#", duration: 0)
+    step = Connector::Command::Result.new(command: Connector::Command.new("private-command"), output: "private-output", prompt: "#", duration: 0)
     result = Connector::Result.new(steps: [step], error: error)
     connector = @connectors.fetch(@hosts.first)
     connector.value = result

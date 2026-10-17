@@ -1,18 +1,18 @@
 # frozen_string_literal: true
 
 require_relative "../device/base"
-require_relative "huawei/tftp_backup"
+require_relative "huawei/tftp"
 
 module Net
   module Connector
-    module Huawei
+    module Vendor
       # Huawei 命令行连接器；提权延迟到命令批次开始时执行。
-      class Connector < Net::Connector::Base
+      class Huawei < Net::Connector::Base
         vendor :huawei
         # 声明 Huawei 的命令、提示、诊断、提权和保存确认规则。
         profile do
           running_config_strategy Net::Connector::RunningConfig::Rendered
-          tftp_strategy Net::Connector::Huawei::TftpBackup
+          tftp_strategy Tftp
           commands do
             running_config "dis cur"
             save_config "save force"

@@ -30,6 +30,28 @@ class NetdiscoReportingTest < Minitest::Test
     refute counts.key?(:missing)
   end
 
+  def test_outcome_owns_timestamp_values_on_construction_and_update
+    started_at = Time.utc(2026, 10, 17)
+    finished_at = started_at + 1
+    outcome = Netdisco::Outcome.new(device: device, status: :unexpected, backup: nil,
+                                    error_code: nil, error_type: nil, started_at: started_at,
+                                    finished_at: finished_at, duration_ms: 1000)
+    started_at.localtime("+12:00")
+    finished_at.localtime("+12:00")
+    assert outcome.started_at.utc?
+    assert outcome.finished_at.utc?
+    assert_predicate outcome.started_at, :frozen?
+    assert_predicate outcome.finished_at, :frozen?
+
+    replacement = Time.utc(2026, 10, 18)
+    updated = outcome.with(finished_at: replacement)
+    replacement.localtime("+12:00")
+    assert updated.finished_at.utc?
+    assert_predicate updated.finished_at, :frozen?
+    assert_nil updated.duration_ms
+    assert_equal :unexpected, updated.status
+  end
+
   def test_selected_policy_allows_only_filtered_or_sampled_skips_and_requires_successful_work
     [[], [:filtered], [:sample_limit], [:filtered, :sample_limit]].each do |statuses|
       refute batch(*statuses).build_report(policy: :selected).policy_success?, statuses.inspect
@@ -107,9 +129,9 @@ class NetdiscoReportingTest < Minitest::Test
       assert_equal 2, status
       assert_empty calls
     end
-    client = Object.new
-    client.define_singleton_method(:devices) { flunk "invalid policy must not fetch inventory" }
-    value = Netdisco::Fleet.new(client: client, result_store: nil)
+    inventory = Object.new
+    inventory.define_singleton_method(:devices) { flunk "invalid policy must not fetch inventory" }
+    value = Netdisco::Fleet.new(inventory: inventory, report_store: nil)
     assert_raises(ArgumentError) { value.backup_all(success_policy: :unknown) }
     assert_raises(ArgumentError) { value.tftp_backup_all(server: "192.0.2.10", success_policy: :selected, report_schema: 1) }
     [false, 1.0, -1, "2", 0, []].each do |schema|
@@ -171,7 +193,7 @@ class NetdiscoReportingTest < Minitest::Test
     self.class.send(:remove_const, secret) if secret && self.class.const_defined?(secret, false)
   end
 
-  def test_custom_result_store_receives_the_current_report
+  def test_custom_report_store_receives_the_current_report
     received = []
     store = Object.new
     store.define_singleton_method(:write) do |value, directory:|
@@ -255,12 +277,12 @@ class NetdiscoReportingTest < Minitest::Test
       connector = Object.new
       connector.define_singleton_method(:backup) do |path:|
         backup = Net::Connector::Backup.new(path: path, bytes: 1, sha256: "fixture", collected_at: Time.now.utc)
-        receipt = Net::Connector::Storage::PrivateFile::Receipt.new(path: path, state: :committed, phase: :directory_sync)
-        error = Net::Connector::Storage::PrivateFile::PersistenceError.new(receipt: receipt, underlying_type: "IOError")
+        receipt = Net::Connector::Storage::AtomicFile::Receipt.new(path: path, state: :committed, phase: :directory_sync)
+        error = Net::Connector::Storage::AtomicFile::PersistenceError.new(receipt: receipt, underlying_type: "IOError")
         raise Net::Connector::BackupPersistenceError.new(backup: backup, write_error: error), cause: nil
       end
       connector.define_singleton_method(:close) {}
-      value = Netdisco::Fleet.new(client: Struct.new(:devices).new([row(1)]), result_store: nil,
+      value = Netdisco::Fleet.new(inventory: Struct.new(:devices).new([row(1)]), report_store: nil,
                                   credentials: ->(*) { { username: "audit" } }, connector_factory: ->(*) { connector })
       report = value.backup_all(directory: directory)
       entry = report.summary.fetch(:devices).first
@@ -300,8 +322,8 @@ class NetdiscoReportingTest < Minitest::Test
   def test_report_write_receipt_retains_commit_state_without_claiming_device_completion
     Dir.mktmpdir do |directory|
       path = File.join(directory, "report.json")
-      receipt = Net::Connector::Storage::PrivateFile::Receipt.new(path: path, state: :committed, phase: :directory_sync)
-      failure = Net::Connector::Storage::PrivateFile::PersistenceError.new(receipt: receipt, underlying_type: "IOError")
+      receipt = Net::Connector::Storage::AtomicFile::Receipt.new(path: path, state: :committed, phase: :directory_sync)
+      failure = Net::Connector::Storage::AtomicFile::PersistenceError.new(receipt: receipt, underlying_type: "IOError")
       store = Object.new
       store.define_singleton_method(:write) { |_, **| raise failure }
       report = fleet(rows: [row(1)], store: store)
@@ -342,7 +364,7 @@ class NetdiscoReportingTest < Minitest::Test
   def row(index) = { "ip" => "192.0.2.#{index}", "vendor" => "H3C" }
 
   def fleet(settings: Netdisco::Settings.new(env: {}), calls: [], rows: [row(1), row(2)], error: nil,
-            store: Netdisco::ResultStore::Json.new)
+            store: Netdisco::Report::Store::Json.new)
     factory = lambda do |device, _options|
       connector = Object.new
       connector.define_singleton_method(:tftp_backup) do |**options|
@@ -354,7 +376,7 @@ class NetdiscoReportingTest < Minitest::Test
       connector.define_singleton_method(:close) {}
       connector
     end
-    Netdisco::Fleet.new(settings: settings, client: Struct.new(:devices).new(rows),
-                        credentials: ->(*) { { username: "audit" } }, connector_factory: factory, result_store: store)
+    Netdisco::Fleet.new(settings: settings, inventory: Struct.new(:devices).new(rows),
+                        credentials: ->(*) { { username: "audit" } }, connector_factory: factory, report_store: store)
   end
 end

@@ -33,10 +33,10 @@ class LineSeparatorTest < Minitest::Test
 
   def test_tftp_completion_separates_device_messages_from_command_echo
     Connector.vendor_class(:cisco_ios)
-    strategy = Connector::CiscoIos::TftpBackup.new(nil)
+    strategy = Connector::Vendor::CiscoIos::Tftp.new(nil)
     command = Connector::Command.new("copy running-config tftp:")
     output = "#{command.text}\r\n123 bytes copied\r\nswitch#"
-    step = Connector::CommandResult.new(command: command, output: output, prompt: "switch#", duration: 0)
+    step = Connector::Command::Result.new(command: command, output: output, prompt: "switch#", duration: 0)
     result = Connector::Result.new(steps: [step])
     [nil, "", "|"].each do |separator|
       assert with_separator(separator) { strategy.device_reported_complete?(result) }
@@ -62,13 +62,13 @@ class LineSeparatorTest < Minitest::Test
 
   def test_stdin_credentials_leave_the_confirmation_line_unread
     settings = Object.new
-    settings.define_singleton_method(:client) { |credentials:| credentials }
+    settings.define_singleton_method(:inventory) { |credentials:| credentials }
     values = { netdisco_username: "inventory", netdisco_password: "example-one",
                device_username: "operator", device_password: "example-two" }
     [nil, "", "|"].each do |separator|
       input = StringIO.new(JSON.generate(values) + "\nRUN\n")
-      client, resolver = with_separator(separator) { Connector::Netdisco::Connection.build(settings, stdin_credentials: true, input: input) }
-      assert_equal "inventory", client.fetch(:username)
+      inventory, resolver = with_separator(separator) { Connector::Netdisco::CLI::Credentials.resolve(settings, stdin_credentials: true, input: input) }
+      assert_equal "inventory", inventory.fetch(:username)
       assert_equal "operator", resolver.call(nil).fetch(:username)
       assert_equal "RUN\n", input.read
     end

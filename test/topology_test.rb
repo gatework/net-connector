@@ -2,7 +2,7 @@
 
 require "minitest/autorun"
 require_relative "../lib/net/connector"
-require_relative "../lib/net/connector/vendor/cisco_ios/topology"
+require_relative "../lib/net/connector/vendor/cisco/topology"
 require_relative "support/topology_fixture"
 
 class TopologyTest < Minitest::Test
@@ -49,7 +49,7 @@ class TopologyTest < Minitest::Test
     end
 
     def completed(command, output)
-      Net::Connector::CommandResult.new(command: command, output: output, prompt: "switch#", duration: 0)
+      Net::Connector::Command::Result.new(command: command, output: output, prompt: "switch#", duration: 0)
     end
   end
 
@@ -69,7 +69,7 @@ class TopologyTest < Minitest::Test
   end
 
   def test_custom_read_only_strategy_allows_reads_and_rejects_planning_and_apply
-    read_only = Class.new(Net::Connector::CiscoIos::Topology) do
+    read_only = Class.new(Net::Connector::Vendor::Cisco::Topology) do
       def self.supports?(capability) = %i[neighbors interface_descriptions].include?(capability)
     end
     device = Device.new(vendor: :cisco_ios, neighbor_output: "Total cdp entries displayed : 0")

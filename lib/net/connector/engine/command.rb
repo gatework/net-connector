@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "errors"
-require_relative "dialogue"
+require_relative "interaction"
 require "expect/pty"
 
 module Net
@@ -60,54 +60,5 @@ module Net
       def inspect = "#<#{self.class} source=#{source.inspect} line=#{line.inspect}>"
     end
 
-    # 在任何输入输出前解析，不执行脚本，也不改写设备命令中的行内注释。
-    class Script
-      include Enumerable
-
-      attr_reader :name
-
-      # 按行过滤空行和整行注释，再构造带来源信息的命令。
-      def self.parse(text, name: nil)
-        raise ArgumentError, "script must be a String" unless text.is_a?(String)
-
-        commands = text.each_line("\n").with_index(1).filter_map do |line, line_number|
-          line = line.chomp("\n")
-          next if line.strip.empty? || line.lstrip.start_with?("#")
-
-          Command.new(line, source: name, line: line_number)
-        end
-        new(commands, name: name)
-      end
-
-      # 读取脚本文件；文件错误转换为带来源的脚本错误。
-      def self.load(path)
-        parse(File.binread(path), name: File.expand_path(path))
-      rescue IOError, SystemCallError
-        raise ScriptError.new("unable to read script", phase: :parse, source: path.to_s), cause: nil
-      end
-
-      # 校验并冻结命令数组，给非 Command 输入补充来源和行号。
-      def initialize(commands, name: nil)
-        raise ArgumentError, "commands must be an Array" unless commands.is_a?(Array)
-
-        @name = name&.dup&.freeze
-        @commands = commands.each_with_index.map do |command, index|
-          command.is_a?(Command) ? command : Command.new(command, source: name, line: index + 1)
-        end.freeze
-        freeze
-      end
-
-      # 遍历脚本命令。
-      def each(&) = @commands.each(&)
-
-      # 判断脚本是否没有可执行命令。
-      def empty? = @commands.empty?
-
-      # 返回脚本命令数量。
-      def size = @commands.size
-
-      # 返回脚本名称和命令数量摘要。
-      def inspect = "#<#{self.class} name=#{name.inspect} commands=#{size}>"
-    end
   end
 end

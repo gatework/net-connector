@@ -25,12 +25,12 @@ ruby review_tftp.rb backups/2026-09-28_14-04-11
 
 公共实现已进入 gem；参数、连接和报告属于 `Net::Connector::Netdisco`，目录管理属于 `Net::Connector::Storage`：
 
-- `BackupRun#run`：统一批次编排，返回退出码。
+- `CLI::Backup#run`：统一批次编排，返回退出码。
 - `CLI::Options.parse` / `.settings`：命令行参数、密码输入和环境覆盖。
-- `Connection.build`：清单连接和设备凭据来源，可注入标准输入。
+- `CLI::Credentials.resolve`：清单连接和设备凭据来源，可注入标准输入。
 - `Net::Connector::Storage::BatchDirectory.create`：创建批次目录。
 - `Report::Files.write`：原子保存统一 JSON 与文本报告，返回包含保存结果的 Report。
-- `TftpVerification`：核验本机服务器文件，保留未核验上传回执。
+- `Tftp::Verifier`：核验本机服务器文件，保留未核验上传回执。
 
 `boot.rb` 只负责示例专用的 `.env` 加载和工作目录设置，不作为独立脚本运行。模块本身不加载 `.env`、不切换目录、不退出宿主进程。厂商协议、并发执行和配置采集仍由已有模块承担。
 

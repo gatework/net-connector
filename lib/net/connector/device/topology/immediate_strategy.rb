@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "strategy"
-require_relative "../../engine/terminal_renderer"
+require_relative "../../engine/terminal/renderer"
 
 module Net
   module Connector
@@ -25,9 +25,9 @@ module Net
           !result.steps.empty? && result.steps.all? do |step|
             raw = step.output.delete_suffix(step.prompt.to_s)
             history = raw.gsub(/\e\[[0-9;:]*m/, "").gsub(/\r(?!\n)/, "\n")
-            rendered = TerminalRenderer.render(raw)
+            rendered = Terminal::Renderer.render(raw)
             failure = /\b(?:error|failed|failure|denied|cannot|unable|unsuccessful|aborted)\b/i
-            next false if history.match?(failure) || TerminalRenderer.render(history).match?(failure) || rendered.match?(failure)
+            next false if history.match?(failure) || Terminal::Renderer.render(history).match?(failure) || rendered.match?(failure)
 
             rendered.lines("\n").any? { |line| line.strip.match?(persistence_pattern) }
           end

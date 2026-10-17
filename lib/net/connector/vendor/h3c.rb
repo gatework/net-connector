@@ -1,20 +1,20 @@
 # frozen_string_literal: true
 
 require_relative "../device/base"
-require_relative "h3c/tftp_backup"
+require_relative "h3c/tftp"
 require_relative "h3c/topology"
 
 module Net
   module Connector
-    module H3c
+    module Vendor
       # H3C 直接使用登录后的命令视图，并在单个批次内解析设备分配的规则编号。
-      class Connector < Net::Connector::Base
+      class H3c < Net::Connector::Base
         vendor :h3c
         # 声明 H3C 的命令、提示、诊断和保存确认规则。
         profile do
           running_config_strategy Net::Connector::RunningConfig::Rendered
-          tftp_strategy Net::Connector::H3c::TftpBackup
-          topology_strategy Net::Connector::H3c::Topology
+          tftp_strategy Tftp
+          topology_strategy Topology
           commands do
             running_config "dis cur"
             save_config "save force"

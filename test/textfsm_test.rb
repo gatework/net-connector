@@ -32,7 +32,7 @@ class TextfsmTest < Minitest::Test
       { "INTERFACE" => "GigabitEthernet0/0", "DESCRIPTION" => "uplink" },
       { "INTERFACE" => "GigabitEthernet0/1", "DESCRIPTION" => "" }
     ]
-    template = "cisco_ios_running_config_interfaces.textfsm"
+    template = "cisco/show_running_config.textfsm"
     assert_equal expected, device.parse_config(template: template)
 
     Dir.mktmpdir do |directory|

@@ -3,7 +3,7 @@
 require "minitest/autorun"
 require_relative "../lib/net/connector/netdisco"
 
-# 固定当前复制边界供兼容性重构使用；浅层共享不代表建议调用方修改回执。
+# 完成回执拥有自身元数据；原始批次容器的显式共享边界单独验证。
 class ValueObjectContractTest < Minitest::Test
   Connector = Net::Connector
   Netdisco = Connector::Netdisco
@@ -33,7 +33,7 @@ class ValueObjectContractTest < Minitest::Test
   end
 
   def test_file_receipt_updates_revalidate_and_copy_the_path
-    original = Connector::Storage::PrivateFile::Receipt.new(path: "backup.cfg", state: :committed, phase: :directory_sync)
+    original = Connector::Storage::AtomicFile::Receipt.new(path: "backup.cfg", state: :committed, phase: :directory_sync)
     path = +"updated.cfg"
     updated = original.with(path: path)
     path.replace("changed.cfg")
@@ -52,7 +52,7 @@ class ValueObjectContractTest < Minitest::Test
     refute_includes updated.to_h.to_json, "private"
   end
 
-  def test_backup_constructor_preserves_member_references
+  def test_backup_constructor_owns_member_values
     path = +"backup.cfg"
     sha256 = +"digest"
     collected_at = Time.utc(2026, 1, 1)
@@ -62,9 +62,10 @@ class ValueObjectContractTest < Minitest::Test
     sha256.replace("changed")
     collected_at.localtime(3600)
     assert backup.frozen?
-    assert_equal "renamed.cfg", backup.path
-    assert_equal "changed", backup.sha256
-    assert_equal 3600, backup.collected_at.utc_offset
+    assert_equal "backup.cfg", backup.path
+    assert_equal "digest", backup.sha256
+    assert_equal 0, backup.collected_at.utc_offset
+    [backup.path, backup.sha256, backup.collected_at].each { |value| assert_predicate value, :frozen? }
   end
 
   def test_tftp_constructor_and_with_copy_and_freeze_supplied_fields
@@ -89,7 +90,7 @@ class ValueObjectContractTest < Minitest::Test
 
   def test_file_receipt_constructor_copies_and_freezes_path
     path = +"backup.cfg"
-    receipt = Connector::Storage::PrivateFile::Receipt.new(path: path, state: :committed, phase: :directory_sync)
+    receipt = Connector::Storage::AtomicFile::Receipt.new(path: path, state: :committed, phase: :directory_sync)
     path.replace("changed.cfg")
 
     assert receipt.frozen?
@@ -99,7 +100,7 @@ class ValueObjectContractTest < Minitest::Test
     refute receipt.durable?
   end
 
-  def test_outcome_constructor_preserves_supplied_time_and_text_references
+  def test_outcome_constructor_owns_supplied_time_and_text_values
     error_type = +"IOError"
     started_at = Time.utc(2026, 1, 1)
     outcome = build_outcome(error_type: error_type, started_at: started_at)
@@ -107,8 +108,10 @@ class ValueObjectContractTest < Minitest::Test
     started_at.localtime(3600)
 
     assert outcome.frozen?
-    assert_equal "RuntimeError", outcome.error_type
-    assert_equal 3600, outcome.started_at.utc_offset
+    assert_equal "IOError", outcome.error_type
+    assert_equal 0, outcome.started_at.utc_offset
+    assert_predicate outcome.error_type, :frozen?
+    assert_predicate outcome.started_at, :frozen?
   end
 
   def test_outcome_with_invalidates_derived_fields_and_respects_explicit_replacements

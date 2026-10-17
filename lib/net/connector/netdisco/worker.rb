@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../execution_pool"
+require_relative "../concurrency/pool"
 
 module Net
   module Connector
@@ -9,7 +9,7 @@ module Net
       class Worker
         # 内部预检与实际执行共用规则，不为校验创建工作线程池对象。
         def self.validate_concurrency!(concurrency)
-          ExecutionPool.validate_concurrency!(concurrency)
+          Concurrency::Pool.validate_concurrency!(concurrency)
         end
 
         # 校验并保存最大设备并发数。
@@ -20,7 +20,7 @@ module Net
         # 按清单顺序收集结果，并隔离设备及回调异常。
         def run(tasks, outcomes:, on_error:, on_start: nil, on_result: nil)
           callback_errors = Queue.new
-          ExecutionPool.new(concurrency: @concurrency).map(tasks) do |index, device|
+          Concurrency::Pool.new(concurrency: @concurrency).map(tasks) do |index, device|
             result = run_task(device, on_error, on_start, callback_errors) { yield device }
             outcomes[index] = result
             Array(on_result).each do |callback|

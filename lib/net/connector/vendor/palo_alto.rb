@@ -2,20 +2,20 @@
 
 require_relative "../device/base"
 require_relative "palo_alto/running_config"
-require_relative "palo_alto/tftp_backup"
+require_relative "palo_alto/tftp"
 require_relative "palo_alto/topology"
 
 module Net
   module Connector
-    module PaloAlto
+    module Vendor
       # Palo Alto Networks PAN-OS 运维命令行和运行配置采集连接器。
-      class Connector < Net::Connector::Base
+      class PaloAlto < Net::Connector::Base
         vendor :palo_alto
         # 声明 PAN-OS 的命令、提示、超时、诊断和登录确认规则。
         profile do
-          running_config_strategy Net::Connector::PaloAlto::RunningConfig
-          tftp_strategy Net::Connector::PaloAlto::TftpBackup
-          topology_strategy Net::Connector::PaloAlto::Topology
+          running_config_strategy RunningConfig
+          tftp_strategy Tftp
+          topology_strategy Topology
           commands do
             running_config "set cli pager off", "set cli config-output-format set", "show config diff",
                            "configure", "show", "exit", "show config diff"

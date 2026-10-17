@@ -15,7 +15,7 @@ class NetdiscoSettingsTest < Minitest::Test
                             overrides: { "NC_SAMPLE_PER_VENDOR" => nil, "ND_ALLOW_INSECURE_HTTP" => false })
     policy = settings.for_run
     assert_nil policy.limit_per_vendor(tftp: true)
-    assert_equal false, policy.client_options.fetch(:allow_insecure_http)
+    assert_equal false, policy.inventory_options.fetch(:allow_insecure_http)
     assert_equal false, policy.public_config.fetch(:netdisco).fetch(:allow_insecure_http)
     assert_equal 5, Settings.new(env: {}).limit_per_vendor(tftp: true)
     [nil, false].each do |value|
@@ -25,11 +25,11 @@ class NetdiscoSettingsTest < Minitest::Test
     end
   end
 
-  def test_client_budget_errors_precede_source_specific_query_errors
+  def test_inventory_budget_errors_precede_source_specific_query_errors
     %w[http postgres].each do |source|
       settings = Settings.new(env: {}, defaults: { "ND_SOURCE" => source, "ND_PAGE_SIZE" => "0",
                                                   "ND_QUERY_PARAMS" => "not-json" })
-      error = assert_raises(ArgumentError) { settings.client_options }
+      error = assert_raises(ArgumentError) { settings.inventory_options }
       assert_equal "ND_PAGE_SIZE must be a positive integer", error.message
       assert_nil error.cause
     end
@@ -91,7 +91,7 @@ class NetdiscoSettingsTest < Minitest::Test
     policy = updated.snapshot
     assert_equal :ssh, policy.connection_options(:h3c).fetch(:protocol)
     assert_equal 2, policy.concurrency
-    assert_equal 12, policy.client_options.fetch(:max_devices)
+    assert_equal 12, policy.inventory_options.fetch(:max_devices)
     assert_equal 1024, policy.connection_options(:h3c).fetch(:max_script_output_bytes)
     assert_equal :telnet, policy.connection_options(:cisco_ios).fetch(:protocol)
     assert_equal "/tmp/net-connector-policy-logs", policy.log_directory
@@ -160,7 +160,7 @@ class NetdiscoSettingsTest < Minitest::Test
         Dir.chdir(first)
         settings = Settings.new(env: {}, defaults: { "NC_KNOWN_HOSTS" => "known_hosts", "NC_CONCURRENCY" => "1" })
         observed = []
-        fleet = Netdisco::Fleet.new(settings: settings, client: Struct.new(:devices).new(rows), result_store: nil,
+        fleet = Netdisco::Fleet.new(settings: settings, inventory: Struct.new(:devices).new(rows), report_store: nil,
                                     credentials: ->(*) { Dir.chdir(second); { username: "reader" } },
                                     connector_factory: lambda { |_device, options|
                                       observed << options.fetch(:known_hosts)
@@ -256,8 +256,8 @@ class NetdiscoSettingsTest < Minitest::Test
         seen << [device.host, options]
         successful_connector
       end
-      fleet = Netdisco::Fleet.new(settings: Settings.new(env: env, defaults: defaults), client: Struct.new(:devices).new(rows),
-                                  connector_factory: factory, result_store: nil)
+      fleet = Netdisco::Fleet.new(settings: Settings.new(env: env, defaults: defaults), inventory: Struct.new(:devices).new(rows),
+                                  connector_factory: factory, report_store: nil)
       rotate = lambda do |_result|
         defaults.merge!("NC_MAX_SCRIPT_OUTPUT_BYTES" => "2048", "NC_EXCLUDE_HOSTS" => "192.0.2.1")
         defaults.merge!("NC_PROTOCOL" => "telnet", "NC_CONCURRENCY" => "2",
@@ -291,15 +291,15 @@ class NetdiscoSettingsTest < Minitest::Test
   def test_plan_captures_rules_before_inventory_io_and_execution_does_not_refetch
     env = { "NC_INCLUDE_HOSTS" => "192.0.2.1" }
     fetched = 0
-    inventory = rows
-    client = Object.new
-    client.define_singleton_method(:devices) do
+    records = rows
+    inventory = Object.new
+    inventory.define_singleton_method(:devices) do
       fetched += 1
       env["NC_INCLUDE_HOSTS"] = "192.0.2.2"
-      inventory
+      records
     end
     requested = []
-    fleet = Netdisco::Fleet.new(settings: Settings.new(env: {}, defaults: env), client: client, result_store: nil,
+    fleet = Netdisco::Fleet.new(settings: Settings.new(env: {}, defaults: env), inventory: inventory, report_store: nil,
                                 credentials: ->(device) { requested << device.host; nil })
     plan = fleet.plan_backup
     assert_equal ["192.0.2.1"], plan.selected.map(&:host)
@@ -312,13 +312,13 @@ class NetdiscoSettingsTest < Minitest::Test
     assert_equal 2, fetched
   end
 
-  def test_client_policy_and_api_credentials_are_refreshed_between_batches
+  def test_inventory_policy_and_api_credentials_are_refreshed_between_batches
     env = { "ND_URL" => "https://inventory.example", "ND_API_KEY" => "first" }
     defaults = { "ND_MAX_DEVICES" => "7" }
     seen = []
     builder = ->(**options) { seen << options; Struct.new(:devices).new([]) }
-    Netdisco::Client.stub(:new, builder) do
-      fleet = Netdisco::Fleet.new(settings: Settings.new(env: env, defaults: defaults), result_store: nil)
+    Netdisco::Inventory::HTTP.stub(:new, builder) do
+      fleet = Netdisco::Fleet.new(settings: Settings.new(env: env, defaults: defaults), report_store: nil)
       2.times do |index|
         fleet.devices
         env["ND_API_KEY"] = "second"
@@ -386,9 +386,9 @@ class NetdiscoSettingsTest < Minitest::Test
       env = { "NC_DEVICE_USERNAME" => "reader", "NC_DEVICE_PASSWORD" => "first" }
       settings = Settings.from_file(path, env: env)
       policy = settings.snapshot(mode: :backup)
-      assert_equal 2.5, policy.client_options.fetch(:inventory_timeout)
-      assert_equal 20, policy.client_options.fetch(:max_devices)
-      assert_equal false, policy.client_options.fetch(:allow_insecure_http)
+      assert_equal 2.5, policy.inventory_options.fetch(:inventory_timeout)
+      assert_equal 20, policy.inventory_options.fetch(:max_devices)
+      assert_equal false, policy.inventory_options.fetch(:allow_insecure_http)
       assert_equal 1024, policy.connection_options.fetch(:max_script_output_bytes)
       env["NC_DEVICE_PASSWORD"] = "second"
       device = Netdisco::Device.from_row(rows.first, rules: policy.rules)
@@ -452,7 +452,7 @@ class NetdiscoSettingsTest < Minitest::Test
       env = { "NC_CONFIG" => path }
       settings = Settings.from_env(env: env).snapshot
       assert_equal 2, settings.concurrency
-      assert_equal 8, settings.client_options.fetch(:max_devices)
+      assert_equal 8, settings.inventory_options.fetch(:max_devices)
       assert_equal :telnet, settings.connection_options(:h3c).fetch(:protocol)
       assert_equal :ssh, settings.connection_options(:huawei).fetch(:protocol)
       assert_equal 1024, settings.connection_options.fetch(:max_script_output_bytes)
@@ -513,11 +513,11 @@ class NetdiscoSettingsTest < Minitest::Test
                    policy.database_options)
       assert_equal "/srv/tftp", policy.tftp_root
       received = []
-      Netdisco::DatabaseClient.stub(:new, ->(**options) { received << options; Struct.new(:devices).new([]) }) do
-        settings.client
+      Netdisco::Inventory::Postgres.stub(:new, ->(**options) { received << options; Struct.new(:devices).new([]) }) do
+        settings.inventory
         env["ND_DB_PASS"] = "second-private-value"
         File.write(path, "netdisco:\n  db_port: 9999\n")
-        settings.client
+        settings.inventory
       end
       assert_equal [5440, 5440], (received.map { |options| options.fetch(:connection_options).fetch(:port) })
       assert_equal %w[first-private-value second-private-value],

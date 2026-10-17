@@ -11,7 +11,7 @@ class NetdiscoPlanTest < Minitest::Test
     rows = ["invalid-one", "invalid-two", "2001:db8::1", "2001:0db8:0:0:0:0:0:1", "2001:db8::1", "192.0.2.1"].map do |host|
       { "ip" => host, "vendor" => "H3C" }
     end
-    fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), settings: Netdisco::Settings.new(env: {}), result_store: nil)
+    fleet = Netdisco::Fleet.new(inventory: Struct.new(:devices).new(rows), settings: Netdisco::Settings.new(env: {}), report_store: nil)
     plan = fleet.plan_backup
 
     assert_equal [:invalid_address, :invalid_address, :duplicate_host, :duplicate_host, :duplicate_host, nil], plan.inventory.map(&:issue)
@@ -20,7 +20,7 @@ class NetdiscoPlanTest < Minitest::Test
   end
 
   def test_external_plans_reject_duplicate_hosts_before_credentials_or_directory_creation
-    fleet = Netdisco::Fleet.new(settings: Netdisco::Settings.new(env: {}), result_store: nil,
+    fleet = Netdisco::Fleet.new(settings: Netdisco::Settings.new(env: {}), report_store: nil,
                                 credentials: ->(*) { flunk "invalid plan requested credentials" })
     rows = ["2001:db8::1", "2001:0db8:0:0:0:0:0:1"].each_with_index.map do |ip, index|
       Netdisco::Device.from_row({ "ip" => ip, "name" => "edge-#{index}", "vendor" => "H3C" }, rules: Netdisco::Rules.new)
@@ -48,7 +48,7 @@ class NetdiscoPlanTest < Minitest::Test
       { "ip" => host, "name" => "edge", "vendor" => "H3C" }
     end
     requested = []
-    fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), result_store: nil,
+    fleet = Netdisco::Fleet.new(inventory: Struct.new(:devices).new(rows), report_store: nil,
                                 credentials: ->(device) { requested << device.host; nil })
     plan = fleet.plan_tftp_backup(limit_per_vendor: nil)
 
@@ -68,7 +68,7 @@ class NetdiscoPlanTest < Minitest::Test
       { "ip" => host, "name" => "edge", "vendor" => "H3C" }
     end
     requested = []
-    fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), result_store: nil,
+    fleet = Netdisco::Fleet.new(inventory: Struct.new(:devices).new(rows), report_store: nil,
                                 credentials: ->(device) { requested << device.host; nil })
     plan = fleet.plan_tftp_backup(limit_per_vendor: nil)
     unsafe = plan.with(ready: plan.inventory.each_with_index.map { |device, index| [index, device] },
@@ -80,7 +80,7 @@ class NetdiscoPlanTest < Minitest::Test
 
   def test_sampling_reason_takes_precedence_for_unselected_palo_alto_devices
     rows = (1..3).map { |number| { "ip" => "192.0.2.#{number}", "vendor" => "Palo Alto" } }
-    fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), result_store: nil)
+    fleet = Netdisco::Fleet.new(inventory: Struct.new(:devices).new(rows), report_store: nil)
     plan = fleet.plan_tftp_backup(limit_per_vendor: 1)
 
     assert_equal ["192.0.2.1"], plan.selected.map(&:host)
@@ -89,7 +89,7 @@ class NetdiscoPlanTest < Minitest::Test
 
   def test_collision_winner_follows_sampling_order_and_results_keep_inventory_order
     rows = [3, 1, 2].map { |number| { "ip" => "192.0.2.#{number}", "vendor" => "Palo Alto" } }
-    fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), result_store: nil)
+    fleet = Netdisco::Fleet.new(inventory: Struct.new(:devices).new(rows), report_store: nil)
     plan = fleet.plan_tftp_backup
 
     assert_equal ["192.0.2.1"], plan.selected.map(&:host)
@@ -102,7 +102,7 @@ class NetdiscoPlanTest < Minitest::Test
       (1..25).map { |number| { "ip" => "192.0.#{group + 2}.#{number}", "vendor" => vendor, "os" => "ios" } }
     end.shuffle(random: Random.new(74))
     rows << { "ip" => "192.0.2.200", "vendor" => "unknown" }
-    fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), result_store: nil)
+    fleet = Netdisco::Fleet.new(inventory: Struct.new(:devices).new(rows), report_store: nil)
     [nil, 1, 3, 5].each do |limit|
       %i[backup tftp].each do |mode|
         plan = if mode == :backup
@@ -125,7 +125,7 @@ class NetdiscoPlanTest < Minitest::Test
 
   def test_collision_skip_requires_a_matching_selected_filename
     rows = (1..2).map { |number| { "ip" => "192.0.2.#{number}", "vendor" => "H3C" } }
-    fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), result_store: nil)
+    fleet = Netdisco::Fleet.new(inventory: Struct.new(:devices).new(rows), report_store: nil)
     plan = fleet.plan_tftp_backup(limit_per_vendor: 1)
     invalid = plan.with(outcomes: [nil, plan.outcomes.last.with(status: :remote_filename_collision)])
 

@@ -8,7 +8,7 @@ require_relative "../lib/net/connector/netdisco"
 
 class NetdiscoBudgetTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
-  Client = Netdisco::Client
+  HTTP = Netdisco::Inventory::HTTP
 
   def response(body, code: "200")
     klass = code == "200" ? Net::HTTPOK : Net::HTTPBadRequest
@@ -19,8 +19,8 @@ class NetdiscoBudgetTest < Minitest::Test
 
   def row(index = 1) = { "ip" => "192.0.2.#{index}", "vendor" => "H3C" }
 
-  def client(**options)
-    Client.new(url: "https://inventory.example", api_key: "test", **options)
+  def inventory(**options)
+    HTTP.new(url: "https://inventory.example", api_key: "test", **options)
   end
 
   def test_http_watchdog_failure_is_observable_without_replacing_primary_interrupt
@@ -32,13 +32,13 @@ class NetdiscoBudgetTest < Minitest::Test
       budget = Object.new
       budget.define_singleton_method(:remaining) do
         calls += 1
-        calls == 1 ? 0.001 : (raise Client::InventoryTimeout)
+        calls == 1 ? 0.001 : (raise Net::Connector::Netdisco::Inventory::Timeout)
       end
       http = Object.new
       http.define_singleton_method(:finish) { finished << true; raise watchdog_failure }
       before = Thread.list
       operation = lambda do
-        client.send(:with_http_deadline, http, budget) do
+        inventory.send(:with_http_deadline, http, budget) do
           Timeout.timeout(3) { finished.pop }
           raise failure if failure
 
@@ -51,13 +51,13 @@ class NetdiscoBudgetTest < Minitest::Test
     end
   end
 
-  def assert_inventory_failure(client, code)
+  def assert_inventory_failure(inventory, code)
     calls = []
-    fleet = Netdisco::Fleet.new(client: client, settings: Netdisco::Settings.new(env: {}), result_store: nil,
+    fleet = Netdisco::Fleet.new(inventory: inventory, settings: Netdisco::Settings.new(env: {}), report_store: nil,
                                 credentials: ->(*) { calls << :credentials },
                                 connector_factory: ->(*) { calls << :connector })
     Dir.mktmpdir do |directory|
-      error = assert_raises(Client::Error) { fleet.backup_all(directory: directory) }
+      error = assert_raises(Net::Connector::Netdisco::Inventory::Error) { fleet.backup_all(directory: directory) }
       assert_equal code, error.code
       assert_nil error.cause
       refute_includes error.full_message, "unregistered-test-secret"
@@ -70,25 +70,25 @@ class NetdiscoBudgetTest < Minitest::Test
   def test_each_inventory_budget_rejects_invalid_values_before_requesting
     %i[page_size max_pages max_response_bytes max_inventory_bytes max_devices].each do |name|
       [0, -1, 1.5, Float::INFINITY, Float::NAN, "2", nil, true].each do |value|
-        assert_raises(ArgumentError, "#{name}=#{value.inspect}") { client(**{ name => value }) }
+        assert_raises(ArgumentError, "#{name}=#{value.inspect}") { inventory(**{ name => value }) }
       end
     end
     [0, -1, Float::INFINITY, Float::NAN, "2", nil, true].each do |value|
-      assert_raises(ArgumentError) { client(inventory_timeout: value) }
+      assert_raises(ArgumentError) { inventory(inventory_timeout: value) }
     end
-    assert_instance_of Client, client(inventory_timeout: 0.1)
-    assert_raises(ArgumentError) { client(requester: Object.new) }
+    assert_instance_of HTTP, inventory(inventory_timeout: 0.1)
+    assert_raises(ArgumentError) { inventory(requester: Object.new) }
   end
 
   def test_old_requester_checks_single_response_bytes_before_json_parsing
     body = "unregistered-test-secret" * 100
-    bounded = client(max_response_bytes: 40, requester: ->(*) { response(body) })
+    bounded = inventory(max_response_bytes: 40, requester: ->(*) { response(body) })
     assert_inventory_failure(bounded, :max_response_bytes)
   end
 
   def test_many_small_pages_share_cumulative_bytes_and_never_return_partial_inventory
     answers = 1.upto(10).map { |index| response([row(index)].to_json) }
-    bounded = client(page_size: 1, max_response_bytes: 100, max_inventory_bytes: ([row].to_json.bytesize * 2) - 1,
+    bounded = inventory(page_size: 1, max_response_bytes: 100, max_inventory_bytes: ([row].to_json.bytesize * 2) - 1,
                      requester: ->(*) { answers.shift })
     assert_inventory_failure(bounded, :max_inventory_bytes)
     assert_equal 8, answers.size
@@ -96,7 +96,7 @@ class NetdiscoBudgetTest < Minitest::Test
 
   def test_device_limit_counts_records_before_deduplication_and_append
     answers = [response([row, row, row(2)].to_json), response("[]")]
-    bounded = client(max_devices: 2, requester: ->(*) { answers.shift })
+    bounded = inventory(max_devices: 2, requester: ->(*) { answers.shift })
     assert_inventory_failure(bounded, :max_devices)
     assert_equal 1, answers.size
   end
@@ -105,11 +105,11 @@ class NetdiscoBudgetTest < Minitest::Test
     missing = response({ error: "Missing query" }.to_json, code: "400")
     body = [row.merge("snmp_comm" => "unregistered-test-secret")].to_json
     answers = [missing, response(body)]
-    bounded = client(max_inventory_bytes: body.bytesize, requester: ->(*) { answers.shift })
+    bounded = inventory(max_inventory_bytes: body.bytesize, requester: ->(*) { answers.shift })
     assert_inventory_failure(bounded, :max_inventory_bytes)
 
     answers = [missing, response([row, row(2)].to_json)]
-    assert_inventory_failure(client(max_devices: 1, requester: ->(*) { answers.shift }), :max_devices)
+    assert_inventory_failure(inventory(max_devices: 1, requester: ->(*) { answers.shift }), :max_devices)
   end
 
   def test_authentication_and_pagination_share_a_monotonic_deadline
@@ -120,7 +120,7 @@ class NetdiscoBudgetTest < Minitest::Test
       now += 3
       response({ api_key: "unregistered-test-secret" }.to_json)
     end
-    bounded = Client.new(url: "https://inventory.example", username: "reader", password: "test",
+    bounded = HTTP.new(url: "https://inventory.example", username: "reader", password: "test",
                          inventory_timeout: 2, requester: requester)
     bounded.stub(:monotonic, -> { now }) { assert_inventory_failure(bounded, :inventory_timeout) }
     assert_equal 1, calls
@@ -133,7 +133,7 @@ class NetdiscoBudgetTest < Minitest::Test
       now += 2
       answers.shift
     end
-    bounded = client(inventory_timeout: 3, requester: requester)
+    bounded = inventory(inventory_timeout: 3, requester: requester)
     bounded.stub(:monotonic, -> { now }) { assert_inventory_failure(bounded, :inventory_timeout) }
     assert_empty answers
   end
@@ -141,7 +141,7 @@ class NetdiscoBudgetTest < Minitest::Test
   def test_compatibility_callback_is_checked_after_return_without_asynchronous_interruption
     now = 0.0
     completed = false
-    bounded = client(inventory_timeout: 1, requester: lambda { |*_args|
+    bounded = inventory(inventory_timeout: 1, requester: lambda { |*_args|
       now = 10
       completed = true
       response("[]")
@@ -153,30 +153,30 @@ class NetdiscoBudgetTest < Minitest::Test
   def test_each_call_gets_new_budget_and_exact_limits_are_allowed
     body = [row].to_json
     answers = [response(body), response("[]"), response(body), response("[]")]
-    bounded = client(max_devices: 1, max_response_bytes: body.bytesize,
+    bounded = inventory(max_devices: 1, max_response_bytes: body.bytesize,
                      max_inventory_bytes: body.bytesize + 2, requester: ->(*) { answers.shift })
     2.times { assert_equal [row], bounded.devices }
   end
 
   def test_http_policy_preserves_old_default_and_supports_explicit_rejection
-    assert_instance_of Client, Client.new(url: "http://inventory.example", api_key: "test")
-    assert_instance_of Client, Client.new(url: "http://inventory.example", api_key: "test", allow_insecure_http: true)
+    assert_instance_of HTTP, HTTP.new(url: "http://inventory.example", api_key: "test")
+    assert_instance_of HTTP, HTTP.new(url: "http://inventory.example", api_key: "test", allow_insecure_http: true)
     error = assert_raises(ArgumentError) do
-      Client.new(url: "http://inventory.example", api_key: "test", allow_insecure_http: false)
+      HTTP.new(url: "http://inventory.example", api_key: "test", allow_insecure_http: false)
     end
     assert_includes error.message, "allow_insecure_http"
-    assert_raises(ArgumentError) { client(allow_insecure_http: "false") }
+    assert_raises(ArgumentError) { inventory(allow_insecure_http: "false") }
   end
 
   def test_pagination_and_parse_failures_are_safe_and_do_not_start_connectors
     repeated = response([row].to_json)
-    assert_inventory_failure(client(requester: ->(*) { repeated }), :pagination_stalled)
-    assert_inventory_failure(client(max_pages: 1, requester: ->(*) { repeated }), :max_pages)
-    assert_inventory_failure(client(requester: ->(*) { response("unregistered-test-secret") }), :invalid_json)
-    assert_inventory_failure(client(requester: ->(*) { response('[{"ip":1}]') }), :invalid_inventory)
-    assert_inventory_failure(client(requester: ->(*) { raise Net::HTTPBadResponse, "unregistered-test-secret" }),
+    assert_inventory_failure(inventory(requester: ->(*) { repeated }), :pagination_stalled)
+    assert_inventory_failure(inventory(max_pages: 1, requester: ->(*) { repeated }), :max_pages)
+    assert_inventory_failure(inventory(requester: ->(*) { response("unregistered-test-secret") }), :invalid_json)
+    assert_inventory_failure(inventory(requester: ->(*) { response('[{"ip":1}]') }), :invalid_inventory)
+    assert_inventory_failure(inventory(requester: ->(*) { raise Net::HTTPBadResponse, "unregistered-test-secret" }),
                              :connection_failed)
-    assert_inventory_failure(client(requester: ->(*) { raise Client::Error, "unregistered-test-secret" }),
+    assert_inventory_failure(inventory(requester: ->(*) { raise Net::Connector::Netdisco::Inventory::Error, "unregistered-test-secret" }),
                              :connection_failed)
   end
 
@@ -197,7 +197,7 @@ class NetdiscoBudgetTest < Minitest::Test
       http.define_singleton_method(:request) { |_request, &block| block.call(reply); reply }
       start = ->(*_args, **_options, &block) { block.call(http) }
       Net::HTTP.stub(:start, start) do
-        assert_inventory_failure(client(max_response_bytes: 40), :max_response_bytes)
+        assert_inventory_failure(inventory(max_response_bytes: 40), :max_response_bytes)
       end
       assert_equal 2, received.size
     end
@@ -222,7 +222,7 @@ class NetdiscoBudgetTest < Minitest::Test
       start_options = options
       block.call(http)
     end
-    bounded = client(inventory_timeout: 3)
+    bounded = inventory(inventory_timeout: 3)
     bounded.stub(:monotonic, -> { now }) do
       Net::HTTP.stub(:start, start) { assert_equal [], bounded.devices }
     end
@@ -248,7 +248,7 @@ class NetdiscoBudgetTest < Minitest::Test
     end
     http.define_singleton_method(:request) { |_request, &block| block.call(reply); reply }
     start = ->(*_args, **_options, &block) { block.call(http) }
-    bounded = client(inventory_timeout: 2)
+    bounded = inventory(inventory_timeout: 2)
     bounded.stub(:monotonic, -> { now }) do
       Net::HTTP.stub(:start, start) { assert_inventory_failure(bounded, :inventory_timeout) }
     end
@@ -266,7 +266,7 @@ class NetdiscoBudgetTest < Minitest::Test
         disconnected << (ready && socket.read(1).nil?)
       end
       with_http_server(serve) do |url|
-        bounded = Client.new(url: url, api_key: "test", max_response_bytes: 32, inventory_timeout: 2)
+        bounded = HTTP.new(url: url, api_key: "test", max_response_bytes: 32, inventory_timeout: 2)
         assert_inventory_failure(bounded, :max_response_bytes)
       end
       assert_equal true, disconnected.pop
@@ -281,7 +281,7 @@ class NetdiscoBudgetTest < Minitest::Test
       disconnected << (ready && socket.read(1).nil?)
     end
     with_http_server(serve) do |url|
-      bounded = Client.new(url: url, api_key: "test", inventory_timeout: 0.5)
+      bounded = HTTP.new(url: url, api_key: "test", inventory_timeout: 0.5)
       assert_inventory_failure(bounded, :inventory_timeout)
     end
     assert_equal true, disconnected.pop
@@ -303,7 +303,7 @@ class NetdiscoBudgetTest < Minitest::Test
     without_async_raise = ->(*_args, &block) { block.call }
     Timeout.stub(:timeout, without_async_raise) do
       Net::HTTP.stub(:start, start) do
-        worker = Thread.new { assert_inventory_failure(client(inventory_timeout: 0.05), :inventory_timeout) }
+        worker = Thread.new { assert_inventory_failure(inventory(inventory_timeout: 0.05), :inventory_timeout) }
         begin
           assert worker.join(2), "deadline did not close its owned HTTP transport"
           worker.value

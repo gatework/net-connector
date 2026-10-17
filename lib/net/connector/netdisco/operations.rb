@@ -3,11 +3,12 @@
 require "ipaddr"
 require "time"
 require "fileutils"
-require_relative "../execution_pool"
-require_relative "../device_session"
+require_relative "../concurrency/pool"
+require_relative "../device/scope"
 require_relative "../device/topology"
 require_relative "settings"
-require_relative "operation_batch"
+require_relative "operations/batch"
+require_relative "device/access"
 
 module Net
   module Connector
@@ -163,27 +164,27 @@ module Net
           [on_start, on_result].each do |callback|
             raise ArgumentError, "callbacks must respond to call" unless callback.nil? || callback.respond_to?(:call)
           end
-          ExecutionPool.validate_concurrency!(concurrency) unless concurrency.equal?(DEFAULT_SETTING)
+          Concurrency::Pool.validate_concurrency!(concurrency) unless concurrency.equal?(DEFAULT_SETTING)
           snapshot = @settings.snapshot(mode: :inventory)
           concurrency = snapshot.concurrency if concurrency.equal?(DEFAULT_SETTING)
-          ExecutionPool.validate_concurrency!(concurrency)
+          Concurrency::Pool.validate_concurrency!(concurrency)
           return empty_batch(operation) if tasks.empty?
 
           devices = select_devices(tasks, snapshot)
           FileUtils.mkdir_p(snapshot.log_directory, mode: 0o700) if snapshot.log_directory
           started_at = Time.now.utc
           callback_errors = Queue.new
-          outcomes = ExecutionPool.new(concurrency: concurrency).map(devices) do |device|
+          outcomes = Concurrency::Pool.new(concurrency: concurrency).map(devices) do |device|
             perform(device, snapshot, callback_errors, on_start, on_result) { |connector| yield connector, tasks.fetch(device.host) }
           end
           errors = Array.new(callback_errors.size) { callback_errors.pop }
-          OperationBatch.new(operation: operation, outcomes: outcomes, callback_errors: errors,
+          Operations::Batch.new(operation: operation, outcomes: outcomes, callback_errors: errors,
                              started_at: started_at, finished_at: Time.now.utc)
         end
 
         def empty_batch(operation)
           now = Time.now.utc
-          OperationBatch.new(operation: operation, outcomes: [], callback_errors: [], started_at: now, finished_at: now)
+          Operations::Batch.new(operation: operation, outcomes: [], callback_errors: [], started_at: now, finished_at: now)
         end
 
         # 所有目标必须唯一、可执行且厂商匹配；后面的无效目标不能在前面设备已写后才发现。
@@ -218,7 +219,7 @@ module Net
           started_at = Time.now.utc
           started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           notify(on_start, device, callback_errors, device.host)
-          value, error = DeviceSession.call(factory: -> { build_connector(device, snapshot) }) do |connector|
+          value, error = Net::Connector::Device::Scope.call(factory: -> { build_connector(device, snapshot) }) do |connector|
             result = operation.call(connector)
             if result.is_a?(Topology::Plan) && (result.host != device.host || result.vendor != device.vendor)
               raise ArgumentError, "planned evidence does not match its inventory device"
@@ -234,7 +235,7 @@ module Net
                    else
                      :succeeded
                    end
-          outcome = OperationOutcome.new(device: device, status: status, value: value, error: error,
+          outcome = Operations::Outcome.new(device: device, status: status, value: value, error: error,
                                          started_at: started_at, finished_at: Time.now.utc,
                                          duration_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round)
           notify(on_result, outcome, callback_errors, device.host)
@@ -242,17 +243,9 @@ module Net
         end
 
         def build_connector(device, snapshot)
-          options = @credentials ? @credentials.call(device) : @settings.device_credentials_for(device)
+          options = Device::Access.resolve(device, settings: @settings, credentials: @credentials,
+                                                policy: snapshot, log_directory: snapshot.log_directory)
           raise MissingCredentials if options.nil?
-
-          unless options.is_a?(Hash) && options.keys.all?(Symbol) && !options.key?(:host) &&
-                 options[:username].is_a?(String) && !options[:username].empty?
-            raise ArgumentError, "credential resolver must return settings with username and without host"
-          end
-          options = snapshot.connection_options(device.vendor).merge(options)
-          if snapshot.log_directory
-            options[:log_file] = File.join(snapshot.log_directory, "#{device.host.tr(":", "_")}.log")
-          end
           @connector_factory.call(device, options)
         end
 

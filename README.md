@@ -31,7 +31,7 @@ The block closes the session on exit. Backups use private files and atomic repla
 
 ## Supported devices
 
-H3C Comware and wireless controllers, Cisco IOS/IOS XE and NX-OS, Huawei, Hillstone StoneOS, Radware Alteon, and Palo Alto PAN-OS. Capabilities vary by vendor; see the [device guide](docs/usage.md#supported-devices). Synthetic tests do not establish support for every firmware version.
+H3C Comware and wireless controllers, Cisco IOS/IOS XE and NX-OS, Huawei, Hillstone StoneOS, Radware Alteon, Palo Alto PAN-OS, Topsec TopOS, Fortinet FortiOS, and Juniper Junos OS. Capabilities vary by vendor; see the [device guide](docs/usage.md#supported-devices). Synthetic tests do not establish support for every firmware version.
 
 ## Fleet backups
 

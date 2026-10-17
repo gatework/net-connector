@@ -35,6 +35,26 @@ Net::Connector.vendors.each do |vendor|
   raise "Vendor profile missing" unless Net::Connector.vendor_class(vendor).profile.config_commands.any?
 end
 
+# 从已安装 gem 读取新增平台模板，避免源码目录掩盖资源遗漏。
+platform_parser = Net::Connector::TextFSM.new
+fortinet_rows = platform_parser.call("1 port 'wan1' 5 mac 00:11:22:33:44:55 chassis 00:11:22:33:44:66 port 'Te1/0/1' system 'core'\n",
+                                     vendor: :fortinet, command: "diagnose lldp rx neighbor")
+raise "FortiOS template missing" unless fortinet_rows.one? && fortinet_rows.first.fetch("LOCAL_INTERFACE") == "wan1"
+juniper_rows = platform_parser.call("Local Interface : ge-0/0/0\nPort ID : Ethernet1/1\nSystem name : core\n",
+                                    vendor: :juniper, command: "show lldp neighbors detail | no-more")
+raise "Junos template missing" unless juniper_rows.one? && juniper_rows.first.fetch("NEIGHBOR_NAME") == "core"
+raise "Junos remote backup missing" unless Net::Connector.vendor_class(:juniper).profile.remote_backup_strategy
+
+nxos_rows = platform_parser.call("IP Interface Status for VRF \"management\"(2)\nmgmt0 192.0.2.1 protocol-up/link-up/admin-up\n",
+                                 vendor: :cisco_nxos, command: "show ip interface brief vrf management")
+raise "NX-OS interface template missing" unless nxos_rows.one? && nxos_rows.first.fetch("VRF") == "management"
+nxos_neighbors = platform_parser.call("Device ID:peer\nInterface: Ethernet1/1, Port ID (outgoing port): Ethernet1/2\n",
+                                      vendor: :cisco_nxos, command: "show cdp neighbors detail")
+raise "NX-OS CDP template missing" unless nxos_neighbors.one?
+nxos_interfaces = platform_parser.call("interface Ethernet1/1\n  description uplink\n",
+                                       template: "cisco_nxos/show_running_config.textfsm")
+raise "NX-OS configuration template missing" unless nxos_interfaces.one?
+
 # 使用真正的 PTY 子进程验证采集及打包模板，不访问网络设备。
 class InstalledTransport < Net::Connector::Transports::Pty
   def protocol = :local
@@ -76,7 +96,7 @@ begin
   raise "Installed collection metadata missing" unless result.steps.all? { |step| step.command.output_sensitive? }
   raise "Installed command copy lost privacy" unless result.steps.last.command.with_text("show config").output_sensitive?
 
-  rows = device.parse_config(template: "cisco_ios_running_config_interfaces.textfsm")
+  rows = device.parse_config(template: "cisco/show_running_config.textfsm")
   raise "Installed TextFSM template failed" unless rows.first.fetch("DESCRIPTION") == "package-smoke"
   raise "Installed collection leaked diagnostic output" if session_log.string.include?("package-smoke")
   raise "Installed ordinary command failed" unless device.execute_command("show status").success?
@@ -89,12 +109,12 @@ begin
   raise "Installed backup is not private" unless (File.stat(backup.path).mode & 0o7777) == 0o600
   lock_path = Net::Connector::Storage::BackupLock.lock_path(backup.path)
   raise "Installed path lock is not private" unless (File.stat(lock_path).mode & 0o7777) == 0o600
-  receipt = Net::Connector::Storage::PrivateFile.write(File.join(directory, "receipt.txt"), "fixture")
+  receipt = Net::Connector::Storage::AtomicFile.write(File.join(directory, "receipt.txt"), "fixture")
   raise "Installed directory synchronization failed" unless receipt.durable?
   saved = Net::Connector::Storage::SavedConfig.new(directory: directory)
   raise "Installed safe read failed" unless saved.read("192.0.2.1") == File.binread(backup.path)
   begin
-    Net::Connector::TextFSM.new.call("\xFF".b, template: "cisco_ios_running_config_interfaces.textfsm")
+    Net::Connector::TextFSM.new.call("\xFF".b, template: "cisco/show_running_config.textfsm")
     raise "Installed parser accepted invalid encoding"
   rescue Net::Connector::ParsingError => error
     raise "Installed encoding error changed" unless error.code == :invalid_output_encoding && error.cause.nil?
@@ -149,7 +169,7 @@ end
 
 settings = Net::Connector::Netdisco::Settings.new(env: {}, defaults: { "ND_MAX_DEVICES" => "2" })
 policy = settings.snapshot(mode: :show_config)
-raise "Installed inventory budget missing" unless policy.client_options.fetch(:max_devices) == 2 && policy.frozen?
+raise "Installed inventory budget missing" unless policy.inventory_options.fetch(:max_devices) == 2 && policy.frozen?
 output = StringIO.new
 cli = Net::Connector::Netdisco::CLI.new(argv: ["--show-config", "--max-script-output-bytes", "64"], env: {}, output: output)
 raise "Installed offline settings failed" unless cli.run.zero? && JSON.parse(output.string).fetch("netdisco").fetch("inventory_timeout") == 300
@@ -160,7 +180,7 @@ require "pg"
 database_example = File.join(spec.full_gem_path, "examples/inventory_sql.yml")
 database_settings = Net::Connector::Netdisco::Settings.from_file(database_example, env: {})
 raise "Installed PostgreSQL settings missing" unless database_settings.inventory_source == :postgres
-raise "Installed PostgreSQL query missing" unless database_settings.client_options.fetch(:query).include?("$1")
+raise "Installed PostgreSQL query missing" unless database_settings.inventory_options.fetch(:query).include?("$1")
 raise "Installed PostgreSQL driver unavailable" unless PG.library_version.positive?
 
 # 不连接设备即可检查安装包中的统一报告和成功策略。
@@ -179,24 +199,24 @@ raise "Installed backup options missing" unless options.fetch(:environment).fetc
 raise "Installed inventory refresh option missing" unless options.fetch(:force_refresh)
 
 # 安装后的公共并发、配置编排和清单缓存走真实入口，设备仍使用本地 PTY。
-pool = Net::Connector::ExecutionPool.new(concurrency: 2)
+pool = Net::Connector::Concurrency::Pool.new(concurrency: 2)
 raise "Installed execution pool lost ordering" unless pool.map([2, 1]) { |item| item * 2 } == [4, 2]
 settings = Net::Connector::Netdisco::Settings.new(env: { "NC_CONCURRENCY" => "2", "ND_CACHE_TTL" => "3600" })
 raise "Installed concurrency environment missing" unless settings.snapshot.concurrency == 2
 raise "Installed cache environment missing" unless settings.snapshot.inventory_cache_options.fetch(:ttl) == 3600
 Dir.mktmpdir do |cache_directory|
   calls = 0
-  client = Object.new
-  client.define_singleton_method(:devices) do
+  inventory = Object.new
+  inventory.define_singleton_method(:devices) do
     calls += 1
     [{ "ip" => "192.0.2.1", "vendor" => "Cisco", "os" => "ios" }]
   end
-  cache = Net::Connector::Netdisco::InventoryCache.new(client: client, directory: cache_directory, identity: "installed")
+  cache = Net::Connector::Netdisco::Inventory::Cache.new(inventory: inventory, directory: cache_directory, identity: "installed")
   rows = cache.devices
   raise "Installed inventory cache lost rows" unless rows == cache.devices && calls == 1
   cache.devices(force_refresh: true)
   raise "Installed forced refresh missing" unless calls == 2 && cache.status == :refreshed
-  fleet = Net::Connector::Netdisco::Fleet.new(client: cache, settings: settings,
+  fleet = Net::Connector::Netdisco::Fleet.new(inventory: cache, settings: settings,
     credentials: ->(_) { { username: "audit" } }, connector_factory: lambda { |_, _|
       config = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit", command_timeout: 5)
       Net::Connector.build(:cisco_ios, configuration: config, transport: InstalledTransport.new(config))
@@ -210,8 +230,8 @@ Dir.mktmpdir do |root|
   raise "Installed batch files missing" unless File.basename(directory) == "2026-01-01_08-00-00"
 end
 help = StringIO.new
-raise "Installed batch runner missing" unless Net::Connector::Netdisco::BackupRun.new(argv: ["--help"], output: help).run.zero?
+raise "Installed batch runner missing" unless Net::Connector::Netdisco::CLI::Backup.new(argv: ["--help"], output: help).run.zero?
 raise "Installed verification option missing" unless help.string.include?("verified")
 raise "Installed report writer missing" unless Net::Connector::Netdisco::Report::Files.respond_to?(:write)
-raise "Installed backup connection missing" unless Net::Connector::Netdisco::Connection.respond_to?(:build)
+raise "Installed backup connection missing" unless Net::Connector::Netdisco::CLI::Credentials.respond_to?(:resolve)
 puts "Installed #{spec.full_name}: #{ARGV.fetch(0)}, PTY, vendor profiles, templates and CLI passed"

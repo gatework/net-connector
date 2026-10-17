@@ -134,6 +134,11 @@ module Net
           when /palo\s*alto|paloalto/ then :palo_alto
           when /\bhuawei\b/ then :huawei
           when /\bhillstone\b/ then :hillstone
+          when /\btopsec\b/ then :topsec
+          when /\bfortinet\b|\bfortigate\b/
+            :fortinet if os == "fortios" || label.match?(/\bfortigate\b/) || model.match?(/\A(?:fortigate|fgt)[\s-]*\d/i)
+          when /\bjuniper\b/
+            :juniper if os.match?(/\bjunos\b/)
           end
         end
 

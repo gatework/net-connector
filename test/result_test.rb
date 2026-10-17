@@ -65,7 +65,7 @@ class ResultTest < Minitest::Test
   private
 
   def step(**fields)
-    Connector::CommandResult.new(**{ command: Connector::Command.new("show status"), output: "status",
+    Connector::Command::Result.new(**{ command: Connector::Command.new("show status"), output: "status",
                                     prompt: "router#", duration: 0.01 }.merge(fields))
   end
 end

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../terminal_renderer"
+require_relative "../terminal/renderer"
 require_relative "messages"
 
 module Net
@@ -50,7 +50,7 @@ module Net
         end
 
         def safe_text(text, redactor)
-          rendered = TerminalRenderer.render(redactor.call(text))
+          rendered = Terminal::Renderer.render(redactor.call(text))
           redactor.call(rendered).force_encoding(Encoding::UTF_8).scrub.gsub(/[[:cntrl:]]+/, " ").strip
         end
 

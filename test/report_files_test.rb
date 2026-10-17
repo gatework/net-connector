@@ -35,14 +35,14 @@ class ReportFilesTest < Minitest::Test
   def test_json_failure_is_reflected_in_final_text_and_returned_report
     original, plan = fixture
     assert original.policy_success?
-    writer = Net::Connector::Storage::PrivateFile.method(:write)
+    writer = Net::Connector::Storage::AtomicFile.method(:write)
     Dir.mktmpdir do |directory|
       failure = lambda do |path, contents|
         raise IOError, "private failure details" if File.basename(path) == "summary.json"
 
         writer.call(path, contents)
       end
-      Net::Connector::Storage::PrivateFile.stub(:write, failure) do
+      Net::Connector::Storage::AtomicFile.stub(:write, failure) do
         result = N::Report::Files.write(original, directory: directory, plan: plan, concurrency: 1)
         refute result.policy_success?
         assert_equal "IOError", result.report_error
@@ -73,7 +73,7 @@ class ReportFilesTest < Minitest::Test
 
   def test_fallback_json_retains_its_committed_location_when_directory_sync_fails
     original, plan = fixture
-    writer = Net::Connector::Storage::PrivateFile.method(:write)
+    writer = Net::Connector::Storage::AtomicFile.method(:write)
     Dir.mktmpdir do |root|
       Dir.chdir(root) do
         Dir.mkdir("batch")
@@ -81,12 +81,12 @@ class ReportFilesTest < Minitest::Test
           destination = File.join(directory, "summary.json")
           failure = lambda do |path, contents|
             receipt = writer.call(path, contents)
-            raise Net::Connector::Storage::PrivateFile::PersistenceError.new(
+            raise Net::Connector::Storage::AtomicFile::PersistenceError.new(
               receipt: receipt.with(state: :committed, phase: :directory_sync), underlying_type: "Errno::EIO"
             )
           end
           N::Report::Text.stub(:write, ->(**) { raise IOError, "text unavailable" }) do
-            Net::Connector::Storage::PrivateFile.stub(:write, failure) do
+            Net::Connector::Storage::AtomicFile.stub(:write, failure) do
               result = N::Report::Files.write(original, directory: directory, plan: plan, concurrency: 1)
               assert_equal destination, result.report_location
               assert_equal "IOError", result.report_error
@@ -113,7 +113,7 @@ class ReportFilesTest < Minitest::Test
         assert_equal "IOError", document.fetch("report_error")
         assert_equal 1, document.fetch("callback_errors").size
       end
-      Net::Connector::Storage::PrivateFile.stub(:write, ->(*) { raise Errno::ENOSPC }) do
+      Net::Connector::Storage::AtomicFile.stub(:write, ->(*) { raise Errno::ENOSPC }) do
         result = N::Report::Files.write(updated, directory: directory, plan: plan, concurrency: 1)
         assert_equal original.report_location, result.report_location
         assert_equal "IOError", result.report_error

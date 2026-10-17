@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "command"
+require_relative "script"
 require_relative "result"
 
 module Net
@@ -38,7 +38,7 @@ module Net
             started = Expect.monotonic
             step = nil
             response = execute_command(command) do |received|
-              step = CommandResult.new(command: command, output: received.output, prompt: received.prompt,
+              step = Command::Result.new(command: command, output: received.output, prompt: received.prompt,
                                        duration: Expect.monotonic - started)
               steps << step
             end

@@ -168,10 +168,10 @@ class TftpBoundaryTest < Minitest::Test
   def test_fleet_retains_confirmed_upload_when_event_logging_fails
     device = build(:hillstone, "fw#", "Export ok,target file name hillstone-192.0.2.1.dat\nfw#")
     device.define_singleton_method(:log_event) { |*_, **_options| raise IOError, "fixture event failure" }
-    client = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "Hillstone" }])
-    fleet = Net::Connector::Netdisco::Fleet.new(client: client, settings: Net::Connector::Netdisco::Settings.new(env: {}),
+    inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "Hillstone" }])
+    fleet = Net::Connector::Netdisco::Fleet.new(inventory: inventory, settings: Net::Connector::Netdisco::Settings.new(env: {}),
                                                credentials: ->(*) { { username: "audit" } },
-                                               connector_factory: ->(*) { device }, result_store: nil)
+                                               connector_factory: ->(*) { device }, report_store: nil)
     Dir.mktmpdir do |directory|
       batch = fleet.tftp_backup_all(server: "192.0.2.10", report_directory: directory)
       refute batch.success?
@@ -323,14 +323,14 @@ class TftpBoundaryTest < Minitest::Test
     errors = [Class.new(StandardError) { attr_accessor :receipt }.new("third party"),
               Class.new(Net::Connector::TftpCompletionError).new(receipt: receipt)]
     errors.first.receipt = receipt
-    client = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "Hillstone" }])
+    inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "Hillstone" }])
     errors.each do |error|
       connector = Object.new
       connector.define_singleton_method(:tftp_backup) { |**| raise error }
       connector.define_singleton_method(:close) {}
-      fleet = Net::Connector::Netdisco::Fleet.new(client: client, settings: Net::Connector::Netdisco::Settings.new(env: {}),
+      fleet = Net::Connector::Netdisco::Fleet.new(inventory: inventory, settings: Net::Connector::Netdisco::Settings.new(env: {}),
                                                  credentials: ->(*) { { username: "audit" } },
-                                                 connector_factory: ->(*) { connector }, result_store: nil)
+                                                 connector_factory: ->(*) { connector }, report_store: nil)
       Dir.mktmpdir do |directory|
         outcome = fleet.tftp_backup_all(server: "192.0.2.10", report_directory: directory).outcomes.first
         assert_equal :failed, outcome.status

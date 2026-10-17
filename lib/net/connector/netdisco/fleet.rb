@@ -2,17 +2,18 @@
 
 require "fileutils"
 require_relative "../storage"
-require_relative "../device_session"
-require_relative "client"
+require_relative "../device/scope"
+require_relative "inventory"
 require_relative "settings"
 require_relative "device"
+require_relative "device/access"
 require_relative "worker"
 require_relative "operations"
-require_relative "result_store"
+require_relative "report/store"
 require_relative "planner"
 require_relative "report"
-require_relative "tftp_verification"
-require_relative "tftp_archive"
+require_relative "tftp/verifier"
+require_relative "tftp/archive"
 
 module Net
   module Connector
@@ -24,17 +25,17 @@ module Net
         DEFAULT_SETTING = Object.new.freeze
         private_constant :DEFAULT_SETTING
 
-        # 组装清单客户端、规则、凭据与结果存储。
-        def initialize(client: nil, settings: Settings.new, rules: nil, credentials: nil, connector_factory: nil,
-                       result_store: ResultStore::Json.new)
+        # 组装清单来源、规则、凭据与结果存储。
+        def initialize(inventory: nil, settings: Settings.new, rules: nil, credentials: nil, connector_factory: nil,
+                       report_store: Report::Store::Json.new)
           @settings = settings
-          @client = client
+          @inventory = inventory
           @rules = rules
           @credentials = credentials
-          @connector_factory = connector_factory || ->(device, connection_settings) { device.build_connector(**connection_settings) }
-          @result_store = result_store
+          @connector_factory = connector_factory || ->(device, access_options) { device.build_connector(**access_options) }
+          @report_store = report_store
           raise ArgumentError, "credentials must respond to call" if @credentials && !@credentials.respond_to?(:call)
-          raise ArgumentError, "result_store must respond to write" if result_store && !result_store.respond_to?(:write)
+          raise ArgumentError, "report_store must respond to write" if report_store && !report_store.respond_to?(:write)
         end
 
         # 拉取并标记重复管理地址的设备清单。
@@ -90,7 +91,7 @@ module Net
                             preserve_history: false)
           Report.validate_policy!(success_policy)
           raise ArgumentError, "verified policy requires a local TFTP directory" if success_policy == :verified && !verification_root
-          verification = TftpVerification.new(root: verification_root)
+          verification = Tftp::Verifier.new(root: verification_root)
           settings_snapshot = @settings.snapshot(mode: :tftp)
           concurrency = settings_snapshot.concurrency if concurrency.equal?(DEFAULT_SETTING)
           report_directory = settings_snapshot.backup_directory if report_directory.equal?(DEFAULT_SETTING)
@@ -110,7 +111,7 @@ module Net
           if plan.allow_fixed_name_reuse && (!preserve_history || !verification_root)
             raise ArgumentError, "fixed-name TFTP uploads require local history archival"
           end
-          archive = TftpArchive.new(directory: report_directory, root: verification_root) if preserve_history
+          archive = Tftp::Archive.new(directory: report_directory, root: verification_root) if preserve_history
           run_batch(:tftp, plan, concurrency: concurrency, report_directory: report_directory,
                     settings_snapshot: settings_snapshot, success_policy: success_policy, on_start: on_start, on_result: on_result) do |device, log_directory|
             if archive
@@ -152,20 +153,20 @@ module Net
                          connector_factory: @connector_factory)
         end
 
-        # 策略在清单请求之前固定；注入的清单客户端仍由调用方负责其自身生命周期。
+        # 策略在清单请求之前固定；注入的清单来源仍由调用方负责其自身生命周期。
         def inventory(settings_snapshot, force_refresh: false)
           @inventory_status = nil
           raise ArgumentError, "force_refresh must be true or false" unless [true, false].include?(force_refresh)
 
-          client = @client || @settings.client(policy: settings_snapshot)
-          rows = client.is_a?(InventoryCache) ? client.devices(force_refresh: force_refresh) : client.devices
-          @inventory_status = if client.is_a?(InventoryCache)
-                                { source: client.status, fetched_at: client.fetched_at,
-                                  refresh_error_code: client.refresh_error_code, write_error_type: client.write_error_type }.freeze
+          inventory = @inventory || @settings.inventory(policy: settings_snapshot)
+          rows = inventory.is_a?(Inventory::Cache) ? inventory.devices(force_refresh: force_refresh) : inventory.devices
+          @inventory_status = if inventory.is_a?(Inventory::Cache)
+                                { source: inventory.status, fetched_at: inventory.fetched_at,
+                                  refresh_error_code: inventory.refresh_error_code, write_error_type: inventory.write_error_type }.freeze
                               else
                                 { source: :uncached }.freeze
                               end
-          raise Client::Error, "Netdisco returned an invalid device inventory" unless rows.is_a?(Array)
+          raise Inventory::Error, "Netdisco returned an invalid device inventory" unless rows.is_a?(Array)
 
           rules = @rules || settings_snapshot.rules
           devices = rows.map { |row| Device.from_row(row, rules: rules) }
@@ -208,12 +209,12 @@ module Net
 
         # 保存批量报告，记录写入失败而不覆盖设备结果。
         def save_report(report, directory:)
-          return report unless @result_store
+          return report unless @report_store
 
-          report.with(report_location: @result_store.write(report, directory: directory))
-        rescue Storage::PrivateFile::WriteError => error
+          report.with(report_location: @report_store.write(report, directory: directory))
+        rescue Storage::AtomicFile::WriteError => error
           # 报告也可能已经原子替换；保留已知位置，不将持久性失败误写成完全没有产物。
-          location = error.receipt.path if Storage::PrivateFile.receipt_error?(error) && error.receipt.committed?
+          location = error.receipt.path if Storage::AtomicFile.receipt_error?(error) && error.receipt.committed?
           report.with_report_error(error, location: location)
         rescue StandardError => error
           report.with_report_error(error)
@@ -249,7 +250,7 @@ module Net
           outcome = nil
           destination = File.join(directory, device.backup_filename(style: filename_style))
           Storage::BackupLock.synchronize(destination, host: device.host) do |path_lock|
-            Storage::SafeFile.open(destination, missing: true) { |_file, _stat| nil }
+            Storage::FileReader.open(destination, missing: true) { |_file, _stat| nil }
             outcome = run_device(device, log_directory, settings_snapshot, success_status: :backed_up,
                                  partial_status: :saved_with_error, backup_class: Backup) do |connector|
               path_lock.with_delegated_lock { connector.backup(path: destination) }
@@ -264,20 +265,10 @@ module Net
 
         # 隔离单台设备的凭据、连接、操作和关闭异常。
         def run_device(device, log_directory, settings_snapshot, success_status:, partial_status:, backup_class:, &operation)
-          connection_settings = @credentials ? @credentials.call(device) : @settings.device_credentials_for(device)
-          return build_outcome(device, :missing_credentials) if connection_settings.nil?
-          unless connection_settings.is_a?(Hash) && connection_settings.keys.all?(Symbol) &&
-                 connection_settings[:username].is_a?(String) && !connection_settings[:username].empty? &&
-                 !connection_settings.key?(:host)
-            raise ArgumentError, "credential resolver must return settings with username and without host"
-          end
-
-          connection_settings = settings_snapshot.connection_options(device.vendor).merge(connection_settings)
-          log_name = device.host.tr(":", "_")
-          if log_directory
-            connection_settings = connection_settings.merge(log_file: File.join(log_directory, "#{log_name}.log"))
-          end
-          backup, failure = perform_one(backup_class, factory: -> { @connector_factory.call(device, connection_settings) }) do |connector|
+          access_options = Device::Access.resolve(device, settings: @settings, credentials: @credentials,
+                                               policy: settings_snapshot, log_directory: log_directory)
+          return build_outcome(device, :missing_credentials) if access_options.nil?
+          backup, failure = perform_one(backup_class, factory: -> { @connector_factory.call(device, access_options) }) do |connector|
             operation.call(connector)
           end
           return build_outcome(device, success_status, backup: backup) unless failure
@@ -289,7 +280,7 @@ module Net
 
         # 仅信任库定义且产物类型匹配的提交后错误；普通第三方异常上的 backup 字段不代表完成。
         def perform_one(backup_class, factory:)
-          backup, failure = DeviceSession.call(factory: factory) do |session|
+          backup, failure = Net::Connector::Device::Scope.call(factory: factory) do |session|
             result = yield session
             raise TypeError, "backup operation did not return #{backup_class}" unless result.is_a?(backup_class)
 

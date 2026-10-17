@@ -2,8 +2,8 @@
 
 require "fileutils"
 require "ipaddr"
-require_relative "private_file"
-require_relative "safe_file"
+require_relative "atomic_file"
+require_relative "file_reader"
 
 module Net
   module Connector
@@ -33,7 +33,7 @@ module Net
 
         # 比较基线也从经过 fstat 的同一 FD 读取，不在 find 后重新按路径打开。
         def fingerprint(host, required: true)
-          with_file(host, required: required) { |path, file, stat| SafeFile.fingerprint_io(path, file, stat) }
+          with_file(host, required: required) { |path, file, stat| FileReader.fingerprint_io(path, file, stat) }
         end
 
         def read(host)
@@ -42,7 +42,7 @@ module Net
 
         def with_file(host, required: true)
           path = File.join(@directory, self.class.filename(host))
-          SafeFile.open(path, missing: !required) { |file, stat| yield path, file, stat }
+          FileReader.open(path, missing: !required) { |file, stat| yield path, file, stat }
         end
 
         private :with_file
@@ -56,7 +56,7 @@ module Net
             destination = File.expand_path(output)
             directory = File.dirname(destination)
             FileUtils.mkdir_p(directory, mode: 0o700)
-            PrivateFile.write(destination, contents).path
+            AtomicFile.write(destination, contents).path
           else
             io.binmode if io.respond_to?(:binmode)
             io.write(contents)

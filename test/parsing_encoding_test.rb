@@ -8,7 +8,7 @@ require_relative "../lib/net/connector/storage/saved_config"
 require_relative "support/fake_transport"
 
 class ParsingEncodingTest < Minitest::Test
-  TEMPLATE = "cisco_ios_running_config_interfaces.textfsm"
+  TEMPLATE = "cisco/show_running_config.textfsm"
 
   def setup
     @parser = Net::Connector::TextFSM.new
@@ -16,13 +16,13 @@ class ParsingEncodingTest < Minitest::Test
 
   def test_terminal_text_boundary_keeps_original_bytes_and_control_sequence_evidence
     bytes = "invalid looking\r\e[2K名称\n".b.freeze
-    decoded = Net::Connector::TerminalText.utf8(bytes)
+    decoded = Net::Connector::Terminal::Text.utf8(bytes)
     assert_equal Encoding::UTF_8, decoded.encoding
     assert_equal bytes, decoded.b
     assert_equal Encoding::BINARY, bytes.encoding
     refute_same bytes, decoded
-    assert_equal "名称\n", Net::Connector::TerminalText.render(bytes)
-    assert_raises(ArgumentError) { Net::Connector::TerminalText.utf8(nil) }
+    assert_equal "名称\n", Net::Connector::Terminal::Text.render(bytes)
+    assert_raises(ArgumentError) { Net::Connector::Terminal::Text.utf8(nil) }
   end
 
   def test_valid_utf8_bytes_and_terminal_controls_parse_without_changing_the_input
@@ -50,7 +50,7 @@ class ParsingEncodingTest < Minitest::Test
     error = assert_raises(Net::Connector::ParsingError) { @parser.call(text, template: TEMPLATE) }
     assert_encoding_error(error, "名")
     # 日志仍可显示非法字节；严格模式只用于解析副本。
-    assert_includes Net::Connector::TerminalRenderer.render(text), "\\xE5\\x90X"
+    assert_includes Net::Connector::Terminal::Renderer.render(text), "\\xE5\\x90X"
   end
 
   def test_non_utf8_saved_bytes_remain_exportable_but_are_not_silently_transcoded

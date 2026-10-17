@@ -3,7 +3,7 @@
 require "ipaddr"
 require_relative "../../connector"
 require_relative "../storage/saved_config"
-require_relative "client"
+require_relative "inventory"
 
 module Net
   module Connector
@@ -23,8 +23,8 @@ module Net
         # 将 Netdisco 清单记录转换为可规划的设备对象。
         def self.from_row(row, rules:)
           valid = row.is_a?(Hash) && row["ip"].is_a?(String) && !row["ip"].empty? &&
-                  Client::FIELDS.drop(1).all? { |field| row[field].nil? || row[field].is_a?(String) }
-          raise Client::Error, "Netdisco returned an invalid device inventory" unless valid
+                  Inventory::FIELDS.drop(1).all? { |field| row[field].nil? || row[field].is_a?(String) }
+          raise Inventory::Error, "Netdisco returned an invalid device inventory" unless valid
 
           source_ip = row.fetch("ip")
           host = nil

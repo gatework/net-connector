@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 require "io/console"
-require_relative "../engine/error_metadata"
+require_relative "../engine/error/metadata"
 require_relative "../engine/log/event"
-require_relative "../background_task"
+require_relative "../concurrency/observer"
 
 module Net
   module Connector
@@ -149,7 +149,7 @@ module Net
             @mutex.synchronize { record_output_error(error) }
           end
           stop = -> { lock.synchronize { stopped = true; signal.broadcast } }
-          BackgroundTask.run(task: task, stop: stop, &)
+          Concurrency::Observer.run(task: task, stop: stop, &)
         rescue Exception => error # rubocop:disable Lint/RescueException -- 后台已回收，最后清屏也不能覆盖原业务故障或取消。
           primary_failure = error
           raise
@@ -282,7 +282,7 @@ module Net
         end
 
         def record_output_error(error)
-          @output_error = { host: nil, error_type: ErrorMetadata.type(error.class.name) || "StandardError" }.freeze
+          @output_error = { host: nil, error_type: Error::Metadata.type(error.class.name) || "StandardError" }.freeze
           @enabled = false
         end
       end

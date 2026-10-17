@@ -1,34 +1,10 @@
 # frozen_string_literal: true
 
 require_relative "errors"
-require_relative "command"
+require_relative "command/result"
 
 module Net
   module Connector
-    # 一条已完成命令的结果；后续命令失败时仍保留已完成步骤。
-    class CommandResult
-      attr_reader :command, :output, :prompt, :duration
-
-      # 保存命令输出、提示符和耗时，并冻结结果。
-      def initialize(command:, output:, prompt:, duration:)
-        raise ArgumentError, "command must be a Command" unless command.is_a?(Command)
-        raise ArgumentError, "output must be a String" unless output.is_a?(String)
-        raise ArgumentError, "prompt must be a String or nil" unless prompt.nil? || prompt.is_a?(String)
-        unless duration.is_a?(Numeric) && duration.real? && duration.finite? && duration >= 0
-          raise ArgumentError, "duration must be a finite nonnegative real number"
-        end
-
-        @command = command
-        @output = output.frozen? ? output : output.dup.freeze
-        @prompt = prompt&.dup&.freeze
-        @duration = duration
-        freeze
-      end
-
-      # 返回输出字节数和耗时摘要。
-      def inspect = "#<#{self.class} bytes=#{output.bytesize} duration=#{duration.round(6)}>"
-    end
-
     # 不可变执行结果；构造结果不会复制已经累计的命令输出前缀。
     class Result
       include Enumerable
@@ -38,8 +14,8 @@ module Net
       # 校验步骤、错误和配置文本，并冻结结果容器。
       def initialize(steps: [], error: nil, config: nil)
         raise ArgumentError, "error must be a Connector::Error or nil" unless error.nil? || error.is_a?(Error)
-        unless steps.is_a?(Array) && steps.all?(CommandResult)
-          raise ArgumentError, "steps must be an Array of CommandResult objects"
+        unless steps.is_a?(Array) && steps.all?(Command::Result)
+          raise ArgumentError, "steps must be an Array of Command::Result objects"
         end
         raise ArgumentError, "config must be a String or nil" unless config.nil? || config.is_a?(String)
 

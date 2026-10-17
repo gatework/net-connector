@@ -2,20 +2,20 @@
 
 require_relative "../device/base"
 require_relative "radware/running_config"
-require_relative "radware/tftp_backup"
+require_relative "radware/tftp"
 require_relative "radware/topology"
 
 module Net
   module Connector
-    module Radware
+    module Vendor
       # Radware Alteon 和 DefensePro 命令行配置采集连接器。
-      class Connector < Net::Connector::Base
+      class Radware < Net::Connector::Base
         vendor :radware
         # 声明菜单式 CLI 的命令、提示、超时、诊断和确认规则。
         profile do
-          running_config_strategy Net::Connector::Radware::RunningConfig
-          tftp_strategy Net::Connector::Radware::TftpBackup
-          topology_strategy Net::Connector::Radware::Topology
+          running_config_strategy RunningConfig
+          tftp_strategy Tftp
+          topology_strategy Topology
           commands do
             running_config "/cfg/dump"
             save_config "/cfg/save"

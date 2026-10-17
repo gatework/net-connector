@@ -6,8 +6,8 @@ module Net
     module Storage
       autoload :BatchDirectory, File.expand_path("storage/batch_directory", __dir__)
       autoload :BackupLock, File.expand_path("storage/backup_lock", __dir__)
-      autoload :PrivateFile, File.expand_path("storage/private_file", __dir__)
-      autoload :SafeFile, File.expand_path("storage/safe_file", __dir__)
+      autoload :AtomicFile, File.expand_path("storage/atomic_file", __dir__)
+      autoload :FileReader, File.expand_path("storage/file_reader", __dir__)
       autoload :SavedConfig, File.expand_path("storage/saved_config", __dir__)
     end
 

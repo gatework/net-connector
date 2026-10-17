@@ -1,73 +1,76 @@
 # frozen_string_literal: true
 
+require_relative "../../device/base"
 require_relative "../../device/topology/strategy"
 
 module Net
   module Connector
-    module PaloAlto
-      # 仅开放 LLDP 和描述读取；未验证候选隔离协议前不开放自动提交。
-      class Topology < Topology::Strategy
-        # 候选配置缺少经固件实验确认的所有权/commit 协议，暂只提供读取能力。
-        def self.supports?(capability)
-          %i[neighbors interface_descriptions].include?(capability)
-        end
+    module Vendor
+      class PaloAlto < Net::Connector::Base
+        # 仅开放 LLDP 和描述读取；未验证候选隔离协议前不开放自动提交。
+        class Topology < Net::Connector::Topology::Strategy
+          # 候选配置缺少经固件实验确认的所有权/commit 协议，暂只提供读取能力。
+          def self.supports?(capability)
+            %i[neighbors interface_descriptions].include?(capability)
+          end
 
-        # 关闭自动修改时返回固定领域错误，调用方不能把未实现能力当作成功。
-        def change_error_code = :candidate_isolation_unavailable
+          # 关闭自动修改时返回固定领域错误，调用方不能把未实现能力当作成功。
+          def change_error_code = :candidate_isolation_unavailable
 
-        # 读取各本机接口的 LLDP 邻居详情。
-        def neighbor_command = "show lldp neighbors all"
+          # 读取各本机接口的 LLDP 邻居详情。
+          def neighbor_command = "show lldp neighbors all"
 
-        # 从 set 格式配置解析接口备注。
-        def description_template = "palo_alto_interface_descriptions.textfsm"
+          # 从 set 格式配置解析接口备注。
+          def description_template = "palo_alto/show.textfsm"
 
-        # 进入候选配置视图。
-        def enter_configuration_command = "configure"
+          # 进入候选配置视图。
+          def enter_configuration_command = "configure"
 
-        # 只计入非空邻居块，跳过没有对端的本机接口。
-        def expected_neighbor_count(output, _template)
-          neighbor_blocks(output).count { |block| !empty_neighbor_block?(block) }
-        end
+          # 只计入非空邻居块，跳过没有对端的本机接口。
+          def expected_neighbor_count(output, _template)
+            neighbor_blocks(output).count { |block| !empty_neighbor_block?(block) }
+          end
 
-        # 输出必须明确说明无邻居，或每个本机接口块都明确为空。
-        def empty_neighbor_output?(output)
-          return true if output.match?(/No LLDP neighbors/i)
+          # 输出必须明确说明无邻居，或每个本机接口块都明确为空。
+          def empty_neighbor_output?(output)
+            return true if output.match?(/No LLDP neighbors/i)
 
-          blocks = neighbor_blocks(output)
-          !blocks.empty? && blocks.all? { |block| empty_neighbor_block?(block) }
-        end
+            blocks = neighbor_blocks(output)
+            !blocks.empty? && blocks.all? { |block| empty_neighbor_block?(block) }
+          end
 
-        # 模板按行读取；未闭合的引号表示证据不完整，不能把首行当成旧描述。
-        def decode_description(value)
-          value = value.strip
-          value.start_with?('"') ? Shellwords.split(value).join(" ") : value
-        rescue ArgumentError
-          raise ParsingError.new("PAN-OS interface comment is not a complete single-line value",
-                                 code: :unrecognized_output, host: @device.host, phase: :parse)
-        end
+          # 模板按行读取；未闭合的引号表示证据不完整，不能把首行当成旧描述。
+          def decode_description(value)
+            value = value.strip
+            value.start_with?('"') ? Shellwords.split(value).join(" ") : value
+          rescue ArgumentError
+            raise ParsingError.new("PAN-OS interface comment is not a complete single-line value",
+                                   code: :unrecognized_output, host: @device.host, phase: :parse)
+          end
 
-        # 用 PAN-OS set 语法生成接口备注变更。
-        def change_commands(change)
-          [%Q(set network interface ethernet #{change.interface} comment "#{change.new_description}")]
-        end
+          # 用 PAN-OS set 语法生成接口备注变更。
+          def change_commands(change)
+            [%Q(set network interface ethernet #{change.interface} comment "#{change.new_description}")]
+          end
 
-        # commit 可能耗时较长，单独放宽该命令的超时。
-        def script_command(command)
-          command == "commit" ? Command.new(command, timeout: 300) : command
-        end
+          # commit 可能耗时较长，单独放宽该命令的超时。
+          def script_command(command)
+            command == "commit" ? Command.new(command, timeout: 300) : command
+          end
 
-        private
+          private
 
-        # PAN-OS 会列出启用 LLDP、但没有邻居的本机接口；只有明确为空的
-        # Neighbor information 块可跳过，缺字段的非空块继续交给数量校验拒绝。
-        def neighbor_blocks(output)
-          output.split(/^\s*Local information:\s*$/i).select { |block| block.match?(/^\s*Local interface:\s*\S+/i) }
-        end
+          # PAN-OS 会列出启用 LLDP、但没有邻居的本机接口；只有明确为空的
+          # Neighbor information 块可跳过，缺字段的非空块继续交给数量校验拒绝。
+          def neighbor_blocks(output)
+            output.split(/^\s*Local information:\s*$/i).select { |block| block.match?(/^\s*Local interface:\s*\S+/i) }
+          end
 
-        # 邻居字段区只有空行和提示符时，才视为明确的空块。
-        def empty_neighbor_block?(block)
-          tail = block.split(/^\s*Neighbor information:\s*$/i, 2)
-          tail.size == 2 && tail.last.lines("\n").all? { |line| line.strip.empty? || line.match?(/^\S+[>#]\s*$/) }
+          # 邻居字段区只有空行和提示符时，才视为明确的空块。
+          def empty_neighbor_block?(block)
+            tail = block.split(/^\s*Neighbor information:\s*$/i, 2)
+            tail.size == 2 && tail.last.lines("\n").all? { |line| line.strip.empty? || line.match?(/^\S+[>#]\s*$/) }
+          end
         end
       end
     end

@@ -16,8 +16,13 @@ Use these vendor keys with `Net::Connector.open` or `Net::Connector.build`:
 | `:hillstone` | Hillstone StoneOS | `show configuration running` | `save all` |
 | `:radware` | Radware Alteon | `/cfg/dump` | `/cfg/save` |
 | `:palo_alto` | Palo Alto PAN-OS | Set-format export from configuration view | Unsupported |
+| `:topsec` | Topsec TopOS firewall | `show-running nostop` | Unsupported |
+| `:fortinet` | FortiGate / FortiOS | `show full-configuration` | `execute cfg save` |
+| `:juniper` | Juniper Junos OS | `show configuration \| display set \| no-more` | No implicit candidate commit |
 
 `device.supports?(:tftp_backup)` checks implemented capabilities without connecting. It does not establish firmware compatibility or account permissions. See the [capability matrix](architecture.md#厂商能力) (Chinese).
+
+See [platform details and native Junos FTP/SCP backups](vendors.md). Junos supports `remote_backup(host:, path:, username:, protocol: :scp, password: nil)`; use `supports?(:remote_backup)` to check this separately from TFTP.
 
 ## Sessions and local backups
 
@@ -62,7 +67,7 @@ Explicit failure raises `:transfer_failed`; missing completion evidence raises `
 
 ```ruby
 interfaces = device.parse_command("show ip interface brief") # Cisco IOS
-rows = device.parse_config(template: "cisco_ios_running_config_interfaces.textfsm")
+rows = device.parse_config(template: "cisco/show_running_config.textfsm")
 
 saved = Net::Connector::Storage::SavedConfig.new(directory: "/var/backups/network")
 rows = saved.parse(host: "192.0.2.10", template: "/path/to/template.textfsm")

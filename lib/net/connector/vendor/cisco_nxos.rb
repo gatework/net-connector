@@ -1,23 +1,20 @@
 # frozen_string_literal: true
 
-require_relative "../device/base"
-require_relative "cisco_nxos/running_config"
-require_relative "cisco_nxos/tftp_backup"
-require_relative "cisco_ios/topology"
+require_relative "cisco"
+require_relative "cisco_nxos/tftp"
+require_relative "cisco_nxos/topology"
 
 module Net
   module Connector
-    module CiscoNxos
+    module Vendor
       # Cisco Nexus 9000 和 NX-OS 配置采集连接器。
-      class Connector < Net::Connector::Base
+      class CiscoNxos < Cisco
         vendor :cisco_nxos
         # 声明 NX-OS 的命令、提示、分页、诊断和保存确认规则。
         profile do
-          running_config_strategy Net::Connector::CiscoNxos::RunningConfig
-          tftp_strategy Net::Connector::CiscoNxos::TftpBackup
-          topology_strategy Net::Connector::CiscoIos::Topology
+          tftp_strategy Tftp
+          topology_strategy Topology
           commands do
-            running_config "terminal length 0", "show running-config"
             save_config "copy run start"
           end
 
@@ -40,13 +37,6 @@ module Net
               /^[ \t]*%?[ \t]*Invalid\s+parameter\s+detected\b/i,
               /^[ \t]*syntax\s+error\b/i
             )
-          end
-
-          command_timeout 60
-
-          interactions do
-            confirm(/Destination\s+filename\s+\[[^\]]+\]\?\s*\z/i, response: "\n")
-            confirm(%r{Do\s+you\s+want\s+to\s+overwrite\?\s*\[yes/no\]\s*\z}i, response: "yes\n")
           end
         end
       end

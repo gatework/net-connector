@@ -96,7 +96,7 @@ module Net
                                          code: :neighbor_discovery_unsupported, host: @device.host, phase: :discover)
         end
 
-        output = TerminalText.utf8(@device.execute_command(command).value!, host: @device.host)
+        output = Terminal::Text.utf8(@device.execute_command(command).value!, host: @device.host)
         template = @strategy.neighbor_template(output)
         rows = @parser.call(output, template: template, vendor: @device.vendor, command: command, host: @device.host)
         if rows.size != @strategy.expected_neighbor_count(output, template) || (rows.empty? && !@strategy.empty_neighbor_output?(output))

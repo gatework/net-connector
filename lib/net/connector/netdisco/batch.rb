@@ -9,7 +9,7 @@ module Net
       # 单台设备的最终结果，保留状态、配置产物和错误类型。
       Outcome = Data.define(:device, :status, :backup, :error_code, :error_type,
                             :started_at, :finished_at, :duration_ms, :diagnostic) do
-        # 创建结果，允许计划阶段尚无执行时间。
+        # 创建结果，允许计划阶段尚无执行时间；审计时间由结果拥有，不能被通知回调原地更改。
         def initialize(device:, status:, backup:, error_code:, error_type:, started_at: nil, finished_at: nil,
                        duration_ms: nil, diagnostic: nil)
           unless duration_ms.nil? || (duration_ms.is_a?(Numeric) && duration_ms.real? && duration_ms.finite? && duration_ms >= 0)
@@ -17,8 +17,10 @@ module Net
           end
           raise ArgumentError, "diagnostic must be a Diagnostic" unless diagnostic.nil? || diagnostic.instance_of?(Diagnostic)
 
-          super(device: device, status: status, backup: backup, error_code: error_code, error_type: error_type,
-                started_at: started_at, finished_at: finished_at, duration_ms: duration_ms, diagnostic: diagnostic)
+          super(device: device, status: status, backup: backup, error_code: error_code,
+                error_type: error_type.is_a?(String) ? error_type.dup.freeze : error_type,
+                started_at: started_at&.dup&.freeze, finished_at: finished_at&.dup&.freeze,
+                duration_ms: duration_ms, diagnostic: diagnostic)
         end
 
         # 修改诊断或时刻时释放不再匹配的派生元数据。

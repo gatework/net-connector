@@ -22,21 +22,19 @@ module Net
           { configuration_kind: :saved_file, source_file: source_file, format: :unknown }
         end
 
-        # 仅在调用方指定目标名时追加参数，保留设备原生命名行为。
-        def script(target, source_file:, vrf: nil)
-          validate_options!(target, source_file: source_file, vrf: vrf)
-          TftpTarget.validate_source_file!(source_file)
-
-          destination = target.explicit_path? ? " #{target.path}" : ""
-          Script.new([Command.new("tftp #{target.host} put #{source_file}#{destination}", timeout: 180)])
-        end
-
         # 只接受明确的成功消息、非零传输字节数或完整进度行。
         def device_reported_complete?(result)
           completion_lines(result).any? { |line| completed_upload?(line) }
         end
 
         private
+
+        # 文件上传共用原生命令；源文件发现和预检仍由具体平台负责。
+        def transfer_command(target, source_file:, **)
+          TftpTarget.validate_source_file!(source_file)
+          destination = target.explicit_path? ? " #{target.path}" : ""
+          "tftp #{target.host} put #{source_file}#{destination}"
+        end
 
         # 两个厂商的上传完成消息使用相同的文本及进度格式。
         def completed_upload?(line)

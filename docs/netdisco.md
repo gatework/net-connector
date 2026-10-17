@@ -59,7 +59,7 @@ Expired inventory refreshes automatically. A remote inventory failure falls back
 
 An empty or malformed cache file is a cache miss and triggers a remote query. It cannot supply fallback history if that query fails.
 
-Use `net-backup --refresh-inventory`, `fleet.devices(force_refresh: true)`, or `fleet.plan_backup(force_refresh: true)` to bypass freshness. TFTP planning accepts the same keyword. A forced refresh also falls back to valid history if the remote request fails. `cache_enabled: false` disables caching. Injected clients stay uncached unless explicitly wrapped in `Netdisco::InventoryCache`; shared wrapper status describes the latest call, so synchronize concurrent access to the same instance. Cache locks bound waiting and coalesce ordinary expired-cache refreshes across processes; independently requested forced refreshes still query the source.
+Use `net-backup --refresh-inventory`, `fleet.devices(force_refresh: true)`, or `fleet.plan_backup(force_refresh: true)` to bypass freshness. TFTP planning accepts the same keyword. A forced refresh also falls back to valid history if the remote request fails. `cache_enabled: false` disables caching. Injected inventory sources stay uncached unless explicitly wrapped in `Netdisco::Inventory::Cache`; shared wrapper status describes the latest call, so synchronize concurrent access to the same instance. Cache locks bound waiting and coalesce ordinary expired-cache refreshes across processes; independently requested forced refreshes still query the source.
 
 ## CLI planning and execution
 
@@ -73,6 +73,10 @@ net-backup --config config.yml --export 192.0.2.7 --output ./exports/device.cfg
 ```
 
 The installed command is `net-backup`; source checkouts use `bundle exec bin/net-backup`. `--show-config` validates public settings without querying inventory. `--plan` queries and validates inventory without connecting devices. `--host` selects one address and fails if absent. Local CLI backups select all ready devices by default; TFTP selects at most five per vendor unless `--all` is given. `--limit-per-vendor` accepts 1 through 5.
+
+Here `vendor` is the connector platform key, such as `cisco_ios` or `cisco_nxos`, rather than the manufacturer. Filtering and sampling use that key: a limit of five can select five IOS devices and five NX-OS devices. `source_vendor` retains the original inventory vendor label.
+
+Interactive batch examples use `CLI::Backup`; `CLI::Credentials.resolve` supplies the inventory source and per-device credential resolver, while `CLI::Options` parses arguments and configuration overrides. These components live under `netdisco/cli/`.
 
 `--export IP` reads an existing canonical `<IP>.txt` file offline. It writes original bytes to stdout, or atomically writes a private file with `--output`. It does not require inventory or device credentials. Hostname-prefixed batch-example files are not searched by this command.
 
@@ -110,7 +114,7 @@ Fleet returns `Netdisco::Report`, delegating raw execution fields to `report.bat
 
 Local backups compare SHA-256. `on_change:` fires for created or changed artifacts; `on_start:` and `on_result:` observe attempted tasks. Callback faults appear in `callback_errors`. Saved artifacts with later errors remain `saved_with_error`; confirmed uploads with later errors remain `reported_with_error`. Neither result permits automatic replay.
 
-`ResultStore::Json` writes private JSON by default. Use `ResultStore::Database.new(repository: YourModel)` with a `create!(attributes)` repository, or `result_store: nil` to persist yourself. Custom stores receive `write(report, directory:)`. Report errors retain known committed locations and prevent success.
+`Report::Store::Json` writes private JSON by default. Use `Report::Store::Database.new(repository: YourModel)` with a `create!(attributes)` repository, or `report_store: nil` to persist yourself. Custom stores receive `write(report, directory:)`. Report errors retain known committed locations and prevent success.
 
 ## Configuration batches and interface changes
 
@@ -132,13 +136,13 @@ Scripts accept `Script`, command arrays or multiline text. The full batch is par
 
 Interface application calls the existing topology operation, retaining evidence revalidation, configuration readback and persistence confirmation. It does not execute an approved plan as an ordinary script. Both write operations require `confirmed: true`, and never automatically retry commands. Each task owns and closes its connector. Ordinary failures remain per-device outcomes; `Interrupt` stops and joins all owned workers. Confirmed work is not rolled back across devices.
 
-`OperationBatch` is separate from backup reports. `outcomes` retain the original `Result` or plan, completed steps and the first failure; `:partial` preserves work followed by an error, and missing credentials prevent success. `plans` selects only fully successful planning results. `to_h` includes safe diagnostics and counts, excluding commands, outputs, credentials and evidence. `on_start` and `on_result` run on workers and must be thread safe; ordinary callback faults are recorded without repeating device operations. Logging uses the configured `ssh.log_directory`.
+`Operations::Batch` is separate from backup reports. `outcomes` retain the original `Result` or plan, completed steps and the first failure; `:partial` preserves work followed by an error, and missing credentials prevent success. `plans` selects only fully successful planning results. `to_h` includes safe diagnostics and counts, excluding commands, outputs, credentials and evidence. `on_start` and `on_result` run on workers and must be thread safe; ordinary callback faults are recorded without repeating device operations. Logging uses the configured `ssh.log_directory`.
 
 `sync_interface_descriptions` is the direct update entry: one request and one connection per device, from discovery through readback and save. Matching descriptions cause no writes or saves; a no-op does not confirm an earlier save. The default format is `To_<peer name>_<interface abbreviation>`; formatting options and blocks remain backend choices. Separate preview/approval workflows remain available through `plan_interface_descriptions` and `apply_interface_descriptions(plans: planned.plans, confirmed: true)`.
 
 Each device publishes one immutable outcome after execution and connection cleanup. Ordinary credential, connection, execution and cleanup failures affect that device while active and queued siblings continue. Once scheduling completes, `summary` and `to_h[:summary]` report `total`, `succeeded` and `failed`, with total = succeeded + failed. Total counts the devices requested and scheduled in this batch; partial completion and missing credentials count as failures and also appear in `partial` and `missing_credentials`. `callback_errors` counts notification faults separately without changing device outcomes. Empty batches report zero counts and `no_devices`. The library returns the report; callers choose terminal output or JSON export. Whole-batch approval validation and interruption retain their existing boundaries, and completed device changes cannot be rolled back.
 
-For other independent tasks, load `net/connector/execution_pool` and use `Net::Connector::ExecutionPool.new(concurrency: 4).map(items) { |item| ... }`. Results preserve input order, all threads must start before any block runs, and uncaught exceptions stop the pool and propagate to its caller. Business code decides which ordinary errors become per-task results.
+For other independent tasks, load `net/connector/concurrency/pool` and use `Net::Connector::Concurrency::Pool.new(concurrency: 4).map(items) { |item| ... }`. Results preserve input order, all threads must start before any block runs, and uncaught exceptions stop the pool and propagate to its caller. Business code decides which ordinary errors become per-task results.
 
 ## PostgreSQL inventory
 
@@ -179,7 +183,7 @@ Default budgets cover authentication, pagination, fallback queries, or database 
 
 HTTP counts actual chunks and closes on excess. Injected `requester:` callbacks are checked only after returning; their blocking and memory belong to the caller. PostgreSQL counts column names and values, including discarded fields, after libpq decodes each row; a huge field may still consume driver memory before the check. Connection, query, and FETCH share the deadline and use database statement timeouts.
 
-`Settings#snapshot(mode:)` freezes public policy before side effects. CLI planning and execution share it; later calls can read new settings. Credentials remain dynamic per task. `Settings.new.for_run(mode: :backup)` shares policy across API calls; non-sensitive overrides preserve an existing snapshot. A custom `credentials:` resolver can supply per-device connection options, taking precedence over defaults. Injected clients remain caller-owned.
+`Settings#snapshot(mode:)` freezes public policy before side effects. CLI planning and execution share it; later calls can read new settings. Credentials remain dynamic per task. `Settings.new.for_run(mode: :backup)` shares policy across API calls; non-sensitive overrides preserve an existing snapshot. A custom `credentials:` resolver can supply per-device connection options, taking precedence over defaults. Injected inventory sources remain caller-owned.
 
 Snapshot backup, cache, log, TFTP verification, SSH known-hosts and explicit PostgreSQL CA certificate paths resolve against the working directory captured when the snapshot is created, including default paths and later relative overrides. Paths beginning with `~/` and the path `~` use the home directory captured by that snapshot. PostgreSQL CA paths retain libpq's literal path semantics without tilde expansion; `sslrootcert: system` keeps its system trust-store meaning, while `./system` names a file. Live settings continue to resolve paths against the current working directory and home directory.
 

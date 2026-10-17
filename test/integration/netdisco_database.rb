@@ -66,12 +66,12 @@ class NetdiscoDatabaseIntegrationTest < Minitest::Test
     end
   end
 
-  def client(query: QUERY, **options)
-    Netdisco::DatabaseClient.new(connection_options: self.class.options, query: query, **options)
+  def inventory(query: QUERY, **options)
+    Netdisco::Inventory::Postgres.new(connection_options: self.class.options, query: query, **options)
   end
 
   def environment
-    Netdisco::DatabaseClient::CONNECTION_ENV.each_with_object({}) do |(key, name), env|
+    Netdisco::Inventory::Postgres::CONNECTION_ENV.each_with_object({}) do |(key, name), env|
       env[name] = self.class.options[key] if self.class.options.key?(key)
     end
   end
@@ -84,7 +84,7 @@ class NetdiscoDatabaseIntegrationTest < Minitest::Test
       loop do
         remaining = connection.exec(<<~SQL).getvalue(0, 0)
           SELECT count(*) FROM pg_stat_activity
-          WHERE usename = current_user AND pid <> pg_backend_pid() AND backend_type = 'client backend'
+          WHERE usename = current_user AND pid <> pg_backend_pid() AND backend_type = 'inventory backend'
         SQL
         break if remaining == "0" || Process.clock_gettime(Process::CLOCK_MONOTONIC) >= deadline
 
@@ -95,7 +95,7 @@ class NetdiscoDatabaseIntegrationTest < Minitest::Test
   end
 
   def assert_failure(query: QUERY, code: :query_failed, **options)
-    error = assert_raises(Netdisco::Client::Error) { client(query: query, **options).devices }
+    error = assert_raises(Netdisco::Inventory::Error) { inventory(query: query, **options).devices }
     assert_equal code, error.code
     assert_nil error.cause
     refute_includes error.full_message, "sensitive-marker"
@@ -105,9 +105,9 @@ class NetdiscoDatabaseIntegrationTest < Minitest::Test
   end
 
   def test_query_fills_existing_inventory_and_preserves_ipv6
-    rows = client(page_size: 1).devices
+    rows = inventory(page_size: 1).devices
     assert_equal(["192.0.2.1", "2001:db8::1"], rows.map { |row| row.fetch("ip") })
-    fleet = Netdisco::Fleet.new(client: client, settings: Netdisco::Settings.new(env: {}), result_store: nil)
+    fleet = Netdisco::Fleet.new(inventory: inventory, settings: Netdisco::Settings.new(env: {}), report_store: nil)
     assert_equal %i[h3c cisco_ios], fleet.plan_backup.selected.map(&:vendor)
     assert_no_connection_leak
   end
@@ -119,31 +119,31 @@ class NetdiscoDatabaseIntegrationTest < Minitest::Test
       FROM chosen d JOIN device other ON other.ip = d.ip ORDER BY d.ip;
     SQL
     value = "quote'; DROP TABLE device; --"
-    rows = client(query: query, query_params: ["H3C", value]).devices
+    rows = inventory(query: query, query_params: ["H3C", value]).devices
     assert_equal 1, rows.length
     assert_equal value, rows.first.fetch("name")
-    assert_equal 2, client.devices.length
-    assert_empty client(query: QUERY.sub("ORDER BY ip", "WHERE vendor = $1"), query_params: [value]).devices
+    assert_equal 2, inventory.devices.length
+    assert_empty inventory(query: QUERY.sub("ORDER BY ip", "WHERE vendor = $1"), query_params: [value]).devices
   end
 
   def test_transaction_is_read_only_and_extra_columns_are_dropped
     query = "SELECT host(ip) AS ip, current_setting('transaction_read_only') AS name, 'sensitive-marker' AS snmp_comm FROM device"
-    rows = client(query: query).devices
+    rows = inventory(query: query).devices
     assert_equal ["on"], rows.map { |row| row.fetch("name") }.uniq
     assert(rows.all? { |row| row.keys.sort == %w[ip name] })
     assert_failure(query: "DELETE FROM device RETURNING host(ip) AS ip")
     assert_failure(query: "WITH deleted AS (DELETE FROM device RETURNING ip) SELECT host(ip) AS ip FROM deleted")
     assert_failure(query: "SELECT host(ip) AS ip FROM device FOR UPDATE")
-    assert_equal 2, client.devices.size
+    assert_equal 2, inventory.devices.size
   end
 
   def test_multiple_statements_cannot_end_read_only_transaction
     assert_failure(query: "SELECT host(ip) AS ip FROM device; COMMIT; DELETE FROM device;")
-    assert_equal 2, client.devices.size
+    assert_equal 2, inventory.devices.size
   end
 
   def test_empty_result_still_validates_column_names_and_null_ip_is_invalid
-    assert_empty client(query: "SELECT host(ip) AS ip FROM device WHERE false").devices
+    assert_empty inventory(query: "SELECT host(ip) AS ip FROM device WHERE false").devices
     assert_failure(query: "SELECT name FROM device WHERE false", code: :invalid_inventory)
     assert_failure(query: "SELECT ip, ip FROM device", code: :invalid_inventory)
     assert_failure(query: "SELECT NULL::text AS ip", code: :invalid_inventory)
@@ -152,7 +152,7 @@ class NetdiscoDatabaseIntegrationTest < Minitest::Test
 
   def test_duplicate_addresses_remain_visible_to_fleet_and_consume_budget
     query = "SELECT '192.0.2.1' AS ip, 'H3C' AS vendor FROM generate_series(1, 3)"
-    fleet = Netdisco::Fleet.new(client: client(query: query), settings: Netdisco::Settings.new(env: {}), result_store: nil)
+    fleet = Netdisco::Fleet.new(inventory: inventory(query: query), settings: Netdisco::Settings.new(env: {}), report_store: nil)
     assert_equal [:duplicate_host] * 3, fleet.devices.map(&:issue)
     assert_failure(query: query, max_devices: 2, code: :max_devices)
   end
@@ -169,11 +169,11 @@ class NetdiscoDatabaseIntegrationTest < Minitest::Test
 
   def test_sql_errors_after_received_rows_discard_the_whole_inventory
     query = "SELECT CASE WHEN n < 3 THEN '192.0.2.1' ELSE (n / (n - 3))::text END AS ip FROM generate_series(1, 3) n"
-    fleet = Netdisco::Fleet.new(client: client(query: query, page_size: 1), settings: Netdisco::Settings.new(env: {}),
+    fleet = Netdisco::Fleet.new(inventory: inventory(query: query, page_size: 1), settings: Netdisco::Settings.new(env: {}),
                                 credentials: ->(*) { flunk "incomplete inventory must not reach devices" })
     Dir.mktmpdir do |directory|
       destination = File.join(directory, "backup")
-      assert_raises(Netdisco::Client::Error) { fleet.backup_all(directory: destination) }
+      assert_raises(Netdisco::Inventory::Error) { fleet.backup_all(directory: destination) }
       refute_path_exists destination
     end
     assert_no_connection_leak
@@ -182,8 +182,8 @@ class NetdiscoDatabaseIntegrationTest < Minitest::Test
   def test_query_errors_and_authentication_errors_do_not_echo_server_messages
     assert_failure(query: "SELECT sensitive_marker AS ip /* sensitive-marker */ FROM device")
     options = self.class.options.merge(password: "sensitive-marker")
-    value = Netdisco::DatabaseClient.new(connection_options: options, query: QUERY)
-    error = assert_raises(Netdisco::Client::Error) { value.devices }
+    value = Netdisco::Inventory::Postgres.new(connection_options: options, query: QUERY)
+    error = assert_raises(Netdisco::Inventory::Error) { value.devices }
     assert_equal :connection_failed, error.code
     assert_nil error.cause
     refute_includes error.full_message, "sensitive-marker"

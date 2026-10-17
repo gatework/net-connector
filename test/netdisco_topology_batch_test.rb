@@ -115,7 +115,7 @@ class NetdiscoTopologyBatchTest < Minitest::Test
     fixtures = []
     hosts = [HOST, "192.0.2.2"]
     rows = hosts.map { |host| inventory_row(:cisco_ios).merge("ip" => host) }
-    fleet = Netdisco::Fleet.new(settings: Netdisco::Settings.new(env: {}), client: Struct.new(:devices).new(rows),
+    fleet = Netdisco::Fleet.new(settings: Netdisco::Settings.new(env: {}), inventory: Struct.new(:devices).new(rows),
                                credentials: ->(_) { { username: "operator" } },
                                connector_factory: lambda { |device, _options|
                                  fixture = TopologyFixture.new(:cisco_ios, host: device.host)
@@ -140,8 +140,8 @@ class NetdiscoTopologyBatchTest < Minitest::Test
   def each_fleet(fault: nil, continuous: false)
     TopologyFixture::SAMPLES.each_key do |vendor|
       fixtures = []
-      client = Struct.new(:devices).new([inventory_row(vendor)])
-      fleet = Netdisco::Fleet.new(settings: Netdisco::Settings.new(env: {}), client: client,
+      inventory = Struct.new(:devices).new([inventory_row(vendor)])
+      fleet = Netdisco::Fleet.new(settings: Netdisco::Settings.new(env: {}), inventory: inventory,
                                  credentials: ->(_) { { username: "operator", password: "private-password" } },
                                  connector_factory: lambda { |_device, _options|
                                    fixture = TopologyFixture.new(vendor)

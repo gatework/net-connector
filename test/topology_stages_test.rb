@@ -192,7 +192,7 @@ class TopologyStagesTest < Minitest::Test
         next result unless fixture.description == "planned"
 
         steps = result.steps.map do |step|
-          Net::Connector::CommandResult.new(command: step.command.with_text("unapproved readback"), output: step.output,
+          Net::Connector::Command::Result.new(command: step.command.with_text("unapproved readback"), output: step.output,
                                              prompt: step.prompt, duration: step.duration)
         end
         Net::Connector::Result.new(steps: steps, config: result.config)

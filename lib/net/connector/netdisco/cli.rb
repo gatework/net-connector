@@ -53,15 +53,15 @@ module Net
           summary = report.summary
           @output.puts JSON.pretty_generate(summary)
           report.policy_success? ? 0 : 1
-        rescue Storage::PrivateFile::WriteError => exception
-          message = Storage::PrivateFile.receipt_error?(exception) ? exception.message : exception.class.name
+        rescue Storage::AtomicFile::WriteError => exception
+          message = Storage::AtomicFile.receipt_error?(exception) ? exception.message : exception.class.name
           @error.puts "net-backup: #{message}"
           2
         rescue OptionParser::ParseError
           @error.puts "net-backup: 参数无效；使用 --help 查看参数"
           2
         rescue ArgumentError, KeyError, Errno::ENOENT,
-          Psych::Exception, JSON::ParserError, Client::Error => exception
+          Psych::Exception, JSON::ParserError, Inventory::Error => exception
           @error.puts "net-backup: #{exception.message}"
           2
         rescue StandardError => exception

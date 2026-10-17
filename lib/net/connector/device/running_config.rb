@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../engine/command"
+require_relative "../engine/script"
 require_relative "../engine/result"
 require_relative "running_config/strategy"
 
@@ -102,7 +102,7 @@ module Net
 
       # 排除命令回显和提示符，确认响应确实包含配置正文。
       def config_body?(step)
-        body = TerminalRenderer.render(step.output.delete_suffix(step.prompt.to_s)).strip
+        body = Terminal::Renderer.render(step.output.delete_suffix(step.prompt.to_s)).strip
         # 只需确认首个正文行；不为大配置创建全部行对象或重新拼接整份响应。
         body.each_line("\n").with_index.any? do |line, index|
           text = line.strip

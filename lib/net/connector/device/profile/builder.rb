@@ -85,6 +85,12 @@ module Net
           self
         end
 
+        # 指定设备原生 FTP/SCP 导出策略；nil 明确关闭继承能力。
+        def remote_backup_strategy(klass)
+          @values[:remote_backup_strategy] = klass
+          self
+        end
+
         # 指定运行配置采集策略，覆盖继承的厂商规则。
         def running_config_strategy(klass)
           @values[:running_config_strategy] = klass

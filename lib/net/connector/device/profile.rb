@@ -21,7 +21,7 @@ module Net
                   :privilege_prompt, :pager_pattern, :pager_response,
                   :authentication_error_patterns, :command_error_patterns,
                   :login_interactions, :confirmation_interactions, :legacy_ssh_arguments,
-                  :privilege_command, :command_timeout, :terminal_size, :tftp_strategy, :topology_strategy, :running_config_strategy
+                  :privilege_command, :command_timeout, :terminal_size, :tftp_strategy, :topology_strategy, :running_config_strategy, :remote_backup_strategy
 
       # 使用默认的公共规则创建空设备档案；登录和命令提示符仍由厂商声明。
       def self.default
@@ -46,7 +46,7 @@ module Net
                      authentication_error_patterns: DEFAULT_AUTHENTICATION_ERROR_PATTERNS,
                      command_error_patterns: [], login_interactions: [], confirmation_interactions: [],
                      legacy_ssh_arguments: DEFAULT_LEGACY_SSH_ARGUMENTS, privilege_command: nil,
-                     command_timeout: 25, terminal_size: nil, tftp_strategy: nil, topology_strategy: nil, running_config_strategy: nil)
+                     command_timeout: 25, terminal_size: nil, tftp_strategy: nil, topology_strategy: nil, running_config_strategy: nil, remote_backup_strategy: nil)
         @config_commands = command_list(config_commands, :config_commands, allow_nil: true)
         @save_commands = command_list(save_commands, :save_commands)
         @login_prompt = pattern(login_prompt, :login_prompt, allow_nil: true)
@@ -64,6 +64,7 @@ module Net
         @privilege_command = optional_text(privilege_command, :privilege_command)
         @command_timeout = duration(command_timeout, :command_timeout)
         @terminal_size = validate_terminal_size!(terminal_size)
+        @remote_backup_strategy = strategy_class(remote_backup_strategy, :remote_backup_strategy, %i[script completed?])
         @running_config_strategy = strategy_class(running_config_strategy, :running_config_strategy,
                                                   %i[clean result_step prompt_text validate_response!])
         @tftp_strategy = strategy_class(tftp_strategy, :tftp_strategy,
@@ -105,6 +106,7 @@ module Net
           terminal_size: terminal_size,
           tftp_strategy: tftp_strategy,
           topology_strategy: topology_strategy,
+          remote_backup_strategy: remote_backup_strategy,
           running_config_strategy: running_config_strategy
         }
       end

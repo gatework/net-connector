@@ -1,11 +1,11 @@
 # frozen_string_literal: true
 
-require_relative "error_metadata"
-
 module Net
   module Connector
     # 操作错误携带已脱敏上下文；敏感配置正文只存在于明确返回的业务结果中。
     class Error < StandardError
+      autoload :Metadata, File.expand_path("error/metadata", __dir__)
+
       attr_reader :code, :host, :phase, :command, :output, :source, :line, :underlying
 
       # 保存错误阶段、命令和输出尾部，并为缺省错误类生成稳定错误码。
@@ -27,7 +27,7 @@ module Net
       def with_diagnostics(message:, **context)
         context = { code: code, host: host, phase: phase, command: command, output: output,
                     source: source, line: line, underlying: underlying }.merge(context)
-        return self.class.new(message, **context) unless ErrorMetadata.known_type?(self.class.name)
+        return self.class.new(message, **context) unless Error::Metadata.known_type?(self.class.name)
 
         copy = self.class.allocate
         instance_variables.each { |name| copy.instance_variable_set(name, instance_variable_get(name)) }

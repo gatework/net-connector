@@ -4,4 +4,4 @@
 require_relative "boot"
 require "net/connector/netdisco"
 
-exit Net::Connector::Netdisco::BackupRun.new(mode: :tftp).run
+exit Net::Connector::Netdisco::CLI::Backup.new(mode: :tftp).run

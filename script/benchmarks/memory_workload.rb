@@ -158,12 +158,12 @@ module MemoryBenchmark
 
         response
       when "render", "clean"
-        text = @spec.fetch("phase") == "render" ? Net::Connector::TerminalRenderer.render(@response) : device.clean_config(@response)
+        text = @spec.fetch("phase") == "render" ? Net::Connector::Terminal::Renderer.render(@response) : device.clean_config(@response)
         raise "terminal processing changed fixture bytes" unless text == @response
 
         text
       when "parse"
-        rows = Net::Connector::TextFSM.new.call(@payload, template: "cisco_ios_running_config_interfaces.textfsm")
+        rows = Net::Connector::TextFSM.new.call(@payload, template: "cisco/show_running_config.textfsm")
         raise "parser lost fixture records" unless rows.size == @payload.bytesize / MemoryFixture::BLOCK.bytesize
 
         rows

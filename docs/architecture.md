@@ -5,23 +5,31 @@
 | 层次 | 职责 | 位置 |
 | --- | --- | --- |
 | 会话引擎 | 登录、传输、命令、脚本及资源所有权 | `engine/` |
-| 对话协议与响应读取 | 交互规则和响应值独立于有状态的读取、截止时间与输出预算 | `engine/dialogue.rb`、`engine/response_reader.rb` |
+| 对话协议与响应读取 | 对话规则、交互应答与响应值分别建模；读取器管理截止时间与输出预算 | `engine/dialogue.rb`、`engine/interaction.rb`、`engine/response.rb`、`engine/response_reader.rb` |
 | 错误与脱敏 | 错误类型和安全诊断；秘密作用域及 Expect 脱敏适配独立实现 | `engine/errors.rb`、`engine/redactor.rb` |
 | 日志 | 事件上下文与生命周期；安全事件、格式和字节流分别实现 | `engine/log.rb`、`engine/log/` |
 | 设备入口 | 能力组合、会话代理、通用脚本钩子 | `device/base.rb` |
 | 设备档案 | 不可变规则与策略接口校验；Builder 负责声明 DSL | `device/profile.rb`、`device/profile/` |
 | 配置采集与保存 | 采集策略生命周期、完整性校验、显式保存 | `device/running_config.rb`、`device/running_config/`、`device/save_config.rb` |
+| 并发与观察 | 有限并发、后台观察线程的停止与回收 | `concurrency/pool.rb`、`concurrency/observer.rb` |
+| 设备作用域 | 创建连接器、执行任务、关闭并分别交付值与故障 | `device/scope.rb` |
 | 本地备份 | 采集、摘要比较、文件持久化和完成回执 | `device/local_backup.rb` |
 | TFTP | 参数预检、上传、完成证据、目标和回执 | `device/tftp.rb`、`device/tftp/` |
 | 拓扑 | 邻居发现、接口名称/描述、变更计划与分阶段执行 | `device/topology.rb`、`device/topology/` |
 | 厂商差异 | 档案组装及各项能力的厂商策略 | `vendor/<厂商>.rb`、`vendor/<厂商>/` |
 | 文件存储 | 路径锁、安全读取、私有原子写入、离线配置 | `storage.rb`、`storage/` |
 | 解析 | TextFSM 模板选择、记录转换及异常映射 | `textfsm.rb`、`templates/` |
-| 终端文本 | 严格 UTF-8 字节验证和终端渲染 | `engine/terminal_text.rb`、`engine/terminal_renderer.rb` |
-| 清单与批量编排 | 清单预算、策略快照、计划校验、工作线程和报告 | `netdisco/` |
+| 终端文本 | 严格 UTF-8 字节验证和终端渲染 | `engine/terminal/text.rb`、`engine/terminal/renderer.rb` |
+| 清单来源 | 公共字段、预算与错误；HTTP、PostgreSQL 及缓存 | `netdisco/inventory.rb`、`netdisco/inventory/` |
+| 设备接入 | 动态凭据与批次连接策略的合并 | `netdisco/device/access.rb` |
+| 批量编排 | 策略快照、计划校验、工作线程和报告 | `netdisco/` |
 | 命令行入口 | 转交给 CLI，参数处理与业务流程由库负责 | `bin/net-backup` |
 
 `Base` 引入 `RunningConfig::Capability`、`LocalBackup::Capability`、`Tftp::Capability`、`Topology::Capability`、`TextFSM::Capability` 及 `SaveConfig`。能力入口与实现共置，Base 不再重复业务包装。配置采集的临时策略绑定也由 RunningConfig 管理；备份与拓扑通过 `device.running_config` 复用同一流程。
+
+文件名表达本文件的主要职责，领域归属通过命名空间表达。Netdisco 的清单预算与缓存位于 `inventory/`，分别为 `Inventory::Budget` 和 `Inventory::Cache`；配置操作的批次与逐台结果位于 `operations/`，分别为 `Operations::Batch` 和 `Operations::Outcome`。`Report::Store` 只持久化报告，Fleet 通过 `report_store:` 接收写入器。服务器上传核验与归档分别为 `Tftp::Verifier` 和 `Tftp::Archive`。
+
+引擎的 `Command`、`Script`、`Interaction`、`Dialogue`、`Response`、`Command::Result`、`Result` 各有同名文件；传输事件在 `event.rb`，适配器集合在 `transports.rb`。日志的 `RedactingWriter` 与 `Transcript` 位于 `log/` 下各自的同名文件。存储边界使用 `FileReader` 表示受控读取，`AtomicFile` 表示带阶段回执的原子替换；权限和持久性约束仍由这些组件维护。
 
 ## 公开业务方法与确认范围
 
@@ -67,9 +75,9 @@ IOS/NX-OS 清理器处理单条配置命令的响应，不把正文当成多命�
 
 Fleet 在规范目标校验、凭据解析及连接器构造之前加同一把锁，再向下层备份授权一次同进程、同 Fiber 的借用。借用在采集前消费，回调递归备份不能重复使用；没有全局路径缓存。路径锁在外、会话锁在内，`Base#backup` 拒绝已有会话操作中的嵌套调用。独立进程必须采用同一 flock 协议；调用方保护目录及祖先，锁不约束不合作的写入者。
 
-`SafeFile` 对一次 NOFOLLOW/NONBLOCK 打开的 FD 做 fstat 和读取，拒绝非普通文件。`SavedConfig#read/#fingerprint`、离线导出和解析复用该边界；`find` 返回当时已验证的路径，不保证调用方日后重新打开时身份不变。直接备份继续安全替换末级符号链接，Fleet/SavedConfig 则保留拒绝契约。内容不变时再核对目录项身份，避免因路径替换跳过必要写入；正常未变文件保持 mtime。
+`FileReader` 对一次 NOFOLLOW/NONBLOCK 打开的 FD 做 fstat 和读取，拒绝非普通文件。`SavedConfig#read/#fingerprint`、离线导出和解析复用该边界；`find` 返回当时已验证的路径，不保证调用方日后重新打开时身份不变。直接备份继续安全替换末级符号链接，Fleet/SavedConfig 则保留拒绝契约。内容不变时再核对目录项身份，避免因路径替换跳过必要写入；正常未变文件保持 mtime。
 
-`Storage::PrivateFile.write` 统一返回 `Receipt`，执行临时文件写入、flush/fsync、rename、父目录 fsync，并跟踪 not_committed/committed/durable 和出错阶段。rename 前失败保留旧文件；之后失败保留新文件。目录 fsync 的 EINVAL/ENOSYS/ENOTSUP/EOPNOTSUPP/NotImplementedError 单独表示不支持；其他错误不能降级为成功。durable 只表示同步调用成功，未变内容不补验过去写入，断电恢复也未在本地测试中验证。
+`Storage::AtomicFile.write` 统一返回 `Receipt`，执行临时文件写入、flush/fsync、rename、父目录 fsync，并跟踪 not_committed/committed/durable 和出错阶段。rename 前失败保留旧文件；之后失败保留新文件。目录 fsync 的 EINVAL/ENOSYS/ENOTSUP/EOPNOTSUPP/NotImplementedError 单独表示不支持；其他错误不能降级为成功。durable 只表示同步调用成功，未变内容不补验过去写入，断电恢复也未在本地测试中验证。
 
 提交后的 `BackupPersistenceError` 只携带原 `Backup` 元数据和受控写入回执，Fleet 保留产物并使用已有 saved_with_error 分类。只接受库定义的具体完成错误及匹配产物类型，第三方异常的 backup 属性或自定义 WriteError 子类不作为完成证据。报告保留已提交位置，导出错误说明 committed；设备命令不会自动重放。
 
@@ -111,11 +119,11 @@ PAN-OS 使用候选配置模型。[官方提交说明](https://docs.paloaltonetw
 
 `Worker` 按线程完成顺序接收终止通知，设备结果仍写入原清单槽位。任一线程中断时，调用方无需等待先创建的慢线程；创建后续线程失败时，也会停止并等待已启动的任务清理资源。普通设备故障继续转换为逐台结果，回调故障单独记录。
 
-设备耗时由 CLOCK_MONOTONIC 度量，包含 on_start、设备任务及关闭，截止于 on_result 前。报告的总耗时覆盖目录准备和全部 worker/callback，截止于报告写入前；两者不以 UTC 时间相减。Outcome 的 duration_ms 和 Diagnostic 直接声明为 Data 成员，未测量的耗时为 nil。`with` 替换审计时间时清除原计时，替换错误字段时清除原诊断；显式提供的新值仍经过验证。
+设备耗时由 CLOCK_MONOTONIC 度量，包含 on_start、设备任务及关闭，截止于 on_result 前。报告的总耗时覆盖目录准备和全部 worker/callback，截止于报告写入前；两者不以 UTC 时间相减。Outcome 的 duration_ms 和 Diagnostic 直接声明为 Data 成员，未测量的耗时为 nil。Backup 的路径、摘要及采集时间与 Outcome 的审计时间均复制冻结，构造和 `with` 更新遵守同一所有权边界；结果回调不能原地改写已保存文件的证据。`with` 替换审计时间时清除原计时，替换错误字段时清除原诊断；显式提供的新值仍经过验证。
 
 Fleet 始终返回 Report，委托 Batch 的执行结果及严格 success?/status，单独提供 policy 和 policy_success?。默认 strict 要求非空且全部成功；selected 必须至少包含一个成功结果，其他状态只能为 filtered/sample_limit，且 callback_errors 为空、report_error 为 nil。部分成功、任何其他跳过和未知状态都阻止策略成功。
 
-报告 summary 使用单一 schema_version: 2，包含 policy、policy_success、coverage、单调 duration_ms、逐台 diagnostic 及 report_diagnostic。coverage 仅按已尝试状态计数，失败和部分成功也算尝试。`ResultStore#write(report, directory:)` 始终接收 Report。已存文件是写入前快照；写入自身失败时，返回对象与 CLI 携带最终报告故障。`Batch#build_report` 只构造报告，不重跑任务，也不能补出未记录的总耗时。
+报告 summary 使用单一 schema_version: 2，包含 policy、policy_success、coverage、单调 duration_ms、逐台 diagnostic 及 report_diagnostic。coverage 仅按已尝试状态计数，失败和部分成功也算尝试。`Report::Store#write(report, directory:)` 始终接收 Report。已存文件是写入前快照；写入自身失败时，返回对象与 CLI 携带最终报告故障。`Batch#build_report` 只构造报告，不重跑任务，也不能补出未记录的总耗时。
 
 `Report#statistics` 仅计算汇总，字段等同于 `summary.except(:devices)`，供文本与进度输出使用；完整设备明细由 JSON 输出时生成。两者不缓存结果，保留调用方持有 Batch 容器的既有语义。静默进度不读取报告。
 
@@ -123,17 +131,21 @@ Diagnostic 只保存固定词表中的码、类型、阶段和受控产物状态
 
 `Planner` 先按厂商采样，再按实际 TFTP 文件名排除覆盖冲突，保留采样顺序中的首台设备。未入选设备仍标记为 `sample_limit`，只有入选后目标重名才标记为 `remote_filename_collision`。`Plan#validate!` 校验任务与清单的对应关系；调用方传入或通过 `with` 修改的计划也必须在读取凭据、创建目录及设备 I/O 前通过校验。冲突规则适用于全部厂商，包括不同地址规范化后产生相同文件名的情况。
 
-`Settings` 保留动态秘密来源，`snapshot(mode:)` 只复制允许公开的非敏感字段，并在副作用前复用 `Configuration`、`Planner` 和 `Client.options` 校验。Fleet 的一次规划/执行只使用该份冻结策略；CLI 通过 `for_run` 将规划与执行绑定到同一策略。每台设备的凭据读取与策略解析分开，自定义凭据解析器给出的显式连接选项仍保留原优先级。带 `plan:` 的执行不再查询清单；以后新建的批次可以读取新策略和新的 API 凭据。
+`Settings` 保留动态秘密来源，`snapshot(mode:)` 只复制允许公开的非敏感字段，并在副作用前复用 `Configuration`、`Planner` 和 `Inventory::HTTP.options` 校验。Fleet 的一次规划/执行只使用该份冻结策略；CLI 通过 `for_run` 将规划与执行绑定到同一策略。每台设备的凭据读取与策略解析分开，自定义凭据解析器给出的显式连接选项仍保留原优先级。带 `plan:` 的执行不再查询清单；以后新建的批次可以读取新策略和新的 API 凭据。
 
-`BackupRun` 在创建批次目录和读取凭据前固定并验证策略。已固定的 `Settings#with_overrides` 只复制非敏感快照上的覆盖值，不重新读取环境中的策略字段；后续 `snapshot(mode:)` 继续按当前业务模式校验，离线导出不会隐式转成网络备份校验。原凭据来源仍保持动态。
+`CLI::Backup` 在创建批次目录和读取凭据前固定并验证策略。已固定的 `Settings#with_overrides` 只复制非敏感快照上的覆盖值，不重新读取环境中的策略字段；后续 `snapshot(mode:)` 继续按当前业务模式校验，离线导出不会隐式转成网络备份校验。原凭据来源仍保持动态。
 
-`Client#devices` 每次持有独立 `InventoryBudget`，认证、分页、QueryRequired 查询共同累计正文字节和去重前记录数，并共享单调时钟 deadline。默认 HTTP 使用 `read_body`，先检查实际接收字节再追加，不信任 Content-Length。每阶段缩短原生连接/读/写超时；总期限还覆盖慢速响应头。期限观察线程只关闭本次拥有的 HTTP 连接，防止 chunked 的收尾读取拖延返回，调用结束即唤醒并 join。默认 HTTP 不做隐式 GET 重试；这一机制不进入设备命令路径。
+`Inventory::HTTP#devices` 每次持有独立 `Inventory::Budget`，认证、分页、QueryRequired 查询共同累计正文字节和去重前记录数，并共享单调时钟 deadline。默认 HTTP 使用 `read_body`，先检查实际接收字节再追加，不信任 Content-Length。每阶段缩短原生连接/读/写超时；总期限还覆盖慢速响应头。期限观察线程只关闭本次拥有的 HTTP 连接，防止 chunked 的收尾读取拖延返回，调用结束即唤醒并 join。默认 HTTP 不做隐式 GET 重试；这一机制不进入设备命令路径。
 
 注入的 `requester` 接收 URI 和 request。它返回后才接受长度和期限检查，不在任意用户 Ruby 回调中注入异步异常。解析和集合操作完成后也检查期限，但这不构成任意 CPU 回调的抢占保证。预算失败仅报告错误码与安全类型，没有部分清单、响应正文或底层 cause。HTTPS 的标准证书检查不变；默认允许明文 HTTP，可通过显式策略禁止。
 
-`Settings#inventory_source` 选择 HTTP `Client` 或 PostgreSQL `DatabaseClient`，两者只向 Fleet 提供 `devices`，不改变设备映射、计划和执行接口。数据库 SQL 与标量参数由用户配置，不内置业务表名或筛选；结果用列别名适配 `Client::FIELDS`，只保留这份现有字段白名单。数据库身份使用 `ND_DB_HOST/NAME/USER/PASS`，每次新建客户端时读取；端口、TLS 和超时来自 YAML 并进入不可变策略快照。
+`Settings#inventory` 构建所选清单来源，`Fleet.new(inventory: ...)` 与 `Inventory::Cache.new(inventory: ...)` 接收实现 `devices` 的来源对象。`Settings#inventory_options` 校验其公开策略。
 
-`DatabaseClient` 每次调用独占 PostgreSQL 连接，在只读事务中用扩展查询协议声明游标，原生解析器拒绝多语句和非查询输入。FETCH 大小及次数复用清单预算，单行模式使 libpq 不缓存整页；每行在追加前计数，额外列也消耗字节预算。驱动必须先解码单行，所以单个超大字段仍可超过 Ruby 预算的瞬时内存。总 deadline 覆盖连接和所有语句，每次 FETCH 前缩短 statement_timeout；正常完成回滚只读事务，异常关闭连接，任何失败均不交付部分清单。NOTICE、原始数据库异常及 cause 不进入日志或 CLI；稳定错误码区分连接失败、查询失败、无效清单和预算超限。SQL/参数可在 show-config 中查看，不能用于传递凭据。
+`Inventory::Error`、`Inventory::Timeout`、`Inventory::FIELDS` 和 `Inventory.options` 属于清单领域，HTTP、PostgreSQL、缓存及设备记录只依赖这些公共契约。设备接入由 `Device::Access.resolve` 合并动态凭据、固定策略和日志路径，不创建连接，也不保存秘密。
+
+`Settings#inventory_source` 选择 HTTP `Inventory::HTTP` 或 PostgreSQL `Inventory::Postgres`，两者只向 Fleet 提供 `devices`，不改变设备映射、计划和执行接口。数据库 SQL 与标量参数由用户配置，不内置业务表名或筛选；结果用列别名适配 `Inventory::FIELDS`，只保留这份现有字段白名单。数据库身份使用 `ND_DB_HOST/NAME/USER/PASS`，每次新建客户端时读取；端口、TLS 和超时来自 YAML 并进入不可变策略快照。
+
+`Inventory::Postgres` 每次调用独占 PostgreSQL 连接，在只读事务中用扩展查询协议声明游标，原生解析器拒绝多语句和非查询输入。FETCH 大小及次数复用清单预算，单行模式使 libpq 不缓存整页；每行在追加前计数，额外列也消耗字节预算。驱动必须先解码单行，所以单个超大字段仍可超过 Ruby 预算的瞬时内存。总 deadline 覆盖连接和所有语句，每次 FETCH 前缩短 statement_timeout；正常完成回滚只读事务，异常关闭连接，任何失败均不交付部分清单。NOTICE、原始数据库异常及 cause 不进入日志或 CLI；稳定错误码区分连接失败、查询失败、无效清单和预算超限。SQL/参数可在 show-config 中查看，不能用于传递凭据。
 
 数据库集成测试运行 `bundle exec rake test:postgres`，通过 `pg_config --bindir`（或 `NC_TEST_PG_BINDIR`）定位服务端工具。测试只创建临时 SCRAM 数据库和私有 Unix socket，退出时停止并删除；不会读取真实 Netdisco 凭据或连接已有服务。覆盖 SQL/参数、只读限制、真实认证失败、查询中途失败、各项预算、连接回收以及 CLI 计划。
 
@@ -155,9 +167,9 @@ Diagnostic 只保存固定词表中的码、类型、阶段和受控产物状态
 任务书 NC-12（协作取消和整批 deadline）为后置可选项，本轮 **deferred**：没有新增
 取消令牌、取消状态或“停止后不派发”的公开保证。现有 Worker 的异常 kill/join、
 任务 ensure 和 Session 超时仍保留；任意用户回调应自行保证返回，不能承诺非合作
-回调的硬期限。清单获取 deadline 只约束 Client.devices，不覆盖整个 Fleet 任务。
+回调的硬期限。清单获取 deadline 只约束 Inventory::HTTP#devices，不覆盖整个 Fleet 任务。
 
-NC-07C 的本地服务器目录核验已接入 `TftpVerification`；单设备 API 仍只报告设备回执。
+NC-07C 的本地服务器目录核验已接入 `Tftp::Verifier`；单设备 API 仍只报告设备回执。
 Fleet 可把回执与本地普通文件的时间、稳定性、摘要及目录项身份关联，生成 server_verified。
 启用历史归档并提供服务器目录时，PAN-OS 固定名可在路径锁内顺序上传、核验和归档；
 其他场景仍拒绝同批固定名碰撞。验证失败不能重传设备命令。
@@ -225,7 +237,7 @@ Ruby 对象显式拥有资源并使用关键字参数。`Profile` 提供有限�
 
 ## 厂商能力
 
-`device.supports?(capability)` 读取档案与基于方法的采集命令，不建立传输连接或策略实例。接受 `:running_config`、`:save_config`、`:backup`、`:tftp_backup`、`:neighbors`、`:interface_descriptions`、`:interface_description_changes`；未知名称返回 `false`。它只表明实现了能力，不验证设备授权或固件兼容性。
+`device.supports?(capability)` 读取档案与基于方法的采集命令，不建立传输连接或策略实例。接受 `:running_config`、`:save_config`、`:backup`、`:remote_backup`、`:tftp_backup`、`:neighbors`、`:interface_descriptions`、`:interface_description_changes`；未知名称返回 `false`。它只表明实现了能力，不验证设备授权或固件兼容性。
 
 | 厂商 | 采集及本地备份 | 保存 | TFTP | 邻居 | 描述读取 | 描述计划及下发 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -237,8 +249,13 @@ Ruby 对象显式拥有资源并使用关键字参数。`Profile` 提供有限�
 | PAN-OS | 是 | 否 | 是 | 是 | 是 | 否，候选隔离未验证 |
 | 华为 | 是 | 是 | 是 | 否 | 否 | 否 |
 | 山石 | 是 | 是 | 是 | 是 | 是 | 是 |
+| Topsec TopOS | 是 | 否 | 否 | 否 | 否 | 否 |
+| Fortinet FortiOS | 是 | 是 | 是 | 是 | 否 | 否 |
+| Juniper Junos | 是 | 否 | 否，原生 FTP/SCP | 是 | 是 | 否，候选库提交未开放 |
 
-`Profile` DSL 声明静态命令、提示符、交互和策略绑定。配置、TFTP、拓扑规则位于各自的 `vendor/<厂商>/` 下；公共业务负责校验、执行和结果语义。相同规则直接复用：NX-OS 使用 IOS 拓扑规则，H3C 无线继承 H3C，H3C、华为、Radware 使用公共终端渲染配置策略。目录存在不意味着必须复制一份规则，子类可只覆盖需要变化的绑定。
+Junos 的 `remote_backup` 通过 `RemoteBackup` 协调与厂商策略导出已提交配置；回执区分设备报告与远端核验。其余平台保持明确的能力声明，见[平台说明](vendors.md)。
+
+`Profile` DSL 声明静态命令、提示符、交互和策略绑定。配置、TFTP、拓扑规则位于各自的 `vendor/<厂商>/` 下；公共业务负责校验、执行和结果语义。相同规则直接复用：NX-OS 复用 Cisco 拓扑变更流程，并绑定独立的 NX-OS 解析模板，H3C 无线继承 H3C，H3C、华为、Radware 使用公共终端渲染配置策略。目录存在不意味着必须复制一份规则，子类可只覆盖需要变化的绑定。
 
 ```mermaid
 flowchart LR
@@ -257,7 +274,7 @@ flowchart LR
 require "net/connector"
 require "net/connector/vendor/cisco_ios"
 
-class VariantTransfer < Net::Connector::CiscoIos::TftpBackup
+class VariantTransfer < Net::Connector::Vendor::CiscoIos::Tftp
   # 只覆盖该型号需要变化的方法，并遵守 Strategy 接口。
 end
 
@@ -281,7 +298,7 @@ TFTP 策略的类方法 `filename(host, label: nil)` 是必需的无 I/O 命名�
 
 TFTP 策略必须实现 `validate_options!(target, source_file:, vrf:)`、`receipt_metadata(target, source_file:, explicit_source:)`、`resolve_source_file`、`default_path`、`remote_path`、`script` 和 `device_reported_complete?`。可继承 `Tftp::Strategy` 的公共默认值；重写上传流程时必须一并审视继承的参数约束和来源声明。预检不得访问设备，元数据只允许 configuration_kind/source_file/format/requested_path。接口缺失在 Profile 构造时失败，不再动态回退到另一套行为。
 
-单设备 TFTP API 返回 device_reported；Fleet 的本地目录核验可提升为 server_verified。`TftpArchive` 在持有目标路径锁后保存旧文件，并记录其 dev、ino、size、mtime、ctime。上传时间取同一服务器目录内临时文件的 mtime，随即清理临时文件，避免文件系统时钟精度低于 Time.now 时误拒绝新上传。核验要求非空文件的新鲜时间及稳定读取；已有文件还必须发生状态变化。重新写入相同内容可以通过，未变化的旧文件即使 mtime 在未来也不能冒充新上传。预创建的服务器目标文件在上传前保持可用，成功归档后按原规则清理；未合作的外部写入者仍不受路径锁约束。
+单设备 TFTP API 返回 device_reported；Fleet 的本地目录核验可提升为 server_verified。`Tftp::Archive` 在持有目标路径锁后保存旧文件，并记录其 dev、ino、size、mtime、ctime。上传时间取同一服务器目录内临时文件的 mtime，随即清理临时文件，避免文件系统时钟精度低于 Time.now 时误拒绝新上传。核验要求非空文件的新鲜时间及稳定读取；已有文件还必须发生状态变化。重新写入相同内容可以通过，未变化的旧文件即使 mtime 在未来也不能冒充新上传。预创建的服务器目标文件在上传前保持可用，成功归档后按原规则清理；未合作的外部写入者仍不受路径锁约束。
 
 验收入口是 `script/ci`，也可用 `bundle exec rake release:check`。它检查源码、可用 Git 历史和 gem 内容中的敏感数据，执行 Ruby 与工作流 lint、完整测试，并在隔离 gem 目录及最小 Bundler 应用中安装。真实本地 PTY 烟测覆盖厂商加载、配置采集、打包模板和 CLI，不接触网络设备。初次下载依赖和工具需要联网，详见[验证文档](VERIFICATION.md)及[发布文档](RELEASING.md)。
 
@@ -303,17 +320,21 @@ TFTP 策略必须实现 `validate_options!(target, source_file:, vrf:)`、`recei
 
 ## 加载入口与厂商策略
 
-公开设备 `open` 与批量任务共用 `DeviceSession` 的关闭边界。PTY、SSH 信任快照、日志及本地文件在取得资源与登记所有权之间延后异步取消，关闭时保护回收过程；设备命令、文件读取和锁竞争仍可取消。清理保留首个故障，二次取消不能替换主错误或形成循环异常原因。
+公开设备 `open` 与批量任务共用 `Device::Scope` 的关闭边界。PTY、SSH 信任快照、日志及本地文件在取得资源与登记所有权之间延后异步取消，关闭时保护回收过程；设备命令、文件读取和锁竞争仍可取消。清理保留首个故障，二次取消不能替换主错误或形成循环异常原因。
 
 `require "net/connector"` 加载设备 API 和引擎，厂商由 `vendor_class` 按需加载。TextFSM 能力模块可预先组合，但外部 `textfsm` gem 只在实际解析时加载。仅需会话引擎时使用 `require "net/connector/engine/core"`；离线文件操作使用 `net/connector/storage`，不加载厂商。
 
-`engine/dialogue` 只定义 Interaction、Dialogue 与 Response；读取循环位于 `engine/response_reader`。`engine/errors` 不加载脱敏运行时，`engine/redactor` 负责秘密作用域。Session 明确加载并持有读取器与脱敏器。
+`engine/interaction`、`engine/dialogue`、`engine/response` 分别定义交互规则、对话语法与响应值；读取循环位于 `engine/response_reader`。`engine/errors` 不加载脱敏运行时，`engine/redactor` 负责秘密作用域。Session 明确加载并持有读取器与脱敏器。
 
-Netdisco 的 Settings、Planner、Fleet、CLI 等文件各自声明实际依赖，单独 require 后即可调用，不依赖 `netdisco.rb` 的预设加载顺序。总入口只组合 CLI 和 BackupRun；Batch 通过 autoload 创建 Report，避免两者循环加载。私有 InventoryBudget 由 Client 加载。Progress 的终端显示、Fleet 的设备执行、Report 的结果解释和 Storage 的文件持久化保持独立职责。
+Netdisco 的 Settings、Planner、Fleet、CLI 等文件各自声明实际依赖，单独 require 后即可调用，不依赖 `netdisco.rb` 的预设加载顺序。总入口只组合 CLI 和 CLI::Backup；Batch 通过 autoload 创建 Report，避免两者循环加载。内部清单预算 `Inventory::Budget` 由 Inventory 清单适配器加载。Progress 的终端显示、Fleet 的设备执行、Report 的结果解释和 Storage 的文件持久化保持独立职责。
 
 公共策略位于 `RunningConfig::Strategy` / `Rendered`、`Tftp::Strategy` / `FileUpload`、`Topology::Strategy` / `ImmediateStrategy`。厂商文件直接依赖公共策略，由 Profile 绑定；没有反向加载和厂商转发别名。
 
-`TerminalText.utf8` 在副本上验证设备或文件的原始字节，`TerminalText.render` 再使用严格终端渲染。Ruby 源码默认 UTF-8 不决定 PTY 或 `File.binread` 返回的编码。非法原始字节不能因控制符擦除而通过检查；渲染损坏多字节字符时同样拒绝，错误为不含正文或 cause 的 `invalid_output_encoding`。拓扑在表头匹配和计数前复用验证，TextFSM 每次解析创建独立 Parser。日志允许转义非法字节，原始备份不转码。
+`Vendor` 持有平台注册表并按需加载平台类。平台本身就是连接器，例如 `Vendor::CiscoIos`，不再套一层同名 Connector。IOS 与 NX-OS 继承 `Vendor::Cisco` 的运行配置采集、CDP 拓扑和复制确认规则；各平台分别声明提示符、分页、诊断及保存命令；NX-OS 拓扑子类绑定独立的 CDP、接口配置模板。NX-OS 不再保留空的配置清理子类。H3C Wireless 继续继承 H3C 的 Comware 流程；Huawei 与 H3C 的视图和特权语义独立，不因部分命令相似而共用整份档案。
+
+TFTP 策略的 `script` 统一执行预检并构造有界命令；平台通过私有 `transfer_command` 和 `transfer_interactions` 提供实际命令与确认应答。源文件发现、设备完成行、文件种类和服务器证据仍分别核验，不将不同平台的成功文本合并为宽松的通用匹配。模板按平台与命令组织，详见 [模板目录](templates.md)。
+
+`Terminal::Text.utf8` 在副本上验证设备或文件的原始字节，`Terminal::Text.render` 再使用严格终端渲染。Ruby 源码默认 UTF-8 不决定 PTY 或 `File.binread` 返回的编码。非法原始字节不能因控制符擦除而通过检查；渲染损坏多字节字符时同样拒绝，错误为不含正文或 cause 的 `invalid_output_encoding`。拓扑在表头匹配和计数前复用验证，TextFSM 每次解析创建独立 Parser。日志允许转义非法字节，原始备份不转码。
 
 ### Ruby 实现与扩展边界
 
@@ -330,31 +351,18 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 
 项目在开发阶段只维护当前接口，不保留旧路径转发或旧方法别名。
 
-| 原名称或入口 | 当前入口 |
+| 领域 | 当前类型与位置 |
 | --- | --- |
-| `exe/net-connector-backup` | `bin/net-backup`；安装后命令为 `net-backup` |
-| TFTP 策略 `interaction` | private `build_interaction`，构造交互规则；`device.interact` 仍表示立即进入人工终端交互 |
-| `TftpHistory`、`TftpArchive#path_for/#capture` | `TftpArchive#upload_filename/#upload_and_archive` |
-| `ResultStore::Text` | `ResultStore::Json`，与 `Report::Text` 的文本报告职责区分 |
-| `Base#login_dialogues` / `confirmation_dialogues` | protected `login_interactions` / `confirmation_interactions`；子类覆盖同步改名，继续支持 `super` |
-| `Fleet#backup_one` / `tftp_backup_one` / `run_one` | private `backup_device` / `tftp_backup_device` / `run_device`；公开批次入口不变 |
-| `engine`、`engine/base`、`engine/profile` | `net/connector`；底层分别为 `engine/core`、`device/base`、`device/profile` |
-| `Operations::*`、`operations/` | 设备流程为 `device/`；文件为 `Storage` / `storage/`；解析为 `TextFSM` / `textfsm.rb` |
-| 公共层中的厂商策略别名 | `Net::Connector::<Vendor>::RunningConfig` / `TftpBackup` / `Topology`，位于 `vendor/<厂商>/` |
-| `record_event` | `log_event` |
-| `execute`、引擎 `query` / `exchange` | `execute_command` |
-| `run`、引擎 `execute` 脚本入口 | `execute_script` |
-| `collect_config` | `running_config` |
-| `tftp_backup_receipt`、三字段 `TftpBackup` | `tftp_backup` 返回 `TftpReceipt`；实际目标为 `path`；完成后错误通过 `receipt` 取回 |
-| `PrivateFile.write_receipt` | `Storage::PrivateFile.write` 返回持久化回执 |
-| `report_schema`、`--report-schema` | 删除版本选择；Fleet 始终返回 Report，summary 固定 schema 2 |
-| `Batch#report`、`Device#connector` | `build_report`、`build_connector` |
-| `Settings#credentials_for` | `device_credentials_for`；非敏感设置由批次 Policy 单独提供 |
-| `check_response` | `validate_response!` |
-| 拓扑 `enter_configuration` / `leave_configuration` | `enter_configuration_command` / `leave_configuration_commands` |
-| TFTP `source_file` / `complete?` | `resolve_source_file` / `device_reported_complete?` |
-| `command_scope` / `output_scope` | `with_command_redaction` / `with_sensitive_output` |
-| `LegacyIndex` 和旧名称文件查找 | 只读取规范 `<IP>.txt`，无目录扫描和迁移分支 |
+| 终端数据 | `Terminal::Text`、`Terminal::Renderer`，位于 `engine/terminal/` |
+| 命令结果 | `Command::Result`，位于 `engine/command/result.rb`；脚本汇总仍为 `Result` |
+| 安全诊断词表 | `Error::Metadata`，位于 `engine/error/metadata.rb` |
+| 清单预算与缓存 | `Netdisco::Inventory::Budget/Cache`，位于 `netdisco/inventory/` |
+| 配置操作结果 | `Netdisco::Operations::Batch/Outcome`，位于 `netdisco/operations/` |
+| 报告存储 | `Netdisco::Report::Store`，位于 `netdisco/report/store.rb`，通过 `report_store:` 注入 |
+| 服务器上传证据 | `Netdisco::Tftp::Verifier/Archive`，位于 `netdisco/tftp/` |
+| 厂商平台 | `Vendor::CiscoIos` 等平台类直接继承 Base 或协议家族类；策略位于平台类下 |
+| 文件边界 | `Storage::FileReader` 与 `Storage::AtomicFile`，分别负责受控读取与原子替换 |
+| 终端应用 | `Netdisco::CLI::Backup/Credentials/Options`，位于 `netdisco/cli/` |
 
 工厂方法用 `build_*` 表明返回新对象；抛错校验使用 `validate_*!`；块作用域使用明确的 `with_*`。单命令、脚本、命令文本构造和完成证据判断分别命名，避免从通用的 execute/check/complete 猜测行为。`legacy_ssh` 表示设备 SSH 协议协商选项，Netdisco QueryRequired 则是服务端 API 行为，两者均独立于本库旧版本接口。
 
@@ -386,13 +394,13 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 
 批量备份只用规范化管理地址命名为 `<IP>.txt`，IPv6 的 `:` 改为 `_`。清单名称保留在结果元数据及 TFTP 文件名中。`Storage::SavedConfig` 只读取该规范路径，不扫描其他名称；缺失时 required 查找或读取抛出 ENOENT，`find(required: false)` 返回 nil。
 
-新建规范文件时报告 created，之后只与同一路径的内容比较。设备改名不会改变身份或基线，其他名称文件不会被读取、迁移或覆盖。Fleet 在凭据解析和连接前检查规范目标，拒绝符号链接和非普通文件；持有路径锁直至备份结束。`SafeFile` 在同一 FD 上完成检查和读取；它与 flock 均不能阻止不合作的外部写入者，目录保护仍由调用方负责。
+新建规范文件时报告 created，之后只与同一路径的内容比较。设备改名不会改变身份或基线，其他名称文件不会被读取、迁移或覆盖。Fleet 在凭据解析和连接前检查规范目标，拒绝符号链接和非普通文件；持有路径锁直至备份结束。`FileReader` 在同一 FD 上完成检查和读取；它与 flock 均不能阻止不合作的外部写入者，目录保护仍由调用方负责。
 
 ## 日志组件与事件
 
 `Log` 管理日志资源、级别和上下文；`Log::Event` 冻结已脱敏的标量字段；`Log::Formatter` 提供标准 Logger 文本格式；`Log::Transcript` 以行组织设备回显，`Log::RedactingWriter` 将分片直接交给 Expect::Redactor。日志模块不再实现另一套秘密匹配算法。
 
-连接、命令和操作失败统一经过 `Log#log_failure`。错误类型、错误码和阶段由 `ErrorMetadata` 的固定词表过滤，Netdisco 报告复用同一规则；未知错误码不输出，未知阶段使用引擎当前阶段，未知类型归为 StandardError。异常正文仍先由会话脱敏，防止配置钩子把未登记的配置放进错误元数据后进入日志。
+连接、命令和操作失败统一经过 `Log#log_failure`。错误类型、错误码和阶段由 `Error::Metadata` 的固定词表过滤，Netdisco 报告复用同一规则；未知错误码不输出，未知阶段使用引擎当前阶段，未知类型归为 StandardError。异常正文仍先由会话脱敏，防止配置钩子把未登记的配置放进错误元数据后进入日志。
 
 操作后处理无论抛出异常还是返回失败 Result，都在敏感作用域退出前归一化错误，再记录完成事件；Result 的已完成步骤及配置内容保持原样。最终处理继承实际执行的命令及交互敏感性，包括准备钩子、替换命令和追加查询；只累计标记，不长期保留秘密，也不影响后续普通命令的日志。
 
@@ -408,7 +416,7 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 
 注入的 logger 由调用方持有；连接器不修改级别、formatter、progname，也不关闭它。每次写入同时检查配置与 logger 当前级别。消息对象支持 to_s/inspect 和安全 to_h，应用可自行输出 JSON。自有文本日志使用毫秒时间及逐行事件；raw 文件只写经过敏感保护的字节。上下文退出前先收尾渲染与脱敏缓冲，避免上一命令尾部被标成下一条命令。
 
-人类进度显示由 Progress 单独管理：终端 write/flush 的普通故障会停用后续显示，并只保留固定词表内的错误类型，不携带原始异常。心跳照常回收，设备任务、events.jsonl 与报告持久化继续进行；BackupRun 将显示故障合并为一次批次 callback_errors。若首次故障发生在报告保存后的最终显示阶段，仅补写一次报告诊断，最终 JSON 与退出码采用更新后的策略结果；已有报告错误保持优先，不重放设备备份或事件。
+终端进度显示由 Progress 单独管理：终端 write/flush 的普通故障会停用后续显示，并只保留固定词表内的错误类型，不携带原始异常。心跳照常回收，设备任务、events.jsonl 与报告持久化继续进行；CLI::Backup 将显示故障合并为一次批次 callback_errors。若首次故障发生在报告保存后的最终显示阶段，仅补写一次报告诊断，最终 JSON 与退出码采用更新后的策略结果；已有报告错误保持优先，不重放设备备份或事件。
 
 `log_file` 使用 NOFOLLOW/NONBLOCK 打开，再对同一 FD 检查普通文件类型，随后才修改权限或写入。FIFO、设备文件和目录不能用作日志文件；应用拥有的输出流通过 `logger` 接入。日志打开先于登录，不能依赖登录超时为文件打开提供期限。
 
@@ -416,14 +424,14 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 
 应用代码优先使用 `Net::Connector.open/build`、`Base` 的公开设备方法、`Command`、`Script`、结果对象，以及 `Netdisco::Fleet`。厂商扩展使用 `Profile` DSL 和文档中列出的策略接口；`Profile::Builder`、`Session` 的状态字段、工作线程调度及解析辅助方法属于内部实现。扩展直接加载当前设备模块或厂商目录下的类。项目仍处于 0.x，公开契约的变更会在更新记录中说明。
 
-gem 不依赖 Rails，也不自动创建数据库模型或管理应用的连接池。`logger: Rails.logger` 由应用持有，连接器写入安全事件对象，不修改或关闭它。数据库报告通过 `ResultStore::Database` 注入仓储，写报告发生在调用线程中；逐设备凭据解析、连接器工厂和回调则运行在工作线程中。
+gem 不依赖 Rails，也不自动创建数据库模型或管理应用的连接池。`logger: Rails.logger` 由应用持有，连接器写入安全事件对象，不修改或关闭它。数据库报告通过 `Report::Store::Database` 注入仓储，写报告发生在调用线程中；逐设备凭据解析、连接器工厂和回调则运行在工作线程中。
 
 在 Rails 内调用涉及模型、自动加载或应用状态的线程代码时，应由应用用 `Rails.application.executor.wrap` 包住相应调用。仅在外层包住 `fleet.backup_all` 不会覆盖子线程。例如，凭据解析器可以写为：
 
 ```ruby
 credentials = lambda do |device|
   Rails.application.executor.wrap do
-    DeviceCredential.for_host(device.host).connection_settings
+    DeviceCredential.for_host(device.host).connection_options
   end
 end
 ```
@@ -432,10 +440,12 @@ end
 
 ## 公共并发、配置批次与清单缓存
 
-`ExecutionPool` 只持有线程、启动闸门和完成事件，按输入顺序交付块结果。普通设备失败如何转成结果由业务适配负责；创建并登记线程时延迟异步中断，登记完成后恢复，启动失败不执行任何设备块。工作线程捕获异常并由调用线程同步传播，避免宿主全局线程策略影响无关线程。原 `Netdisco::Worker` 保留备份计时、结果槽位和通知适配，不再自行管理线程。
+`Concurrency::Pool` 只持有线程、启动闸门和完成事件，按输入顺序交付块结果。普通设备失败如何转成结果由业务适配负责；创建并登记线程时延迟异步中断，登记完成后恢复，启动失败不执行任何设备块。工作线程捕获异常并由调用线程同步传播，避免宿主全局线程策略影响无关线程。原 `Netdisco::Worker` 保留备份计时、结果槽位和通知适配，不再自行管理线程。
 
-`DeviceSession` 持有单台任务连接器，分别交付业务值与普通故障，收尾不覆盖先前错误或中断。`Netdisco::Operations` 为配置脚本与接口描述同步、规划/应用提供全批预检、固定策略、动态凭据和安全摘要；它保留领域 `Result`、计划和完成步骤，使用独立 `OperationBatch`，不借用备份路径或上传状态。应用审批计划必须走原拓扑重验、变更、回读、保存流程；有限并发不代表跨设备事务或自动重试安全。
+`Device::Scope` 持有单台任务连接器，分别交付业务值与普通故障，收尾不覆盖先前错误或中断。`Netdisco::Operations` 为配置脚本与接口描述同步、规划/应用提供全批预检、固定策略、动态凭据和安全摘要；它保留领域 `Result`、计划和完成步骤，使用独立 `Operations::Batch`，不借用备份路径或上传状态。应用审批计划必须走原拓扑重验、变更、回读、保存流程；有限并发不代表跨设备事务或自动重试安全。
 
-`Settings#client` 为原始清单适配器包裹 `InventoryCache`，默认三天有效。缓存仅保存完整白名单 rows，Rules 和重复地址判定每次重做。身份、SQL 及绑定参数只参与摘要分区，不写入文件；凭据缺失仍在缓存读取前拒绝。过期刷新在有界、按身份的跨进程文件锁内完成，成功后原子替换；失败使用原时间的已验证历史，成功空清单替换旧值。最新查询成功与本地缓存持久化成功是两个事实，不能因写盘失败回退旧数据或重复查询。强刷跳过有效期，不跳过身份、限额、文件校验和失败回退边界。
+`Device::Access` 为备份与配置操作统一解析逐设备连接设置：每台设备重新读取凭据，自定义设置覆盖本批固定连接策略，批次日志目录决定日志路径。它不缓存凭据或创建连接；缺少凭据返回 nil，调用入口保留各自的结果分类。`CLI::Credentials` 负责清单客户端与凭据来源的组装，两者不共享设备会话生命周期。
 
-后台心跳和 HTTP 超时观察使用内部 `BackgroundTask` 作用域，前台保留主业务值和原始故障；观察线程的异常同步交付所有者，不受宿主全局线程异常策略影响。创建至登记期间延后中断，停止和等待期间保证线程回收；心跳普通故障转换为显示诊断，正常 HTTP 请求的未知观察故障仍传播。
+`Settings#inventory` 为原始清单适配器包裹 `Inventory::Cache`，默认三天有效。缓存仅保存完整白名单 rows，Rules 和重复地址判定每次重做。身份、SQL 及绑定参数只参与摘要分区，不写入文件；凭据缺失仍在缓存读取前拒绝。过期刷新在有界、按身份的跨进程文件锁内完成，成功后原子替换；失败使用原时间的已验证历史，成功空清单替换旧值。最新查询成功与本地缓存持久化成功是两个事实，不能因写盘失败回退旧数据或重复查询。强刷跳过有效期，不跳过身份、限额、文件校验和失败回退边界。
+
+后台心跳和 HTTP 超时观察使用内部 `Concurrency::Observer` 作用域，前台保留主业务值和原始故障；观察线程的异常同步交付所有者，不受宿主全局线程异常策略影响。创建至登记期间延后中断，停止和等待期间保证线程回收；心跳普通故障转换为显示诊断，正常 HTTP 请求的未知观察故障仍传播。

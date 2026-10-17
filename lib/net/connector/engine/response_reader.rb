@@ -2,6 +2,7 @@
 
 require "expect/pty"
 require_relative "dialogue"
+require_relative "response"
 
 module Net
   module Connector
@@ -38,7 +39,7 @@ module Net
             reply = interactions.fetch(event.index - failures.size)
             raw << event.match
             output << event.match if reply.capture?
-            respond(reply, event.match, counts, deadline, phase, command)
+            respond(reply, event.match, counts, deadline, phase, command, raw: raw)
           end
           next if Expect.monotonic < deadline
 
@@ -82,7 +83,7 @@ module Net
       end
 
       # 重复提示和缺失应答必须在写入前失败；所有应答共用读取操作的截止时间。
-      def respond(reply, prompt, counts, deadline, phase, command)
+      def respond(reply, prompt, counts, deadline, phase, command, raw:)
         counts[reply] += 1
         if prompt.empty? || (reply.limit && counts[reply] > reply.limit)
           raise build_interaction_error("response rejected or repeated", phase, command), cause: nil
@@ -92,6 +93,11 @@ module Net
         raise build_interaction_error("response unavailable", phase, command), cause: nil unless value.is_a?(String)
 
         @session.redactor.remember(value.chomp("\n")) if reply.sensitive?
+        # 回调和提示匹配均可耗尽总期限；零背压预算仍允许底层发送，不能代表拒绝迟到应答。
+        if Expect.monotonic >= deadline
+          raise build_read_error(nil, phase, command, raw.join("")), cause: nil
+        end
+
         @session.write(value, deadline: deadline, phase: phase, command: command)
       end
 

@@ -69,8 +69,8 @@ module Net
             coverage: { complete: !outcomes.empty? && outcomes.all? { |outcome| ATTEMPTED_STATUSES.include?(outcome.status) },
                         attempted: outcomes.count { |outcome| ATTEMPTED_STATUSES.include?(outcome.status) },
                         skipped: outcomes.count { |outcome| !ATTEMPTED_STATUSES.include?(outcome.status) } },
-            callback_errors: callback_errors.map { |entry| { host: entry[:host], error_type: ErrorMetadata.type(entry[:error_type]) } },
-            report_location: report_location, report_error: ErrorMetadata.type(report_error),
+            callback_errors: callback_errors.map { |entry| { host: entry[:host], error_type: Error::Metadata.type(entry[:error_type]) } },
+            report_location: report_location, report_error: Error::Metadata.type(report_error),
             verification: mode == :tftp ? { verified: outcomes.count { |outcome| server_verified?(outcome) },
                                             unverified: outcomes.count { |outcome| outcome.backup.is_a?(TftpReceipt) && !server_verified?(outcome) } } : nil,
             report_diagnostic: report_diagnostic&.to_h

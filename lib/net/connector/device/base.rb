@@ -1,12 +1,13 @@
 # frozen_string_literal: true
 
 require "forwardable"
-require_relative "../device_session"
+require_relative "scope"
 require_relative "../engine/core"
 require_relative "profile"
 require_relative "running_config"
 require_relative "save_config"
 require_relative "local_backup"
+require_relative "remote_backup"
 require_relative "tftp"
 require_relative "topology"
 require_relative "../textfsm"
@@ -19,6 +20,7 @@ module Net
       include RunningConfig::Capability
       include SaveConfig
       include LocalBackup::Capability
+      include RemoteBackup::Capability
       include Tftp::Capability
       include Topology::Capability
       include TextFSM::Capability
@@ -63,7 +65,7 @@ module Net
       def self.open(**)
         raise ArgumentError, "open requires a block" unless block_given?
 
-        value, failure = DeviceSession.call(factory: -> { new(**) }) do |device|
+        value, failure = Net::Connector::Device::Scope.call(factory: -> { new(**) }) do |device|
           device.connect
           yield device
         end
@@ -100,6 +102,8 @@ module Net
           !config_commands.empty?
         when :save_config
           !save_commands.empty?
+        when :remote_backup
+          !profile.remote_backup_strategy.nil?
         when :tftp_backup
           !profile.tftp_strategy.nil?
         when :neighbors, :interface_descriptions, :interface_description_changes

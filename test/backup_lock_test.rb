@@ -17,7 +17,7 @@ class BackupLockTest < Minitest::Test
     Dir.mktmpdir do |directory|
       path = File.join(directory, "device.txt")
       File.write(path, "configuration")
-      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
+      [Storage::FileReader, Storage::BackupLock.new(path)].each do |owner|
         file = nil
         real_open = File.method(:open)
         cancellation = Interrupt.new("handoff cancelled")
@@ -45,7 +45,7 @@ class BackupLockTest < Minitest::Test
     Dir.mktmpdir do |directory|
       path = File.join(directory, "device.txt")
       File.write(path, "configuration")
-      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
+      [Storage::FileReader, Storage::BackupLock.new(path)].each do |owner|
         failure = IOError.new("open failed first")
         intercept = lambda do |*|
           Thread.current.raise(Interrupt.new("queued cancellation"))
@@ -63,7 +63,7 @@ class BackupLockTest < Minitest::Test
     Dir.mktmpdir do |directory|
       path = File.join(directory, "device.txt")
       File.write(path, "configuration")
-      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
+      [Storage::FileReader, Storage::BackupLock.new(path)].each do |owner|
         file = nil
         real_open = File.method(:open)
         cancellation = Interrupt.new("close cancelled")
@@ -95,7 +95,7 @@ class BackupLockTest < Minitest::Test
     Dir.mktmpdir do |directory|
       path = File.join(directory, "device.txt")
       File.write(path, "configuration")
-      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
+      [Storage::FileReader, Storage::BackupLock.new(path)].each do |owner|
         [IOError.new("operation failed"), Interrupt.new("operation cancelled")].each do |original|
           real_open = File.method(:open)
           intercept = lambda do |target, *arguments, **options, &block|
@@ -123,7 +123,7 @@ class BackupLockTest < Minitest::Test
     Dir.mktmpdir do |directory|
       path = File.join(directory, "device.txt")
       File.write(path, "configuration")
-      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
+      [Storage::FileReader, Storage::BackupLock.new(path)].each do |owner|
         failure = IOError.new("close failed first")
         real_open = File.method(:open)
         intercept = lambda do |target, *arguments, **options, &block|
@@ -150,8 +150,8 @@ class BackupLockTest < Minitest::Test
     Dir.mktmpdir do |directory|
       path = File.join(directory, "device.txt")
       File.write(path, "configuration")
-      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
-        lock = owner != Storage::SafeFile
+      [Storage::FileReader, Storage::BackupLock.new(path)].each do |owner|
+        lock = owner != Storage::FileReader
         target = lock ? Storage::BackupLock.lock_path(path) : path
         file = File.open(target, lock ? File::RDWR | File::CREAT : File::RDONLY, 0o600)
         entered, errors = Queue.new, Queue.new
@@ -182,7 +182,7 @@ class BackupLockTest < Minitest::Test
     Dir.mktmpdir do |directory|
       path = File.join(directory, "device.txt")
       File.write(path, "configuration")
-      [Storage::SafeFile, Storage::BackupLock.new(path)].each do |owner|
+      [Storage::FileReader, Storage::BackupLock.new(path)].each do |owner|
         [false, true].each do |nonlocal|
           failure = IOError.new("cleanup failed")
           real_open = File.method(:open)
@@ -206,7 +206,7 @@ class BackupLockTest < Minitest::Test
   end
 
   def storage_operation(owner, path, &)
-    owner == Storage::SafeFile ? owner.open(path, &) : owner.synchronize(&)
+    owner == Storage::FileReader ? owner.open(path, &) : owner.synchronize(&)
   end
 
   def collector(&block)
@@ -279,8 +279,8 @@ class BackupLockTest < Minitest::Test
         end
         device.define_singleton_method(:close) { raise ArgumentError, "private device close" if device_close_fails }
         fleet = Net::Connector::Netdisco::Fleet.new(
-          client: Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }]),
-          result_store: nil, credentials: ->(*) { { username: "audit" } }, connector_factory: ->(*) { device }
+          inventory: Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }]),
+          report_store: nil, credentials: ->(*) { { username: "audit" } }, connector_factory: ->(*) { device }
         )
         observed = []
         report = with_lock_close_failure do
@@ -421,8 +421,8 @@ class BackupLockTest < Minitest::Test
   def test_fleet_contention_fails_before_credentials_and_connector_construction
     Dir.mktmpdir do |directory|
       netdisco = Net::Connector::Netdisco
-      client = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
-      fleet = netdisco::Fleet.new(client: client, settings: netdisco::Settings.new(env: {}), result_store: nil,
+      inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
+      fleet = netdisco::Fleet.new(inventory: inventory, settings: netdisco::Settings.new(env: {}), report_store: nil,
                                  credentials: ->(*) { flunk "read credentials while path busy" },
                                  connector_factory: ->(*) { flunk "created connector while path busy" })
       path = File.join(directory, "192.0.2.1.txt")

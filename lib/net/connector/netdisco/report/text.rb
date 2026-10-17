@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../../storage/private_file"
+require_relative "../../storage/atomic_file"
 require_relative "../report"
 
 module Net
@@ -28,7 +28,7 @@ module Net
             lines << "无" if failed.empty?
             lines << "TFTP 成功仅表示设备报告上传完成；服务器文件核验结果请查看 summary.json。" if report.mode == :tftp
             lines += ["=" * 72, "备份目录：#{directory}", "完整明细：#{File.join(directory, "summary.json")}"]
-            Net::Connector::Storage::PrivateFile.write(File.join(directory, "summary.txt"), lines.join("\n") + "\n")
+            Net::Connector::Storage::AtomicFile.write(File.join(directory, "summary.txt"), lines.join("\n") + "\n")
           end
 
           def self.failure_lines(failed)

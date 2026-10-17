@@ -1,23 +1,18 @@
 # frozen_string_literal: true
 
-require_relative "../device/base"
-require_relative "cisco_ios/running_config"
-require_relative "cisco_ios/tftp_backup"
-require_relative "cisco_ios/topology"
+require_relative "cisco"
+require_relative "cisco_ios/tftp"
 
 module Net
   module Connector
-    module CiscoIos
+    module Vendor
       # Cisco IOS 和 IOS-XE 配置采集连接器。
-      class Connector < Net::Connector::Base
+      class CiscoIos < Cisco
         vendor :cisco_ios
         # 声明 IOS 的命令、提示、分页、诊断和保存确认规则。
         profile do
-          running_config_strategy Net::Connector::CiscoIos::RunningConfig
-          tftp_strategy Net::Connector::CiscoIos::TftpBackup
-          topology_strategy Net::Connector::CiscoIos::Topology
+          tftp_strategy Tftp
           commands do
-            running_config "terminal length 0", "show running-config"
             save_config "copy running-config startup-config"
           end
 
@@ -34,11 +29,7 @@ module Net
             command(/^[ \t]*%[ \t]+(?:Invalid|Incomplete|Ambiguous)\s+(?:input|command)\b/i, /^[ \t]*\^/)
           end
 
-          command_timeout 60
-
           interactions do
-            confirm(/Destination\s+filename\s+\[[^\]]+\]\?\s*\z/i, response: "\n")
-            confirm(%r{Do\s+you\s+want\s+to\s+overwrite\?\s*\[yes/no\]\s*\z}i, response: "yes\n")
             confirm(/Proceed\s+with\s+copy\?\s*\[confirm\]\s*\z/i, response: "\n")
           end
         end

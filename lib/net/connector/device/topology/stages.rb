@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../../engine/command"
+require_relative "../../engine/script"
 require_relative "interface_description"
 
 module Net

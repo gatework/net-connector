@@ -5,7 +5,7 @@ require_relative "log"
 require_relative "redactor"
 require_relative "response_reader"
 require_relative "recovery"
-require_relative "transport"
+require_relative "transports"
 
 module Net
   module Connector

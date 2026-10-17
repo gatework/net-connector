@@ -24,8 +24,13 @@
 | `:palo_alto` | Palo Alto PAN-OS | 候选视图中的 set 格式导出 | 不支持 |
 | `:huawei` | 华为 | `dis cur` | `save force` |
 | `:hillstone` | 山石 StoneOS | `show configuration running` | `save all` |
+| `:topsec` | 天融信 TopOS 防火墙 | `show-running nostop` | 未开放 |
+| `:fortinet` | FortiGate / FortiOS | `show full-configuration` | `execute cfg save` |
+| `:juniper` | Juniper Junos OS | `show configuration \| display set \| no-more` | 不隐式提交候选库 |
 
-厂商标识仅使用上表的规范名称。厂商连接器位于 `Net::Connector` 下，例如 `Net::Connector::H3cWireless::Connector`。
+厂商标识仅使用上表的规范名称。厂商连接器位于 `Net::Connector` 下，例如 `Net::Connector::Vendor::H3cWireless`。
+
+Junos 的 FTP/SCP 原生导出使用 `remote_backup(host:, path:, username:, protocol: :scp, password: nil)`，通过 `supports?(:remote_backup)` 查询。详细能力、视图及命令依据见[新增平台说明](vendors.md)。
 
 ## 登录与本地备份
 
@@ -94,7 +99,7 @@ end
 `parse_config` 采集运行配置，要求显式指定模板。内置 Cisco IOS 模板只提取接口名称和描述，并非完整配置模型：
 
 ```ruby
-interfaces = device.parse_config(template: "cisco_ios_running_config_interfaces.textfsm")
+interfaces = device.parse_config(template: "cisco/show_running_config.textfsm")
 ```
 
 两种方法都返回由模板字段名组成的哈希数组；匹配不到记录时返回 `[]`。模板缺失或无效会抛出 `ParsingError`，设备命令失败则保留原始连接器错误。可用 `template:` 指定外部模板，或用 `template_dir:` 指定含 `index` 的模板目录。每次解析使用独立解析器，批量任务之间不共享状态。已有本地备份也可离线解析：

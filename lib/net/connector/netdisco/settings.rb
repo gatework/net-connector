@@ -3,10 +3,10 @@
 require "json"
 require "digest"
 require_relative "../../connector"
-require_relative "../execution_pool"
-require_relative "client"
-require_relative "database_client"
-require_relative "inventory_cache"
+require_relative "../concurrency/pool"
+require_relative "inventory/http"
+require_relative "inventory/postgres"
+require_relative "inventory/cache"
 require_relative "config_file"
 require_relative "rules"
 require_relative "planner"
@@ -17,11 +17,11 @@ module Net
       # 活的凭据来源与不可变的批次策略分开保存；只有明确列出的非敏感字段进入快照。
       class Settings
         DEFAULT_BACKUP_DIRECTORY = "backups"
-        DEFAULT_CONCURRENCY = ExecutionPool::DEFAULT_CONCURRENCY
-        MAX_CONCURRENCY = ExecutionPool::MAX_CONCURRENCY
+        DEFAULT_CONCURRENCY = Concurrency::Pool::DEFAULT_CONCURRENCY
+        MAX_CONCURRENCY = Concurrency::Pool::MAX_CONCURRENCY
         # 这里只列可从环境读取的公开策略；凭据单独动态读取，其他内部键只供 YAML/CLI 使用。
         ENVIRONMENT_KEYS = %w[ND_URL ND_CACHE_TTL NC_CONCURRENCY].freeze
-        DEFAULT_PAGE_SIZE = Client::DEFAULTS.fetch(:page_size)
+        DEFAULT_PAGE_SIZE = Inventory::DEFAULTS.fetch(:page_size)
         UNSET = Object.new.freeze
         private_constant :UNSET
 
@@ -84,7 +84,7 @@ module Net
           backup_directory
           return self if mode == :export
 
-          client_options
+          inventory_options
           inventory_cache_options
           rules
           concurrency
@@ -100,22 +100,22 @@ module Net
           self
         end
 
-        # 用固定策略创建清单客户端，但每次读取最新身份凭据；显式认证覆盖默认认证来源。
-        def client(policy: snapshot(mode: :inventory), credentials: nil)
+        # 用固定策略创建清单来源，但每次读取最新身份凭据；显式认证覆盖默认认证来源。
+        def inventory(policy: snapshot(mode: :inventory), credentials: nil)
           if credentials && (!credentials.is_a?(Hash) || credentials.keys.sort != %i[password username] ||
             !credentials.values.all? { |value| present?(value) })
             raise ArgumentError, "inventory credentials require nonempty username and password"
           end
-          options = policy.client_options
+          options = policy.inventory_options
           if policy.inventory_source == :postgres
-            connection = DatabaseClient::CONNECTION_ENV.each_with_object(policy.database_options.dup) do |(key, name), values|
+            connection = Inventory::Postgres::CONNECTION_ENV.each_with_object(policy.database_options.dup) do |(key, name), values|
               item = secret_value(name)
               values[key] = item if item
             end
             connection.merge!(user: credentials[:username], password: credentials[:password]) if credentials
-            client = DatabaseClient.new(connection_options: connection, **options)
+            inventory = Inventory::Postgres.new(connection_options: connection, **options)
             identity = [:postgres, connection.except(:password), options.slice(:query, :query_params)]
-            return cached_client(client, policy, identity)
+            return cached_inventory(inventory, policy, identity)
           end
           raise ArgumentError, "ND_URL is required" unless options.fetch(:url)
 
@@ -126,9 +126,9 @@ module Net
                            else
                              { username: required_secret("ND_USERNAME"), password: required_secret("ND_PASSWORD") }
                            end
-          client = Client.new(**options, **authentication)
-          identity = [:http, Client.validate_url!(options.fetch(:url)).normalize.to_s, authentication.except(:password)]
-          cached_client(client, policy, identity)
+          inventory = Inventory::HTTP.new(**options, **authentication)
+          identity = [:http, Inventory::HTTP.validate_url!(options.fetch(:url)).normalize.to_s, authentication.except(:password)]
+          cached_inventory(inventory, policy, identity)
         end
 
         # 清单来源来自 YAML/CLI，HTTP 与 PostgreSQL 共用后续计划和执行接口。
@@ -139,10 +139,10 @@ module Net
           source.to_sym
         end
 
-        # 原生客户端和 --show-config 共享预算校验；只验证所选来源的查询设置。
-        def client_options
-          defaults = inventory_source == :postgres ? DatabaseClient::DEFAULTS : Client::DEFAULTS
-          options = client_budget_options(defaults)
+        # 清单来源和 --show-config 共享预算校验；只验证所选来源的查询设置。
+        def inventory_options
+          defaults = inventory_source == :postgres ? Inventory::Postgres::DEFAULTS : Inventory::HTTP::DEFAULTS
+          options = inventory_policy(defaults)
           inventory_source == :postgres ? postgres_options(options) : http_options(options)
         end
 
@@ -152,7 +152,7 @@ module Net
           unless directory.is_a?(String) && !directory.empty? && !directory.include?("\0")
             raise ArgumentError, "netdisco.cache_directory must be a nonempty path without NUL"
           end
-          { directory: absolute_path(directory), ttl: number("ND_CACHE_TTL", InventoryCache::DEFAULT_TTL),
+          { directory: absolute_path(directory), ttl: number("ND_CACHE_TTL", Inventory::Cache::DEFAULT_TTL),
             enabled: boolean("ND_CACHE_ENABLED", true) }.freeze
         end
 
@@ -246,7 +246,7 @@ module Net
             item = value("ND_DB_#{name.to_s.upcase}")
             options[name] = item if item
           end
-          options = DatabaseClient.connection_policy(**options)
+          options = Inventory::Postgres.connection_policy(**options)
           # libpq 的 system 是系统信任库标记；其他显式路径按字面解析，不展开波浪号。
           if @fixed && options[:sslrootcert] && options[:sslrootcert] != "system"
             options = options.merge(sslrootcert: File.absolute_path(options[:sslrootcert], @path_context.first).freeze).freeze
@@ -306,7 +306,7 @@ module Net
         # 只输出公开策略；数据库身份和设备凭据不得通过配置摘要进入报告。
         def config_hash
           {
-            netdisco: client_options.merge(source: inventory_source, database: database_options, cache: inventory_cache_options),
+            netdisco: inventory_options.merge(source: inventory_source, database: database_options, cache: inventory_cache_options),
             backup: { directory: backup_directory, concurrency: concurrency, limit_per_vendor: limit_per_vendor },
             inventory: { include_hosts: list("NC_INCLUDE_HOSTS"),
                          exclude_hosts: list("NC_EXCLUDE_HOSTS"),
@@ -353,18 +353,18 @@ module Net
         private
 
         # 身份指纹只用于隔离缓存；凭据、SQL 和参数均不写入缓存文件或摘要。
-        def cached_client(client, policy, identity)
+        def cached_inventory(inventory, policy, identity)
           cache = policy.inventory_cache_options
-          return client unless cache.fetch(:enabled)
+          return inventory unless cache.fetch(:enabled)
 
-          options = policy.client_options
-          InventoryCache.new(client: client, **cache.except(:enabled),
+          options = policy.inventory_options
+          Inventory::Cache.new(inventory: inventory, **cache.except(:enabled),
                              identity: Digest::SHA256.hexdigest(JSON.generate(identity)),
                              **options.slice(:max_inventory_bytes, :max_devices),
                              lock_timeout: [5, options.fetch(:inventory_timeout)].min)
         end
 
-        def client_budget_options(defaults)
+        def inventory_policy(defaults)
           defaults.to_h do |name, default|
             key = "ND_#{name.to_s.upcase}"
             parsed = case name
@@ -378,16 +378,16 @@ module Net
 
         def postgres_options(options)
           query = value("ND_QUERY") || (raise ArgumentError, "ND_QUERY is required for postgres")
-          DatabaseClient.options(query: query, query_params: json("ND_QUERY_PARAMS", []), **options)
+          Inventory::Postgres.options(query: query, query_params: json("ND_QUERY_PARAMS", []), **options)
         end
 
         def http_options(options)
           if value("ND_QUERY") || value("ND_QUERY_PARAMS")
             raise ArgumentError, "SQL query settings require ND_SOURCE=postgres"
           end
-          options = Client.options(**options)
+          options = Inventory::HTTP.options(**options)
           url = value("ND_URL")
-          Client.validate_url!(url, allow_insecure_http: options.fetch(:allow_insecure_http)) if url
+          Inventory::HTTP.validate_url!(url, allow_insecure_http: options.fetch(:allow_insecure_http)) if url
           options.merge(url: url).freeze
         end
 

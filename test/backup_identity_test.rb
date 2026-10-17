@@ -13,15 +13,15 @@ class BackupIdentityTest < Minitest::Test
   SavedConfig = Net::Connector::Storage::SavedConfig
   CONFIG = "sysname sw\ninterface GigabitEthernet1/0/1\n#\n[sw]"
 
-  def fleet(client, config: CONFIG, **options)
-    Netdisco::Fleet.new(client: client, settings: Netdisco::Settings.new(env: {}), result_store: nil,
+  def fleet(inventory, config: CONFIG, **options)
+    Netdisco::Fleet.new(inventory: inventory, settings: Netdisco::Settings.new(env: {}), report_store: nil,
                         credentials: ->(_) { { username: "backup" } },
                         connector_factory: ->(device, settings) {
                           device.build_connector(**settings, transport: ConnectorFake.new("[sw]", config))
                         }, **options)
   end
 
-  def client(name: "new-name", host: "192.0.2.1")
+  def inventory(name: "new-name", host: "192.0.2.1")
     Struct.new(:devices).new([{ "ip" => host, "vendor" => "H3C", "name" => name }])
   end
 
@@ -31,8 +31,54 @@ class BackupIdentityTest < Minitest::Test
     Dir.children(directory) - [File.basename(Net::Connector::Storage::BackupLock.lock_path(path))]
   end
 
+  def test_backup_owns_metadata_on_construction_and_update
+    path = +"/backups/device.txt"
+    digest = +"original-digest"
+    previous = +"previous-digest"
+    collected_at = Time.utc(2026, 10, 17)
+    backup = Net::Connector::Backup.new(path: path, bytes: 1, sha256: digest, collected_at: collected_at,
+                                        previous_sha256: previous)
+    path.replace("changed")
+    digest.replace("changed")
+    previous.replace("changed")
+    collected_at.localtime("+12:00")
+    assert_equal "/backups/device.txt", backup.path
+    assert_equal "original-digest", backup.sha256
+    assert_equal "previous-digest", backup.previous_sha256
+    assert backup.collected_at.utc?
+    [backup.path, backup.sha256, backup.previous_sha256, backup.collected_at].each { |value| assert_predicate value, :frozen? }
+
+    updated_digest = +"updated-digest"
+    updated_time = Time.utc(2026, 10, 18)
+    updated = backup.with(sha256: updated_digest, collected_at: updated_time)
+    updated_digest.replace("changed")
+    updated_time.localtime("+12:00")
+    assert_equal "updated-digest", updated.sha256
+    assert updated.collected_at.utc?
+    assert_predicate updated.sha256, :frozen?
+    assert_predicate updated.collected_at, :frozen?
+  end
+
+  def test_result_callbacks_cannot_rewrite_persisted_backup_evidence
+    Dir.mktmpdir do |directory|
+      attempted = []
+      callback = lambda do |outcome|
+        assert_raises(FrozenError) { outcome.backup.sha256.replace("rewritten") }
+        assert_raises(FrozenError) { outcome.backup.collected_at.localtime("+12:00") }
+        assert_raises(FrozenError) { outcome.finished_at.localtime("+12:00") }
+        attempted << outcome
+      end
+      report = fleet(inventory).backup_all(directory: directory, on_result: callback)
+      assert report.success?, report.callback_errors.inspect
+      assert_equal report.outcomes, attempted
+      entry = report.summary.fetch(:devices).first
+      assert_equal Digest::SHA256.file(entry.fetch(:path)).hexdigest, entry.fetch(:sha256)
+      assert report.outcomes.first.finished_at.utc?
+    end
+  end
+
   def test_renaming_inventory_keeps_one_backup_and_its_change_baseline
-    inventory = client(name: "old-name")
+    inventory = inventory(name: "old-name")
     collector = fleet(inventory)
     changes = []
     Dir.mktmpdir do |directory|
@@ -54,7 +100,7 @@ class BackupIdentityTest < Minitest::Test
   end
 
   def test_equivalent_ipv6_addresses_have_one_canonical_backup
-    inventory = client(host: "2001:0db8:0000:0000:0000:0000:0000:0001")
+    inventory = inventory(host: "2001:0db8:0000:0000:0000:0000:0000:0001")
     collector = fleet(inventory)
     Dir.mktmpdir do |directory|
       first = collector.backup_all(directory: directory)
@@ -78,7 +124,7 @@ class BackupIdentityTest < Minitest::Test
       assert_nil saved.find("192.0.2.1", required: false)
       assert_raises(Errno::ENOENT) { saved.read("192.0.2.1") }
       changes = []
-      result = fleet(client).backup_all(directory: directory, on_change: ->(item) { changes << item.backup.change })
+      result = fleet(inventory).backup_all(directory: directory, on_change: ->(item) { changes << item.backup.change })
       assert result.success?
       assert_equal :created, result.outcomes.first.backup.change
       assert_nil result.outcomes.first.backup.previous_sha256
@@ -95,7 +141,7 @@ class BackupIdentityTest < Minitest::Test
       File.binwrite(canonical, CONFIG)
       assert_equal canonical, SavedConfig.new(directory: directory).find("192.0.2.1")
 
-      batch = fleet(client).backup_all(directory: directory)
+      batch = fleet(inventory).backup_all(directory: directory)
       assert batch.success?, batch.outcomes.inspect
       assert_equal :unchanged, batch.outcomes.first.backup.change
       assert_equal Digest::SHA256.hexdigest(CONFIG), batch.outcomes.first.backup.previous_sha256
@@ -118,7 +164,7 @@ class BackupIdentityTest < Minitest::Test
         assert_match(/not a regular file/, error.message)
 
         calls = []
-        batch = fleet(client, connector_factory: ->(*) { calls << :connector }).backup_all(directory: directory)
+        batch = fleet(inventory, connector_factory: ->(*) { calls << :connector }).backup_all(directory: directory)
         refute batch.success?, kind
         assert_equal "ArgumentError", batch.outcomes.first.error_type
         assert_empty calls
@@ -134,7 +180,7 @@ class BackupIdentityTest < Minitest::Test
       legacy = File.join(directory, "old-name-192.0.2.1.txt")
       File.binwrite(legacy, "old configuration")
       factory = ->(device, settings) { device.build_connector(**settings, transport: ConnectorFake.new("[sw]", :timeout)) }
-      batch = fleet(client, connector_factory: factory).backup_all(directory: directory)
+      batch = fleet(inventory, connector_factory: factory).backup_all(directory: directory)
 
       refute batch.success?
       assert_equal :failed, batch.outcomes.first.status

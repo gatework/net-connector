@@ -2,19 +2,19 @@
 
 require_relative "../device/base"
 require_relative "hillstone/running_config"
-require_relative "hillstone/tftp_backup"
+require_relative "hillstone/tftp"
 require_relative "hillstone/topology"
 
 module Net
   module Connector
-    module Hillstone
+    module Vendor
       # 山石 StoneOS 命令行和原生启动配置导出连接器。
-      class Connector < Net::Connector::Base
+      class Hillstone < Net::Connector::Base
         vendor :hillstone
         profile do
-          running_config_strategy Net::Connector::Hillstone::RunningConfig
-          tftp_strategy Net::Connector::Hillstone::TftpBackup
-          topology_strategy Net::Connector::Hillstone::Topology
+          running_config_strategy RunningConfig
+          tftp_strategy Tftp
+          topology_strategy Topology
           commands do
             running_config "terminal length 0", "show configuration running"
             save_config "save all"

@@ -3,12 +3,13 @@
 require "fileutils"
 require "logger"
 require "securerandom"
-require_relative "terminal_renderer"
+require_relative "terminal/renderer"
 require_relative "log/event"
 require_relative "log/formatter"
-require_relative "log/stream"
+require_relative "log/redacting_writer"
+require_relative "log/transcript"
 require_relative "errors"
-require_relative "error_metadata"
+require_relative "error/metadata"
 
 module Net
   module Connector
@@ -101,9 +102,9 @@ module Net
       # 异常正文由会话先脱敏；类型、错误码和阶段只允许共享词表中的值进入日志。
       def log_failure(name, failure, phase: nil, **fields)
         log_event(name, level: :error, **fields,
-                  error: ErrorMetadata.type(failure.class.name) || "StandardError",
-                  code: ErrorMetadata.code(failure.code),
-                  phase: ErrorMetadata.phase(failure.phase) || ErrorMetadata.phase(phase),
+                  error: Error::Metadata.type(failure.class.name) || "StandardError",
+                  code: Error::Metadata.code(failure.code),
+                  phase: Error::Metadata.phase(failure.phase) || Error::Metadata.phase(phase),
                   message: failure.message)
       rescue Error
         # 原始失败已由调用者保留；诊断通道故障不能替换登录、命令或业务错误。
@@ -138,7 +139,7 @@ module Net
       def log_response_output(bytes)
         return unless debug? && !@writer && !@redactor.output_sensitive?
 
-        @redactor.call(TerminalRenderer.render(@redactor.call(bytes))).each_line("\n") do |line|
+        @redactor.call(Terminal::Renderer.render(@redactor.call(bytes))).each_line("\n") do |line|
           write_event("device_output", level: :debug, output: line.chomp("\n"))
         end
       rescue Error
@@ -236,7 +237,7 @@ module Net
       def open_transcript
         @transcript = Transcript.new { |line| write_event("device_output", level: :debug, output: line) }
         @output = RedactingWriter.new(@transcript, @redactor)
-        @writer = TerminalRenderer.new(@output, max_line_bytes: @configuration.max_output_bytes)
+        @writer = Terminal::Renderer.new(@output, max_line_bytes: @configuration.max_output_bytes)
       end
 
       # 先渲染，再结束过滤流，最后发出半行事件；顺序不能反转。

@@ -9,7 +9,7 @@ require_relative "../lib/net/connector/netdisco"
 
 class NetdiscoDatabaseTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
-  Client = Netdisco::DatabaseClient
+  HTTP = Netdisco::Inventory::Postgres
   QUERY = "SELECT address AS ip, manufacturer AS vendor FROM inventory WHERE site = $1"
 
   def connection_options
@@ -17,7 +17,7 @@ class NetdiscoDatabaseTest < Minitest::Test
   end
 
   def environment
-    Client::CONNECTION_ENV.each_with_object({}) do |(key, name), result|
+    HTTP::CONNECTION_ENV.each_with_object({}) do |(key, name), result|
       result[name] = connection_options[key] if connection_options.key?(key)
     end
   end
@@ -47,10 +47,10 @@ class NetdiscoDatabaseTest < Minitest::Test
       refute_empty error
       refute_includes error, "secret"
     end
-    options = Client.options(query: QUERY, query_params: ["east", 1, 2.5, true, false, nil])
+    options = HTTP.options(query: QUERY, query_params: ["east", 1, 2.5, true, false, nil])
     assert_equal ["east", 1, 2.5, true, false, nil], options.fetch(:query_params)
-    assert_raises(ArgumentError) { Client.options(query: QUERY, query_params: [Float::INFINITY]) }
-    assert_raises(ArgumentError) { Client.options(query: QUERY, query_params: ["\0"]) }
+    assert_raises(ArgumentError) { HTTP.options(query: QUERY, query_params: [Float::INFINITY]) }
+    assert_raises(ArgumentError) { HTTP.options(query: QUERY, query_params: ["\0"]) }
     assert_equal 2, cli({ "ND_QUERY" => QUERY }).first
   end
 
@@ -61,8 +61,8 @@ class NetdiscoDatabaseTest < Minitest::Test
     defaults["ND_QUERY"] = "SELECT changed AS ip"
     # 已有运行策略保留 SQL；连接凭据仍从 env 动态读取。
     received = []
-    Client.stub(:new, ->(**options) { received << options; Struct.new(:devices).new([]) }) do
-      fleet = Netdisco::Fleet.new(settings: settings, result_store: nil)
+    HTTP.stub(:new, ->(**options) { received << options; Struct.new(:devices).new([]) }) do
+      fleet = Netdisco::Fleet.new(settings: settings, report_store: nil)
       2.times do |index|
         env["ND_DB_PASS"] = "rotation-#{index}"
         assert_empty fleet.devices
@@ -80,21 +80,21 @@ class NetdiscoDatabaseTest < Minitest::Test
     status, output, error = cli(env, ["--show-config", "--source", "postgres", "--query", QUERY, "--query-params", '["east"]'])
     assert_equal 0, status, error
     assert_equal "postgres", JSON.parse(output).fetch("netdisco").fetch("source")
-    [Marshal.dump(policy), output, settings.inspect, settings.client.inspect].each do |text|
+    [Marshal.dump(policy), output, settings.inspect, settings.inventory.inspect].each do |text|
       connection_options.each_value { |value| refute_includes text, value }
     end
-    assert_raises(ArgumentError) { Netdisco::Settings.new(env: env.except("ND_DB_PASS"), defaults: query_settings).client }
+    assert_raises(ArgumentError) { Netdisco::Settings.new(env: env.except("ND_DB_PASS"), defaults: query_settings).inventory }
     # defaults/overrides 不能作为连接凭据后门。
-    assert_raises(ArgumentError) { Netdisco::Settings.new(env: env.except("ND_DB_PASS"), defaults: query_settings.merge(env)).client }
+    assert_raises(ArgumentError) { Netdisco::Settings.new(env: env.except("ND_DB_PASS"), defaults: query_settings.merge(env)).inventory }
   end
 
   def test_query_options_are_copied_before_the_caller_can_change_them
     query = +QUERY
     params = [+"east"]
-    client = Client.new(connection_options: connection_options, query: query, query_params: params)
+    inventory = HTTP.new(connection_options: connection_options, query: query, query_params: params)
     query.replace("another query")
     params.first.replace("west")
-    options = client.instance_variable_get(:@options)
+    options = inventory.instance_variable_get(:@options)
     assert_equal QUERY, options.fetch(:query)
     assert_equal ["east"], options.fetch(:query_params)
     assert_predicate options.fetch(:query), :frozen?
@@ -123,7 +123,7 @@ class NetdiscoDatabaseTest < Minitest::Test
       status, output, error = cli(environment, ["--plan", "--source", "postgres", "--query", QUERY]) do |settings|
         assert_equal :postgres, settings.inventory_source
         Netdisco::Fleet.new(settings: settings,
-                            client: Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }]),
+                            inventory: Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }]),
                             credentials: ->(*) { flunk "plan must not request device credentials" })
       end
       assert_equal 0, status, error
@@ -141,7 +141,7 @@ class NetdiscoDatabaseTest < Minitest::Test
      { sslmode: "unknown" }, { sslrootcert: "sensitive\0path" }, { dbname: "postgres://reader:secret@db/inventory" },
      { dbname: "dbname=inventory password=secret" }, { options: "secret" }].each do |values|
       error = assert_raises(ArgumentError) do
-        Client.new(connection_options: connection_options.merge(values), query: QUERY)
+        HTTP.new(connection_options: connection_options.merge(values), query: QUERY)
       end
       refute_includes error.message, "secret"
       refute_includes error.message, "sensitive"
@@ -149,13 +149,13 @@ class NetdiscoDatabaseTest < Minitest::Test
   end
 
   def test_connection_failures_are_sanitized_and_do_not_touch_devices_or_files
-    client = Client.new(connection_options: connection_options, query: QUERY)
-    fleet = Netdisco::Fleet.new(client: client, settings: Netdisco::Settings.new(env: {}), result_store: nil,
+    inventory = HTTP.new(connection_options: connection_options, query: QUERY)
+    fleet = Netdisco::Fleet.new(inventory: inventory, settings: Netdisco::Settings.new(env: {}), report_store: nil,
                                 credentials: ->(*) { flunk "must not read device credentials" })
     PG::Connection.stub(:connect_start, ->(*) { raise PG::ConnectionBad, "generated-test-value in server response" }) do
       Dir.mktmpdir do |directory|
         destination = File.join(directory, "backup")
-        error = assert_raises(Netdisco::Client::Error) { fleet.backup_all(directory: destination) }
+        error = assert_raises(Netdisco::Inventory::Error) { fleet.backup_all(directory: destination) }
         assert_equal :connection_failed, error.code
         assert_nil error.cause
         refute_includes error.full_message, "generated-test-value"
@@ -236,8 +236,8 @@ class NetdiscoDatabaseTest < Minitest::Test
     def finish = @closed = true
   end
 
-  def streaming_client(connection, **options)
-    value = Client.new(connection_options: connection_options, query: QUERY, query_params: ["east"], **options)
+  def streaming_inventory(connection, **options)
+    value = HTTP.new(connection_options: connection_options, query: QUERY, query_params: ["east"], **options)
     PG::Connection.stub(:connect_start, ->(received) { assert_equal connection_options, received; connection }) { yield value }
   end
 
@@ -245,8 +245,8 @@ class NetdiscoDatabaseTest < Minitest::Test
     first = QueryResult.new([{ "ip" => "192.0.2.1", "vendor" => "H3C", "ignored" => "private" }])
     last = QueryResult.new([{ "ip" => "2001:db8::1", "vendor" => nil }])
     connection = Connection.new([[first, QueryResult.new], [last, QueryResult.new], [QueryResult.new]])
-    streaming_client(connection, page_size: 1) do |client|
-      rows = client.devices
+    streaming_inventory(connection, page_size: 1) do |inventory|
+      rows = inventory.devices
       assert_equal [{ "ip" => "192.0.2.1", "vendor" => "H3C" }, { "ip" => "2001:db8::1", "vendor" => nil }], rows
     end
     assert_equal ["BEGIN READ ONLY"], connection.commands.first
@@ -267,8 +267,8 @@ class NetdiscoDatabaseTest < Minitest::Test
                  [:max_pages, { page_size: 1, max_pages: 1 }]]
     scenarios.each do |code, options|
       connection = Connection.new([[QueryResult.new([row]), QueryResult.new([row]), QueryResult.new]])
-      streaming_client(connection, **options) do |client|
-        error = assert_raises(Netdisco::Client::Error) { client.devices }
+      streaming_inventory(connection, **options) do |inventory|
+        error = assert_raises(Netdisco::Inventory::Error) { inventory.devices }
         assert_equal code, error.code
         assert_nil error.cause
         refute_includes error.full_message, "sensitive-marker"
@@ -283,8 +283,8 @@ class NetdiscoDatabaseTest < Minitest::Test
                QueryResult.new([{ "ip" => nil }]), QueryResult.new([{ "ip" => " " }])]
     invalid.each do |result|
       connection = Connection.new([[QueryResult.new([{ "ip" => "192.0.2.1" }]), result]])
-      streaming_client(connection) do |client|
-        error = assert_raises(Netdisco::Client::Error) { client.devices }
+      streaming_inventory(connection) do |inventory|
+        error = assert_raises(Netdisco::Inventory::Error) { inventory.devices }
         assert_equal :invalid_inventory, error.code
       end
       assert_predicate result, :cleared
@@ -296,8 +296,8 @@ class NetdiscoDatabaseTest < Minitest::Test
     [PG::Error.new("sensitive-marker"), PG::QueryCanceled.new("sensitive-marker")].each do |exception|
       result = QueryResult.new(error: exception)
       connection = Connection.new([[QueryResult.new([{ "ip" => "192.0.2.1" }]), result]])
-      streaming_client(connection) do |client|
-        error = assert_raises(Netdisco::Client::Error) { client.devices }
+      streaming_inventory(connection) do |inventory|
+        error = assert_raises(Netdisco::Inventory::Error) { inventory.devices }
         assert_equal(exception.is_a?(PG::QueryCanceled) ? :inventory_timeout : :query_failed, error.code)
         assert_nil error.cause
         refute_includes error.full_message, "sensitive-marker"
@@ -311,9 +311,9 @@ class NetdiscoDatabaseTest < Minitest::Test
     clock = 0
     connection = Connection.new([[QueryResult.new([{ "ip" => "192.0.2.1" }]), QueryResult.new]])
     connection.before_result = -> { clock = 11 if connection.single_row_calls > 1 }
-    streaming_client(connection, page_size: 1, inventory_timeout: 10) do |client|
-      client.stub(:monotonic, -> { clock }) do
-        error = assert_raises(Netdisco::Client::InventoryTimeout) { client.devices }
+    streaming_inventory(connection, page_size: 1, inventory_timeout: 10) do |inventory|
+      inventory.stub(:monotonic, -> { clock }) do
+        error = assert_raises(Netdisco::Inventory::Timeout) { inventory.devices }
         assert_equal :inventory_timeout, error.code
       end
     end
@@ -324,7 +324,7 @@ class NetdiscoDatabaseTest < Minitest::Test
   def test_interrupt_also_closes_the_owned_connection
     connection = Connection.new([])
     connection.before_result = -> { raise Interrupt }
-    streaming_client(connection) { |client| assert_raises(Interrupt) { client.devices } }
+    streaming_inventory(connection) { |inventory| assert_raises(Interrupt) { inventory.devices } }
     assert_predicate connection, :closed
   end
 
@@ -332,12 +332,12 @@ class NetdiscoDatabaseTest < Minitest::Test
   def test_interrupt_during_connection_handoff_closes_the_owned_connection
     connection = Connection.new([])
     original = Interrupt.new("cancel connection handoff")
-    client = Client.new(connection_options: connection_options, query: QUERY)
+    inventory = HTTP.new(connection_options: connection_options, query: QUERY)
     PG::Connection.stub(:connect_start, lambda { |_options|
       Thread.current.raise(original)
       connection
     }) do
-      assert_same original, assert_raises(Interrupt) { client.devices }
+      assert_same original, assert_raises(Interrupt) { inventory.devices }
     end
     assert_predicate connection, :closed
     assert_empty connection.commands
@@ -349,13 +349,13 @@ class NetdiscoDatabaseTest < Minitest::Test
     connect_start = PG::Connection.method(:connect_start)
     original = Interrupt.new("cancel real connection handoff")
     options = connection_options.merge(host: "127.0.0.1", port: 9, sslmode: "disable")
-    client = Client.new(connection_options: options, query: QUERY)
+    inventory = HTTP.new(connection_options: options, query: QUERY)
     PG::Connection.stub(:connect_start, lambda { |values|
       connection = connect_start.call(values)
       Thread.current.raise(original)
       connection
     }) do
-      assert_same original, assert_raises(Interrupt) { client.devices }
+      assert_same original, assert_raises(Interrupt) { inventory.devices }
     end
     assert_predicate connection, :finished?
   ensure
@@ -363,12 +363,12 @@ class NetdiscoDatabaseTest < Minitest::Test
   end
 
   def test_connection_cleanup_failure_keeps_the_original_query_failure
-    [Interrupt.new("cancel query"), Netdisco::Client::Error.new("query failed", code: :query_failed)].each do |original|
+    [Interrupt.new("cancel query"), Netdisco::Inventory::Error.new("query failed", code: :query_failed)].each do |original|
       connection = Connection.new([])
       connection.before_result = -> { raise original }
       connection.define_singleton_method(:finish) { @closed = true; raise IOError, "cleanup failure" }
-      streaming_client(connection) do |client|
-        assert_same original, assert_raises(original.class) { client.devices }
+      streaming_inventory(connection) do |inventory|
+        assert_same original, assert_raises(original.class) { inventory.devices }
       end
       assert_predicate connection, :closed
     end
@@ -378,8 +378,8 @@ class NetdiscoDatabaseTest < Minitest::Test
     connection = Connection.new([])
     original = IOError.new("cleanup failure")
     connection.define_singleton_method(:finish) { @closed = true; raise original }
-    streaming_client(connection) do |client|
-      assert_same original, assert_raises(IOError) { client.devices }
+    streaming_inventory(connection) do |inventory|
+      assert_same original, assert_raises(IOError) { inventory.devices }
     end
     assert_predicate connection, :closed
   end
@@ -389,9 +389,9 @@ class NetdiscoDatabaseTest < Minitest::Test
     accepted = Queue.new
     worker = Thread.new { accepted << server.accept }
     options = connection_options.merge(host: "127.0.0.1", port: server.addr[1], sslmode: "disable")
-    client = Client.new(connection_options: options, query: QUERY, inventory_timeout: 0.1)
+    inventory = HTTP.new(connection_options: options, query: QUERY, inventory_timeout: 0.1)
     was_disabled = GC.disable
-    error = assert_raises(Netdisco::Client::InventoryTimeout) { client.devices }
+    error = assert_raises(Netdisco::Inventory::Timeout) { inventory.devices }
     assert_equal :inventory_timeout, error.code
     peer = accepted.pop
     # 读取已发送的启动包直到 EOF；有限等待仅作为失败上限，不以固定 sleep 判定关闭。
@@ -411,7 +411,7 @@ class NetdiscoDatabaseTest < Minitest::Test
     accepted = Queue.new
     worker = Thread.new { accepted << server.accept }
     options = connection_options.merge(host: "127.0.0.1", port: server.addr[1], sslmode: "disable")
-    client = Client.new(connection_options: options, query: QUERY, inventory_timeout: 0.1)
+    inventory = HTTP.new(connection_options: options, query: QUERY, inventory_timeout: 0.1)
     connect_start = PG::Connection.method(:connect_start)
     was_disabled = GC.disable
     PG::Connection.stub(:connect_start, lambda { |values|
@@ -419,7 +419,7 @@ class NetdiscoDatabaseTest < Minitest::Test
       sleep 0.2
       connection
     }) do
-      error = assert_raises(Netdisco::Client::InventoryTimeout) { client.devices }
+      error = assert_raises(Netdisco::Inventory::Timeout) { inventory.devices }
       assert_equal :inventory_timeout, error.code
     end
     peer = accepted.pop

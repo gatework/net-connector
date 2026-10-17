@@ -1,0 +1,6 @@
+Value Required INTERFACE (\S+)
+Value DESCRIPTION (.*)
+
+Start
+  ^set interfaces ${INTERFACE} description ${DESCRIPTION}$$ -> Record
+  ^set interfaces ${INTERFACE}\s+.*$$ -> Record

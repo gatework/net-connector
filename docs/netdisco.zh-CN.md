@@ -6,7 +6,7 @@
 
 `Net::Connector::Netdisco` 读取并验证完整清单，再将支持的记录映射到连接器，使用有上限的工作线程执行备份。Netdisco 只提供清单字段；设备凭据来自环境变量或调用方提供的解析器。清单会在连接任何设备前完成校验；不支持、被过滤、重复、缺少凭据、失败，以及保存成功但关闭失败的结果分别保留。
 
-每次 `Client#devices` 默认限制单响应 16 MiB、累计响应 128 MiB、去重前 100,000 条记录、10,000 页和 300 秒总期限。认证、分页及兼容查询共用这些预算；默认 HTTP 客户端逐块计数，超限会关闭连接并抛出带稳定 `code` 的 `Client::Error`，Fleet 不会执行半份清单。这些默认值是可调整的设计起点，不是实测容量。可注入 `requester: ->(uri, request)`；该回调只能在回调返回后检查正文和期限，回调自身的阻塞及内存用量由注入方控制。
+每次 `Inventory::HTTP#devices` 默认限制单响应 16 MiB、累计响应 128 MiB、去重前 100,000 条记录、10,000 页和 300 秒总期限。认证、分页及兼容查询共用这些预算；默认 HTTP 客户端逐块计数，超限会关闭连接并抛出带稳定 `code` 的 `Inventory::Error`，Fleet 不会执行半份清单。这些默认值是可调整的设计起点，不是实测容量。可注入 `requester: ->(uri, request)`；该回调只能在回调返回后检查正文和期限，回调自身的阻塞及内存用量由注入方控制。
 
 推荐使用 HTTPS，标准证书验证保持开启。`allow_insecure_http` 默认为 `true`；设为 `false` 可在发请求前拒绝 HTTP，YAML 中对应 `netdisco.allow_insecure_http: false`。HTTP 会明文传输登录凭据和 API key，迁移时应先提供可验证的 HTTPS 端点。
 
@@ -14,11 +14,11 @@
 
 本地 `backup(path:)` 用 SHA-256 比较新旧配置，`backup.change` 返回 `:created`、`:changed` 或 `:unchanged`；内容未变且权限、文件身份正常时保留修改时间。这不补验历史写入的断电持久性。`backup_all` 的 `on_change:` 仅在新建或更改文件保存后触发；`on_start:` 和 `on_result:` 观察每台已尝试设备。回调异常记录在 `batch.callback_errors`，不丢弃设备结果。每项结果包含开始、结束和耗时。TFTP 无法比较服务器文件，因此没有 `change`，也不触发变更通知。
 
-每批默认由 `ResultStore::Json` 写入私有 JSON 报告，路径见 `batch.report_location`。调用方如有数据库仓储，可传 `ResultStore::Database.new(repository: YourModel)`；仓储需实现 `create!(attributes)`。`result_store: nil` 表示由调用方自行持久化。报告失败保留在 `batch.report_error`，同时使 `batch.success?` 为假。若报告已替换但目录同步失败，仍保留位置；离线 `--export --output` 遇到同类错误返回 2，并说明文件已经提交。
+每批默认由 `Report::Store::Json` 写入私有 JSON 报告，路径见 `batch.report_location`。调用方如有数据库仓储，可传 `Report::Store::Database.new(repository: YourModel)`；仓储需实现 `create!(attributes)`。`report_store: nil` 表示由调用方自行持久化。报告失败保留在 `batch.report_error`，同时使 `batch.success?` 为假。若报告已替换但目录同步失败，仍保留位置；离线 `--export --output` 遇到同类错误返回 2，并说明文件已经提交。
 
 Fleet 统一返回 `Netdisco::Report`，JSON 的 `schema_version` 固定为 `2`。报告包含 `policy`、`policy_success`、清单覆盖和受控诊断；`success?` / `status` 表示严格完成情况，`policy_success?` 表示所选成功策略。任务耗时使用单调时钟，UTC 开始/结束时间独立保留。`report.batch` 是原始执行快照；手工构造的 Batch 可用 `batch.build_report(policy: :selected)` 生成报告，不会再次执行设备或重写文件。
 
-`success_policy: :selected` 要求至少一台设备成功，其他记录只因 `filtered` 或 `sample_limit` 跳过，而且没有部分成功、回调或报告错误。缺少凭据、重复地址、无效地址、未知厂商、目标冲突和未知状态均会阻止成功。`coverage.complete` 只表示每条清单记录都已尝试任务；失败任务也计入尝试，不能据此判断配置已保存。自定义 `ResultStore#write(report, directory:)` 始终接收 Report，并通过 `summary` 获取统一 JSON 结构。
+`success_policy: :selected` 要求至少一台设备成功，其他记录只因 `filtered` 或 `sample_limit` 跳过，而且没有部分成功、回调或报告错误。缺少凭据、重复地址、无效地址、未知厂商、目标冲突和未知状态均会阻止成功。`coverage.complete` 只表示每条清单记录都已尝试任务；失败任务也计入尝试，不能据此判断配置已保存。自定义 `Report::Store#write(report, directory:)` 始终接收 Report，并通过 `summary` 获取统一 JSON 结构。
 
 外部构造的计划也必须把同一管理地址的全部条目标记为 `duplicate_host` 并跳过，不能通过采样恢复其中一条的执行资格；IPv6 的等价写法视为同一地址。只需汇总时使用 `report.statistics`，它返回 `summary` 除 `devices` 外的字段，不生成设备明细，也不缓存调用方持有的批次容器。
 
@@ -132,6 +132,8 @@ SQL、参数和来源也可分别通过 `--query SQL`、`--query-params JSON`、
 
 `--plan` 只拉取并验证清单；`--host` 选择一个管理地址；`--tftp` 默认每厂商最多选择五台，`--all` 选择所有就绪设备。本地备份默认选择所有就绪设备，可用 `--limit-per-vendor` 限制。`--show-config` 只输出有效的非敏感设置，不访问 Netdisco。CLI 会拒绝未知 YAML 字段、Ruby 对象标签及配置中的凭据。`--export IP` 只离线读取规范化管理地址对应的 `<IP>.txt`；默认原样写到标准输出，指定 `--output` 后以 `0600` 权限原子写文件。导出的配置仍是敏感数据。
 
+这里的 `vendor` 表示连接器平台标识，如 `cisco_ios`、`cisco_nxos`，并非制造商；筛选和采样均按该标识分组。因此限制五台时，IOS 与 NX-OS 可各选五台。`source_vendor` 保留清单中的原始厂商标签。
+
 CLI 的计划与批次摘要使用 JSON。默认 `--success-policy strict` 使用严格规则：非空清单且全部成功、回调及报告正常时为 `0`；空清单或有跳过、部分成功、失败时为 `1`；清单或配置错误为 `2`。`--host` 未在清单中找到也返回 `2`。由于其他清单记录会标记为过滤，默认单主机备份成功时批次退出码仍可能是 `1`；应查看 JSON 中的 `succeeded`、`skipped` 和逐台 `status`。
 
 显式使用 `--success-policy selected` 后，CLI 按上述 selected 规则决定退出码，保留严格的 `status: incomplete` 与跳过计数，另列 `policy_success`。例如 `net-backup --config config.yml --host 192.0.2.7 --success-policy selected`。成功策略由本次 CLI/API 参数指定，不改变已批准的清单选择，也不触发重试。
@@ -177,7 +179,7 @@ ssh:
 
 `Fleet` 每次规划或执行前通过 `Settings#snapshot(mode:)` 固定非敏感设置，包括筛选规则、目录、并发、协议、主机密钥、日志、TFTP 参数和清单预算。执行中修改 ENV 不改变当批策略；再次调用会读取新值。CLI 一次调用的规划与执行共用策略，优先级为 CLI > 常用环境变量 > YAML > 默认值。`Settings#validate!(mode:)` 复用连接配置及 Planner 的枚举和范围规则；`--show-config` 会拒绝非法设置，`--export` 只验证离线目录，不要求清单地址或认证。
 
-每台任务开始时仍读取设备凭据，`Settings.from_file` 也保留轮换能力。纯策略快照不保存密码、API key 或凭据解析器。需要让多次 API 调用共用策略时，可传 `Settings.new.for_run(mode: :backup)`。自定义 `credentials:` 解析器仍可逐设备返回连接设置，它显式给出的选项优先于批次默认值，由调用方负责一致性；注入的 `client:` 生命周期也由调用方管理。传入 `plan:` 的执行不会重新拉取或筛选已批准清单。`fleet.devices` 可在不连接设备时检查映射。
+每台任务开始时仍读取设备凭据，`Settings.from_file` 也保留轮换能力。纯策略快照不保存密码、API key 或凭据解析器。需要让多次 API 调用共用策略时，可传 `Settings.new.for_run(mode: :backup)`。自定义 `credentials:` 解析器仍可逐设备返回连接设置，它显式给出的选项优先于批次默认值，由调用方负责一致性；注入的 `inventory:` 生命周期也由调用方管理。传入 `plan:` 的执行不会重新拉取或筛选已批准清单。`fleet.devices` 可在不连接设备时检查映射。
 
 快照中的备份、缓存、日志、TFTP 核验目录、SSH known-hosts 路径及显式 PostgreSQL CA 证书路径，以创建快照时的工作目录为基准，默认路径和后续相对路径覆盖也沿用这一基准。`~/` 开头的路径及 `~` 使用快照创建时的主目录。PostgreSQL CA 路径保留 libpq 的字面路径语义，不展开波浪号；`sslrootcert: system` 仍表示系统信任库，`./system` 则表示文件。未固定的活设置仍按调用时的当前工作目录和主目录解析路径。
 
@@ -231,15 +233,17 @@ require "net/connector/netdisco"
 netdisco = Net::Connector::Netdisco
 options = netdisco::CLI::Options.parse(argv: ["--concurrency", "10"])
 settings = netdisco::CLI::Options.settings(options)
-client, credentials = netdisco::Connection.build(settings)
+inventory, credentials = netdisco::CLI::Credentials.resolve(settings)
 directory = Net::Connector::Storage::BatchDirectory.create("./backups")
 # 获得 report 和 plan 后：
 # report = netdisco::Report::Files.write(report, directory: directory, plan: plan, concurrency: 10)
 ```
 
-`CLI::Options.parse` 接受 `argv/input/output/error/program`，不修改传入参数数组；帮助通过返回值 `:help` 通知调用方，非法输入抛出 `ArgumentError`。`Connection.build` 接受 `input:`，标准输入凭据仅消费一行，RUN 确认由脚本编排负责。模块不加载 `.env` 或切换目录。
+`CLI::Options.parse` 接受 `argv/input/output/error/program`，不修改传入参数数组；帮助通过返回值 `:help` 通知调用方，非法输入抛出 `ArgumentError`。`CLI::Credentials.resolve` 接受 `input:`，标准输入凭据仅消费一行，RUN 确认由脚本编排负责。模块不加载 `.env` 或切换目录。
 
-批量示例由 `Netdisco::BackupRun` 统一编排，`CLI::Options.settings` 为示例和正式 CLI 共用配置覆盖入口。
+批量示例由 `Netdisco::CLI::Backup` 统一编排，`CLI::Options.settings` 为示例和正式 CLI 共用配置覆盖入口。
+
+终端入口按职责放在 `cli/`：`CLI::Backup` 编排批量备份，`CLI::Credentials.resolve` 解析凭据来源，`CLI::Options` 解析参数和配置覆盖。
 示例默认 `selected`，正式 CLI 保留 `strict` 默认；两者均支持显式 `--success-policy`，退出码与报告的 `policy_success` 一致。
 新示例 `summary.json` 使用标准 schema 2 的 `devices`，不再另造 `outcomes`；旧报告可继续用 `review_tftp.rb` 读取。
 TFTP 的 `verification` 汇总与设备条目的 `server_file_verified` 区分上传回执和服务器文件核验，核验成功还包含 `local_file`、`server_archive_file`、`bytes`、`sha256`。
@@ -268,7 +272,7 @@ HTTP 和 PostgreSQL 默认启用本地清单缓存，有效期三天（259200 �
 
 空文件或格式损坏的缓存按未命中处理，重新查询远端；查询失败时，这类文件不能作为回退历史。
 
-强刷使用 `net-backup --refresh-inventory`、`fleet.devices(force_refresh: true)`、`fleet.plan_backup(force_refresh: true)`；TFTP 规划也支持此参数。强刷失败同样回退已验证历史。直接注入客户端时不自动缓存，可显式包裹 `Netdisco::InventoryCache`。一个包装器的状态描述最近调用，并发共享实例须由调用方同步。有界跨进程锁合并普通过期刷新，独立强刷请求各自访问远端。
+强刷使用 `net-backup --refresh-inventory`、`fleet.devices(force_refresh: true)`、`fleet.plan_backup(force_refresh: true)`；TFTP 规划也支持此参数。强刷失败同样回退已验证历史。直接注入客户端时不自动缓存，可显式包裹 `Netdisco::Inventory::Cache`。一个包装器的状态描述最近调用，并发共享实例须由调用方同步。有界跨进程锁合并普通过期刷新，独立强刷请求各自访问远端。
 
 ## 配置批次与接口修正
 
@@ -292,8 +296,8 @@ puts "清单 #{batch.summary[:total]}，成功 #{batch.summary[:succeeded]}，�
 
 接口应用复用单设备拓扑操作，保留证据重验、配置回读和持久化确认，不将审批计划当作普通脚本执行。脚本与独立计划应用要求 `confirmed: true`；显式同步调用本身表达修改意图，不自动重放命令。每台任务独占并关闭连接器；普通失败隔离为设备结果，中断停止并等待全部工作线程。跨设备已完成的变更不会自动回滚。
 
-`OperationBatch` 独立于备份报告，`outcomes` 保留原 `Result` 或计划、完成步骤和第一故障；`:partial` 表示已有工作后出错，缺少凭据也使批次不成功。`plans` 只选完整成功的规划结果。`to_h` 仅输出安全诊断和数量，不展开命令、回显、凭据或证据。`on_start` 和 `on_result` 在工作线程执行，回调须线程安全；普通回调故障记录后继续，不重复设备操作。日志使用 `ssh.log_directory`。
+`Operations::Batch` 独立于备份报告，`outcomes` 保留原 `Result` 或计划、完成步骤和第一故障；`:partial` 表示已有工作后出错，缺少凭据也使批次不成功。`plans` 只选完整成功的规划结果。`to_h` 仅输出安全诊断和数量，不展开命令、回显、凭据或证据。`on_start` 和 `on_result` 在工作线程执行，回调须线程安全；普通回调故障记录后继续，不重复设备操作。日志使用 `ssh.log_directory`。
 
 每台设备独占会话，在操作和关闭完成后发布一个不可变终态。连接、凭据、执行和关闭的普通故障只影响该设备，其他运行中或排队任务继续。整批调度结束后返回完整结果；`summary` 和 `to_h[:summary]` 提供 `total`、`succeeded`、`failed`，满足总数 = 成功 + 失败，并细分 `partial`、`missing_credentials` 和 `callback_errors`。总数是本次请求并调度的设备数量；部分完成与缺少凭据计入失败，回调故障单列，不改写设备执行结果。空批次各项为零且状态为 `no_devices`。库不直接输出终端内容，调用方可将 `to_h` 导出 JSON 报告。设备上的已完成变更不能回滚；全批审批预检和显式中断仍维持原有失败边界。
 
-其他独立任务可加载 `net/connector/execution_pool`，通过 `Net::Connector::ExecutionPool.new(concurrency: 4).map(items) { |item| ... }` 执行。结果按输入顺序返回，全部线程建立成功才运行块，未处理异常会停止线程池并回到调用线程。业务代码负责决定哪些普通错误转换为单任务结果。显式参数优先于 `NC_CONCURRENCY` 环境变量，默认 4、上限 50。
+其他独立任务可加载 `net/connector/concurrency/pool`，通过 `Net::Connector::Concurrency::Pool.new(concurrency: 4).map(items) { |item| ... }` 执行。结果按输入顺序返回，全部线程建立成功才运行块，未处理异常会停止线程池并回到调用线程。业务代码负责决定哪些普通错误转换为单任务结果。显式参数优先于 `NC_CONCURRENCY` 环境变量，默认 4、上限 50。

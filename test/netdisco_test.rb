@@ -7,7 +7,7 @@ require_relative "../lib/net/connector/netdisco"
 require_relative "support/fake_transport"
 
 class NetdiscoTest < Minitest::Test
-  Client = Net::Connector::Netdisco::Client
+  HTTP = Net::Connector::Netdisco::Inventory::HTTP
   Fleet = Net::Connector::Netdisco::Fleet
   Settings = Net::Connector::Netdisco::Settings
 
@@ -122,7 +122,7 @@ class NetdiscoTest < Minitest::Test
     object
   end
 
-  def test_client_authenticates_and_fetches_all_pages
+  def test_inventory_authenticates_and_fetches_all_pages
     requests = []
     answers = [response("200", { api_key: "token" }), response("200", [{ ip: "192.0.2.1", vendor: "Huawei" }]),
                response("200", [])]
@@ -130,32 +130,32 @@ class NetdiscoTest < Minitest::Test
       requests << [uri.to_s, request]
       answers.shift
     end
-    client = Client.new(url: "https://inventory.example/netdisco/", username: "reader", password: "secret",
+    inventory = HTTP.new(url: "https://inventory.example/netdisco/", username: "reader", password: "secret",
                         page_size: 1, requester: requester)
-    assert_equal(["192.0.2.1"], client.devices.map { |row| row.fetch("ip") })
+    assert_equal(["192.0.2.1"], inventory.devices.map { |row| row.fetch("ip") })
     assert_equal "/netdisco/login", URI(requests.first.first).path
     assert_includes requests.last.first, "offset=1"
     assert_equal "Apikey token", requests.last.last["Authorization"]
   end
 
-  def test_client_supports_legacy_query_and_rejects_bad_or_stuck_inventory
+  def test_inventory_supports_legacy_query_and_rejects_bad_or_stuck_inventory
     answers = [response("400", { error: "Missing query" }),
                response("200", [{ ip: "192.0.2.2", vendor: "Radware", snmp_comm: "secret" }])]
     queries = []
-    client = Client.new(url: "https://inventory.example", api_key: "token", requester: ->(uri, _request) {
+    inventory = HTTP.new(url: "https://inventory.example", api_key: "token", requester: ->(uri, _request) {
       queries << uri.query
       answers.shift
     })
-    assert_equal [{ "ip" => "192.0.2.2", "vendor" => "Radware" }], client.devices
+    assert_equal [{ "ip" => "192.0.2.2", "vendor" => "Radware" }], inventory.devices
     assert_equal({ "q" => "%", "seeallcolumns" => "true" }, URI.decode_www_form(queries.last).to_h)
 
     repeated = [response("200", [{ ip: "192.0.2.1" }]), response("200", [{ ip: "192.0.2.1" }])]
-    client = Client.new(url: "https://inventory.example", api_key: "token", page_size: 1,
+    inventory = HTTP.new(url: "https://inventory.example", api_key: "token", page_size: 1,
                         requester: ->(_uri, _request) { repeated.shift })
-    assert_raises(Client::Error) { client.devices }
-    invalid = Client.new(url: "https://inventory.example", api_key: "token",
+    assert_raises(Net::Connector::Netdisco::Inventory::Error) { inventory.devices }
+    invalid = HTTP.new(url: "https://inventory.example", api_key: "token",
                          requester: ->(_uri, _request) { response("200", [{ ip: 123 }]) })
-    assert_raises(Client::Error) { invalid.devices }
+    assert_raises(Net::Connector::Netdisco::Inventory::Error) { invalid.devices }
   end
 
   def test_rules_map_vendor_os_and_model_without_guessing_unknown_cisco
@@ -180,7 +180,7 @@ class NetdiscoTest < Minitest::Test
     defaults = policy_keys.to_h { |key| [key, env.delete(key)] }
     settings = Settings.new(env: env, defaults: defaults)
     assert_equal 2, settings.concurrency
-    assert_instance_of Net::Connector::Netdisco::InventoryCache, settings.client
+    assert_instance_of Net::Connector::Netdisco::Inventory::Cache, settings.inventory
     device = Net::Connector::Netdisco::Device.from_row({ "ip" => "192.0.2.5", "vendor" => "custom maker" },
                                                        rules: settings.rules)
     assert_equal :huawei, device.vendor
@@ -214,7 +214,7 @@ class NetdiscoTest < Minitest::Test
 
   def test_backup_rejects_invalid_concurrency_before_creating_directory
     row = { "ip" => "192.0.2.1", "vendor" => "H3C" }
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new([row]),
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new([row]),
                       credentials: ->(_) { nil })
     Dir.mktmpdir do |root|
       directory = File.join(root, "backup")
@@ -225,13 +225,13 @@ class NetdiscoTest < Minitest::Test
 
   def test_concurrency_preflight_rejects_invalid_values_before_any_batch_side_effect
     calls = []
-    client = Object.new
-    client.define_singleton_method(:devices) { calls << :inventory; [] }
+    inventory = Object.new
+    inventory.define_singleton_method(:devices) { calls << :inventory; [] }
     Dir.mktmpdir do |root|
       directory = File.join(root, "backup")
       logs = File.join(root, "logs")
       settings = Settings.new(env: {}, defaults: { "NC_LOG_DIRECTORY" => logs })
-      fleet = Fleet.new(settings: settings, client: client, result_store: nil,
+      fleet = Fleet.new(settings: settings, inventory: inventory, report_store: nil,
                         credentials: ->(_) { calls << :credentials },
                         connector_factory: ->(*) { calls << :connector })
       [nil, false, "1", 1.0, 0, -1, Settings::MAX_CONCURRENCY + 1].each do |value|
@@ -278,8 +278,8 @@ class NetdiscoTest < Minitest::Test
         connector.define_singleton_method(:close) { lock.synchronize { closes << device.host } }
       end
     end
-    client = Struct.new(:devices).new(rows)
-    fleet = Fleet.new(result_store: nil, client: client, credentials: ->(_device) { { username: "admin", password: "secret" } },
+    inventory = Struct.new(:devices).new(rows)
+    fleet = Fleet.new(report_store: nil, inventory: inventory, credentials: ->(_device) { { username: "admin", password: "secret" } },
                       connector_factory: factory)
     Dir.mktmpdir do |directory|
       batch = fleet.backup_all(directory: directory, concurrency: 2)
@@ -297,7 +297,7 @@ class NetdiscoTest < Minitest::Test
     rows = [{ "ip" => "192.0.2.1", "vendor" => "Huawei" },
             { "ip" => "192.0.2.1", "vendor" => "H3C" }]
     calls = 0
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new(rows),
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows),
                       connector_factory: ->(*) { calls += 1 })
     Dir.mktmpdir do |directory|
       assert_equal [:duplicate_host, :duplicate_host],
@@ -306,16 +306,16 @@ class NetdiscoTest < Minitest::Test
     end
 
     broken = Object.new
-    broken.define_singleton_method(:devices) { raise Client::Error, "inventory unavailable" }
-    fleet = Fleet.new(result_store: nil, client: broken, connector_factory: ->(*) { calls += 1 })
-    assert_raises(Client::Error) { fleet.backup_all }
+    broken.define_singleton_method(:devices) { raise Net::Connector::Netdisco::Inventory::Error, "inventory unavailable" }
+    fleet = Fleet.new(report_store: nil, inventory: broken, connector_factory: ->(*) { calls += 1 })
+    assert_raises(Net::Connector::Netdisco::Inventory::Error) { fleet.backup_all }
     assert_equal 0, calls
   end
 
   def test_fleet_instantiates_real_vendor_connector_and_writes_backup
     row = { "ip" => "192.0.2.20", "name" => "core-switch", "vendor" => "Cisco", "os" => "IOS XE" }
     transport = ConnectorFake.new("router#", "router#", "hostname router\nrouter#")
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new([row]),
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new([row]),
                       credentials: ->(_device) { { username: "admin", transport: transport } })
     Dir.mktmpdir do |directory|
       batch = fleet.backup_all(directory: directory)
@@ -349,7 +349,7 @@ class NetdiscoTest < Minitest::Test
             { "ip" => "192.0.2.31", "vendor" => "Huawei" }]
     requested = []
     rules = Net::Connector::Netdisco::Rules.new(include_hosts: ["192.0.2.30"], include_vendors: [:huawei])
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new(rows), rules: rules,
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows), rules: rules,
                       credentials: ->(device) { requested << device.host; nil })
     Dir.mktmpdir do |directory|
       assert_equal [:missing_credentials, :filtered], fleet.backup_all(directory: directory).outcomes.map(&:status)
@@ -364,7 +364,7 @@ class NetdiscoTest < Minitest::Test
       Net::Connector::Backup.new(path: path, bytes: 7, sha256: "digest", collected_at: Time.now.utc)
     end
     connector.define_singleton_method(:close) { raise IOError, "close failed" }
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new([row]), credentials: ->(_) { { username: "admin" } },
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new([row]), credentials: ->(_) { { username: "admin" } },
                       connector_factory: ->(*) { connector })
     Dir.mktmpdir do |directory|
       outcome = fleet.backup_all(directory: directory).outcomes.first
@@ -391,7 +391,7 @@ class NetdiscoTest < Minitest::Test
         connector.define_singleton_method(:close) {}
       end
     end
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new(rows),
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows),
                       credentials: ->(_) { { username: "admin" } }, connector_factory: factory)
     batch = fleet.tftp_backup_all(server: "192.0.2.10", source_files: { h3c: "flash:/startup.cfg" },
                                   concurrency: 2)
@@ -407,7 +407,7 @@ class NetdiscoTest < Minitest::Test
   def test_tftp_batch_caps_each_vendor_before_requesting_credentials
     rows = (1..6).map { |index| { "ip" => "192.0.2.#{index}", "vendor" => "H3C" } }
     requested = []
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new(rows),
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows),
                       credentials: ->(device) { requested << device.host; nil })
     batch = fleet.tftp_backup_all(server: "192.0.2.10", concurrency: 2)
     assert_equal 5, batch.counts.fetch(:missing_credentials)
@@ -431,7 +431,7 @@ class NetdiscoTest < Minitest::Test
     end
     settings = Settings.new(env: {}, defaults: { "NC_CONCURRENCY" => "50" })
     assert_equal 50, settings.concurrency
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new(rows), settings: settings,
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows), settings: settings,
                       credentials: ->(_) { { username: "admin" } }, connector_factory: factory)
     batch = fleet.tftp_backup_all(server: "192.0.2.10", limit_per_vendor: nil, concurrency: 50)
     assert_equal 6, batch.counts.fetch(:reported_uploaded)
@@ -448,7 +448,7 @@ class NetdiscoTest < Minitest::Test
                                       completed_at: Time.now.utc)
     end
     connector.define_singleton_method(:close) {}
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new([row]),
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new([row]),
                       credentials: ->(_) { { username: "admin" } }, connector_factory: ->(*) { connector })
     assert_raises(ArgumentError) { fleet.tftp_backup_all(server: "192.0.2.10", vrfs: { cisco_nxos: "bad;vrf" }) }
     assert fleet.tftp_backup_all(server: "192.0.2.10", vrfs: { cisco_nxos: "management" }).success?
@@ -465,7 +465,7 @@ class NetdiscoTest < Minitest::Test
                                       completed_at: Time.now.utc)
     end
     connector.define_singleton_method(:close) {}
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new([row]),
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new([row]),
                       credentials: ->(_) { { username: "admin" } }, connector_factory: ->(*) { connector })
     assert_raises(ArgumentError) do
       fleet.tftp_backup_all(server: "192.0.2.10", vrfs: { hillstone: "bad;vr" })
@@ -491,7 +491,7 @@ class NetdiscoTest < Minitest::Test
         end
       end
     end
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new(rows),
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows),
                       credentials: ->(_) { { username: "admin" } }, connector_factory: factory)
     assert_raises(ArgumentError) do
       fleet.tftp_backup_all(server: "192.0.2.10", vrfs: { h3c: "management" })
@@ -518,7 +518,7 @@ class NetdiscoTest < Minitest::Test
         connector.define_singleton_method(:close) {}
       end
     end
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new(rows),
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows),
                       credentials: ->(_) { { username: "admin" } }, connector_factory: connector_factory)
     batch = fleet.tftp_backup_all(server: "192.0.2.10", concurrency: 1,
                                   on_start: ->(device) { raise IOError, "start log unavailable" if device.host.end_with?(".1") },
@@ -532,9 +532,9 @@ class NetdiscoTest < Minitest::Test
 
   def test_batch_report_defaults_to_private_text_and_accepts_database_store
     rows = [{ "ip" => "192.0.2.80", "vendor" => "unknown" }]
-    client = Struct.new(:devices).new(rows)
+    inventory = Struct.new(:devices).new(rows)
     Dir.mktmpdir do |directory|
-      fleet = Fleet.new(client: client)
+      fleet = Fleet.new(inventory: inventory)
       batch = fleet.backup_all(directory: directory)
       assert_equal 1, batch.summary.fetch(:skipped)
       assert_equal 0, batch.summary.fetch(:failed)
@@ -548,8 +548,8 @@ class NetdiscoTest < Minitest::Test
 
         Struct.new(:id).new(42)
       end
-      store = Net::Connector::Netdisco::ResultStore::Database.new(repository: repository)
-      database_batch = Fleet.new(client: client, result_store: store).backup_all(directory: directory)
+      store = Net::Connector::Netdisco::Report::Store::Database.new(repository: repository)
+      database_batch = Fleet.new(inventory: inventory, report_store: store).backup_all(directory: directory)
       assert_equal "database:42", database_batch.report_location
       assert_nil database_batch.report_error
     end
@@ -557,12 +557,12 @@ class NetdiscoTest < Minitest::Test
 
   def test_plan_and_execution_share_one_inventory_snapshot
     reads = 0
-    client = Object.new
-    client.define_singleton_method(:devices) do
+    inventory = Object.new
+    inventory.define_singleton_method(:devices) do
       reads += 1
       (1..2).map { |index| { "ip" => "192.0.2.#{index}", "vendor" => "H3C" } }
     end
-    fleet = Fleet.new(result_store: nil, client: client, credentials: ->(_) { nil })
+    fleet = Fleet.new(report_store: nil, inventory: inventory, credentials: ->(_) { nil })
     plan = fleet.plan_backup(limit_per_vendor: 1)
     assert_equal ["192.0.2.1"], plan.selected.map(&:host)
     Dir.mktmpdir do |directory|
@@ -576,7 +576,7 @@ class NetdiscoTest < Minitest::Test
   def test_plan_snapshot_is_immutable_and_invalid_tasks_fail_before_io
     row = { "ip" => "192.0.2.1", "name" => "edge".dup, "vendor" => "H3C" }
     calls = 0
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new([row]),
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new([row]),
                       connector_factory: ->(*) { calls += 1 })
     plan = fleet.plan_backup
     row["name"] << "-changed"
@@ -623,7 +623,7 @@ class NetdiscoTest < Minitest::Test
         connector.define_singleton_method(:close) {}
       end
     end
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new(rows),
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows),
                       credentials: ->(_) { { username: "admin" } }, connector_factory: factory)
     batch = fleet.tftp_backup_all(server: "192.0.2.10", concurrency: 1)
     assert_equal [:failed, :reported_uploaded], batch.outcomes.map(&:status)
@@ -631,7 +631,7 @@ class NetdiscoTest < Minitest::Test
   end
 
   def test_empty_inventory_is_not_a_successful_batch
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new([]))
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new([]))
     Dir.mktmpdir do |directory|
       batch = fleet.backup_all(directory: directory)
       refute batch.success?
@@ -656,7 +656,7 @@ class NetdiscoTest < Minitest::Test
       Net::Connector::TftpReceipt.new(server: "192.0.2.10", path: File.basename(path), completed_at: Time.now.utc)
     end
     connector.define_singleton_method(:close) {}
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new([row]),
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new([row]),
                       credentials: ->(_) { { username: "admin" } }, connector_factory: ->(*) { connector })
     Dir.mktmpdir do |directory|
       outcome = fleet.backup_all(directory: directory).outcomes.first
@@ -668,7 +668,7 @@ class NetdiscoTest < Minitest::Test
 
   def test_cli_rejects_host_absent_from_inventory
     rows = [{ "ip" => "192.0.2.1", "vendor" => "H3C" }]
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new(rows))
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows))
     Dir.mktmpdir do |directory|
       output = StringIO.new
       error = StringIO.new
@@ -696,7 +696,7 @@ class NetdiscoTest < Minitest::Test
     store = Object.new
     store.define_singleton_method(:write) { |*, **| raise IOError, "disk unavailable" }
     row = { "ip" => "192.0.2.90", "vendor" => "unknown" }
-    fleet = Fleet.new(client: Struct.new(:devices).new([row]), result_store: store)
+    fleet = Fleet.new(inventory: Struct.new(:devices).new([row]), report_store: store)
     Dir.mktmpdir do |directory|
       batch = fleet.backup_all(directory: directory)
       assert_equal [:unsupported_vendor], batch.outcomes.map(&:status)
@@ -713,7 +713,7 @@ class NetdiscoTest < Minitest::Test
                                       completed_at: Time.now.utc)
     end
     connector.define_singleton_method(:close) {}
-    fleet = Fleet.new(client: Struct.new(:devices).new([row]),
+    fleet = Fleet.new(inventory: Struct.new(:devices).new([row]),
                       credentials: ->(_) { { username: "admin" } }, connector_factory: ->(*) { connector })
     Dir.mktmpdir do |directory|
       batch = fleet.tftp_backup_all(server: "192.0.2.10", report_directory: directory)
@@ -740,7 +740,7 @@ class NetdiscoTest < Minitest::Test
         connector.define_singleton_method(:close) {}
       end
     end
-    fleet = Fleet.new(result_store: nil, client: Struct.new(:devices).new(rows),
+    fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows),
                       credentials: ->(_) { { username: "admin" } }, connector_factory: factory)
     Dir.mktmpdir do |directory|
       batch = fleet.backup_all(directory: directory, concurrency: 1,
@@ -843,9 +843,9 @@ class NetdiscoTest < Minitest::Test
           connector.define_singleton_method(:close) {}
         end
       end
-      Fleet.new(settings: settings, client: Struct.new(:devices).new(rows),
+      Fleet.new(settings: settings, inventory: Struct.new(:devices).new(rows),
                 credentials: ->(_) { { username: "backup" } }, connector_factory: connector_factory,
-                result_store: nil)
+                report_store: nil)
     end
     Dir.mktmpdir do |directory|
       path = File.join(directory, "config.yml")

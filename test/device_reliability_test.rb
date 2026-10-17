@@ -50,7 +50,7 @@ class DeviceReliabilityTest < Minitest::Test
     end
 
     def completed(command, output)
-      Net::Connector::CommandResult.new(command: command, output: output, prompt: "switch#", duration: 0)
+      Net::Connector::Command::Result.new(command: command, output: output, prompt: "switch#", duration: 0)
     end
   end
 

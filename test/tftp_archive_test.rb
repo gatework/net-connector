@@ -13,8 +13,8 @@ class TftpArchiveTest < Minitest::Test
   def test_first_history_run_creates_its_report_directory
     Dir.mktmpdir do |root|
       directory = File.join(root, "new")
-      fleet = N::Fleet.new(settings: N::Settings.new(env: {}), result_store: nil,
-                           client: Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }]),
+      fleet = N::Fleet.new(settings: N::Settings.new(env: {}), report_store: nil,
+                           inventory: Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }]),
                            credentials: ->(*) { nil })
       report = fleet.tftp_backup_all(server: "192.0.2.10", preserve_history: true, report_directory: directory)
       assert_equal [:missing_credentials], report.outcomes.map(&:status)
@@ -24,13 +24,13 @@ class TftpArchiveTest < Minitest::Test
   end
 
   def test_archive_write_failures_keep_committed_paths_and_diagnostics_without_reuploading
-    writer = Net::Connector::Storage::PrivateFile.method(:write)
+    writer = Net::Connector::Storage::AtomicFile.method(:write)
     %i[local_path archive_path].product(%i[not_committed committed durable], [false, true]).each do |target, state, already_failed|
       Dir.mktmpdir do |root|
         server = File.join(root, "server")
         FileUtils.mkdir_p(server)
         item = device("H3C")
-        archive = N::TftpArchive.new(directory: root, root: server)
+        archive = N::Tftp::Archive.new(directory: root, root: server)
         batch_path = File.join(root, "tftp", "edge-192.0.2.1.cfg")
         failed_path = nil
         writes = []
@@ -44,11 +44,11 @@ class TftpArchiveTest < Minitest::Test
           end
           failed_path = path
           writer.call(path, contents) unless state == :not_committed
-          receipt = Net::Connector::Storage::PrivateFile::Receipt.new(path: path, state: state,
+          receipt = Net::Connector::Storage::AtomicFile::Receipt.new(path: path, state: state,
                                                                       phase: { not_committed: :file_sync, committed: :directory_sync, durable: :cleanup }.fetch(state))
-          raise Net::Connector::Storage::PrivateFile::PersistenceError.new(receipt: receipt, underlying_type: "Errno::EIO")
+          raise Net::Connector::Storage::AtomicFile::PersistenceError.new(receipt: receipt, underlying_type: "Errno::EIO")
         end
-        result = Net::Connector::Storage::PrivateFile.stub(:write, failure) do
+        result = Net::Connector::Storage::AtomicFile.stub(:write, failure) do
           archive.upload_and_archive(item, started_at: Time.now.utc) do |remote|
             uploads += 1
             File.write(File.join(server, remote), "configuration")
@@ -82,7 +82,7 @@ class TftpArchiveTest < Minitest::Test
   end
 
   def test_builtin_archive_errors_survive_report_serialization
-    [N::TftpArchive::ArchiveFailed, N::TftpArchive::Unavailable].each do |type|
+    [N::Tftp::Archive::Failure, N::Tftp::Archive::Unavailable].each do |type|
       error = type.new(host: "192.0.2.1")
       item = N::Outcome.new(device: device("H3C"), status: :failed, backup: nil,
                             error_code: error.code, error_type: type.name, diagnostic: N::Diagnostic.from(error))
@@ -103,7 +103,7 @@ class TftpArchiveTest < Minitest::Test
       Dir.mktmpdir do |root|
         server = File.join(root, "server")
         Dir.mkdir(server)
-        archive = N::TftpArchive.new(directory: root, root: server)
+        archive = N::Tftp::Archive.new(directory: root, root: server)
         item = device("H3C")
         lock = Net::Connector::Storage::BackupLock
         synchronize = lock.method(:synchronize)
@@ -151,7 +151,7 @@ class TftpArchiveTest < Minitest::Test
         directory = Net::Connector::Storage::BatchDirectory.create(
           batches, time: Time.new(2026, 9, 28, 15, 30, 0, "+08:00")
         )
-        archive = N::TftpArchive.new(directory: directory, root: server)
+        archive = N::Tftp::Archive.new(directory: directory, root: server)
         remote_names << archive.upload_filename(h3c)
         assert_equal "running-config.xml", archive.upload_filename(pan)
         started = Time.now.utc - 1
@@ -186,7 +186,7 @@ class TftpArchiveTest < Minitest::Test
       directory = Net::Connector::Storage::BatchDirectory.create(root)
       filename = item.tftp_filename
       File.write(File.join(server, filename), "older configuration")
-      archive = N::TftpArchive.new(directory: directory, root: server)
+      archive = N::Tftp::Archive.new(directory: directory, root: server)
 
       result = archive.upload_and_archive(item, started_at: Time.now.utc - 1) do |remote|
         File.write(File.join(server, remote), "new configuration")
@@ -206,12 +206,12 @@ class TftpArchiveTest < Minitest::Test
     Dir.mktmpdir do |root|
       directory = File.join(root, "2026-09-28_15-30-00")
       FileUtils.mkdir_p(directory)
-      archive = N::TftpArchive.new(directory: directory)
+      archive = N::Tftp::Archive.new(directory: directory)
       first = archive.upload_filename(device("H3C"))
-      second = N::TftpArchive.new(directory: directory).upload_filename(device("H3C"))
+      second = N::Tftp::Archive.new(directory: directory).upload_filename(device("H3C"))
       assert_equal "edge-192.0.2.1-2026-09-28_15-30-00.cfg", first
       assert_equal "edge-192.0.2.1-2026-09-28_15-30-00_01.cfg", second
-      assert_raises(N::TftpArchive::Unavailable) do
+      assert_raises(N::Tftp::Archive::Unavailable) do
         archive.upload_and_archive(device("Palo Alto Networks"), started_at: Time.now.utc) { flunk "must not upload" }
       end
     end
@@ -222,7 +222,7 @@ class TftpArchiveTest < Minitest::Test
       server = File.join(directory, "server")
       FileUtils.mkdir_p(server)
       item = device("H3C")
-      archive = N::TftpArchive.new(directory: directory, root: server)
+      archive = N::Tftp::Archive.new(directory: directory, root: server)
       result = archive.upload_and_archive(item, started_at: Time.now.utc) { |remote| outcome(item, remote) }
       assert_equal :reported_with_error, result.status
       assert_equal :tftp_archive_failed, result.error_code
@@ -239,7 +239,7 @@ class TftpArchiveTest < Minitest::Test
       File.write(path, "previous device configuration")
       future = Time.now + 60
       File.utime(future, future, path)
-      archive = N::TftpArchive.new(directory: root, root: server)
+      archive = N::Tftp::Archive.new(directory: root, root: server)
 
       result = archive.upload_and_archive(item, started_at: Time.now.utc - 1) { |remote| outcome(item, remote) }
 
@@ -260,7 +260,7 @@ class TftpArchiveTest < Minitest::Test
       previous = Time.now - 60
       File.utime(previous, previous, path)
       inode = File.stat(path).ino
-      archive = N::TftpArchive.new(directory: root, root: server)
+      archive = N::Tftp::Archive.new(directory: root, root: server)
 
       result = archive.upload_and_archive(item, started_at: Time.now.utc - 1) do |remote|
         assert_equal inode, File.stat(path).ino, "precreated upload targets must remain available to the server"
@@ -280,7 +280,7 @@ class TftpArchiveTest < Minitest::Test
       FileUtils.mkdir_p(server)
       first = device("Palo Alto Networks")
       second = N::Device.from_row({ "ip" => "192.0.2.2", "name" => "other", "vendor" => "Palo Alto Networks" }, rules: N::Rules.new)
-      archive = N::TftpArchive.new(directory: root, root: server)
+      archive = N::Tftp::Archive.new(directory: root, root: server)
       entered, release, waiting = Queue.new, Queue.new, Queue.new
       synchronize = Net::Connector::Storage::BackupLock.method(:synchronize)
       observe_waiter = lambda do |path, **options, &block|
@@ -324,7 +324,7 @@ class TftpArchiveTest < Minitest::Test
       server = File.join(root, "server")
       FileUtils.mkdir_p(server)
       item = device("Palo Alto Networks")
-      archive = N::TftpArchive.new(directory: root, root: server)
+      archive = N::Tftp::Archive.new(directory: root, root: server)
       wall_time = Time.now + 60
 
       result = Time.stub(:now, wall_time) do
@@ -357,7 +357,7 @@ class TftpArchiveTest < Minitest::Test
 
   def test_upload_without_a_local_root_returns_the_device_receipt
     Dir.mktmpdir do |directory|
-      archive = N::TftpArchive.new(directory: directory)
+      archive = N::Tftp::Archive.new(directory: directory)
       item = device("H3C")
       result = archive.upload_and_archive(item, started_at: Time.now.utc) { |remote| outcome(item, remote) }
       assert_equal archive.upload_filename(item), result.backup.path

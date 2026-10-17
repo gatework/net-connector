@@ -2,32 +2,16 @@
 
 require_relative "connector/version"
 require_relative "connector/device/base"
+require_relative "connector/vendor"
 
 module Net
   # 设备 API 的公开加载入口；只登记厂商名称，实际连接器在首次选择时加载。
   module Connector
-    VENDORS = {
-      h3c: "H3c",
-      h3c_wireless: "H3cWireless",
-      cisco_ios: "CiscoIos",
-      cisco_nxos: "CiscoNxos",
-      radware: "Radware",
-      palo_alto: "PaloAlto",
-      huawei: "Huawei",
-      hillstone: "Hillstone"
-    }.freeze
-
     # 返回当前支持的厂商标识集合。
-    def self.vendors = VENDORS.keys
+    def self.vendors = Vendor.keys
 
     # 根据厂商标识查找连接器类。
-    def self.vendor_class(vendor)
-      key = vendor.to_s.downcase.tr(" -", "__")
-      key = key.to_sym
-      name = VENDORS.fetch(key) { raise ArgumentError, "unsupported vendor: #{vendor.inspect}" }
-      require_relative "connector/vendor/#{key}"
-      const_get(name, false).const_get(:Connector, false)
-    end
+    def self.vendor_class(vendor) = Vendor.fetch(vendor)
 
     # 根据厂商标识和连接参数创建设备对象。
     def self.build(vendor, **settings)

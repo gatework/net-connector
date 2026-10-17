@@ -116,7 +116,7 @@ class TftpEvidenceTest < Minitest::Test
   def test_failure_outputs_keep_evidence_from_prior_steps
     strategy = Net::Connector::Tftp::Strategy.new(nil)
     steps = ["Transfer failed.", "123 bytes copied"].map do |output|
-      Net::Connector::CommandResult.new(command: Net::Connector::Command.new("copy config"),
+      Net::Connector::Command::Result.new(command: Net::Connector::Command.new("copy config"),
                                        output: output, prompt: "switch#", duration: 0)
     end
     result = Net::Connector::Result.new(steps: steps)
@@ -184,7 +184,7 @@ class TftpEvidenceTest < Minitest::Test
     calls = 0
     interaction = Net::Connector::Interaction.new(/answer:/, ->(_prompt) { calls += 1; "error\n" })
     command = Net::Connector::Command.new("copy config", interactions: [interaction])
-    step = Net::Connector::CommandResult.new(command: command, output: "Transfer failed.", prompt: "switch#", duration: 0)
+    step = Net::Connector::Command::Result.new(command: command, output: "Transfer failed.", prompt: "switch#", duration: 0)
     Net::Connector::Tftp::Strategy.new(nil).failure_outputs(Net::Connector::Result.new(steps: [step])).to_a
     assert_equal 0, calls
   end

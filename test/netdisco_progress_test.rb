@@ -43,8 +43,8 @@ class NetdiscoProgressTest < Minitest::Test
         device.build_connector(**settings, transport: transport, on_event: progress.method(:event))
       end
       settings = Netdisco::Settings.new(env: {}, defaults: { "NC_LOG_DIRECTORY" => File.join(directory, "logs") })
-      client = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "Cisco", "os" => "ios" }])
-      fleet = Netdisco::Fleet.new(client: client, settings: settings, connector_factory: factory,
+      inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "Cisco", "os" => "ios" }])
+      fleet = Netdisco::Fleet.new(inventory: inventory, settings: settings, connector_factory: factory,
                                   credentials: ->(_) { { username: "audit", password: "private-password" } })
       plan = fleet.plan_backup
       progress.plan(plan, concurrency: 1)

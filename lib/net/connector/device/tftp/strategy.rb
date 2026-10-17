@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require_relative "../../engine/command"
+require_relative "../../engine/script"
 require_relative "target"
 module Net
   module Connector
@@ -27,18 +27,32 @@ module Net
         # 返回目标中指定的远端文件名。
         def remote_path(target, _result) = target.path
 
+        # 单次上传共用预检、命令预算和应答封装；厂商只提供协议命令与交互差异。
+        def script(target, source_file:, vrf: nil)
+          validate_options!(target, source_file: source_file, vrf: vrf)
+          command = transfer_command(target, source_file: source_file, vrf: vrf)
+          interactions = transfer_interactions(target, source_file: source_file, vrf: vrf)
+          Script.new([Command.new(command, timeout: 180, interactions: interactions)])
+        end
+
         # 原文、历史和终端画面共同保存失败证据；仅过滤精确输入回显与提示符。
         def failure_outputs(result)
           return enum_for(__method__, result) unless block_given?
 
           result.steps.each do |step|
             yield evidence_lines(step, step.output).join("\n")
-            yield evidence_lines(step, TerminalRenderer.render(step.output.gsub(/\r(?!\n)/, "\n"))).join("\n")
-            yield evidence_lines(step, TerminalRenderer.render(step.output)).join("\n")
+            yield evidence_lines(step, Terminal::Renderer.render(step.output.gsub(/\r(?!\n)/, "\n"))).join("\n")
+            yield evidence_lines(step, Terminal::Renderer.render(step.output)).join("\n")
           end
         end
 
         private
+
+        def transfer_command(_target, **)
+          raise NotImplementedError, "TFTP strategy must provide a transfer command"
+        end
+
+        def transfer_interactions(_target, **) = []
 
         # 静态交互不进入业务输出，证据过滤从完成步骤读取原始声明。
         def interaction(pattern, response)
@@ -50,15 +64,15 @@ module Net
           step = result.steps.last
           return [] unless step
 
-          output = TerminalRenderer.render(step.output)
-          prompt = TerminalRenderer.render(step.prompt.to_s)
+          output = Terminal::Renderer.render(step.output)
+          prompt = Terminal::Renderer.render(step.prompt.to_s)
           output = output.delete_suffix(prompt) unless prompt.empty?
           evidence_lines(step, output)
         end
 
         # 移除精确命令、静态响应和提示符，保留回车重绘前后的设备消息。
         def evidence_lines(step, output)
-          prompt = TerminalRenderer.render(step.prompt.to_s).strip
+          prompt = Terminal::Renderer.render(step.prompt.to_s).strip
           responses = step.command.interactions.filter_map { |reply| reply.static_response&.chomp("\n") }
           echoes = [step.command.text, "#{prompt}#{step.command.text}", *responses]
           # 原文中的每次回车分开核对，避免重绘回显误报，也保留被覆盖的诊断。

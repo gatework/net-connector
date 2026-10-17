@@ -12,7 +12,7 @@ class OutputSeparatorTest < Minitest::Test
   def test_result_output_does_not_insert_the_process_separator
     command = Connector::Command.new("show status")
     steps = %w[first second].map do |output|
-      Connector::CommandResult.new(command: command, output: output, prompt: nil, duration: 0)
+      Connector::Command::Result.new(command: command, output: output, prompt: nil, duration: 0)
     end
     output = with_separator { Connector::Result.new(steps: steps).output }
     assert_equal "firstsecond".b, output
@@ -41,7 +41,7 @@ class OutputSeparatorTest < Minitest::Test
   end
 
   def test_invalid_utf8_diagnostics_do_not_insert_separator_between_bytes
-    rendered = with_separator { Connector::TerminalRenderer.render("\xe3\x81".b) }
+    rendered = with_separator { Connector::Terminal::Renderer.render("\xe3\x81".b) }
     assert_equal "\\xE3\\x81", rendered
   end
 

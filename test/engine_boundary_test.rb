@@ -280,29 +280,29 @@ class EngineBoundaryTest < Minitest::Test
     examples.each do |input, expected|
       [1, 2, 7, [input.bytesize, 1].max].uniq.each do |chunk_size|
         output = StringIO.new("".b)
-        renderer = Connector::TerminalRenderer.new(output)
+        renderer = Connector::Terminal::Renderer.new(output)
         input.bytes.each_slice(chunk_size) { |bytes| renderer.write(bytes.pack("C*")) }
         renderer.finish
         assert_equal expected.b, output.string, "#{input.inspect} / #{chunk_size} bytes"
       end
-      assert_equal expected.b, Connector::TerminalRenderer.render(input), input.inspect
+      assert_equal expected.b, Connector::Terminal::Renderer.render(input), input.inspect
     end
   end
 
   def test_terminal_limits_reject_unbounded_cursor_and_escape_sequences
-    assert_raises(ArgumentError) { Connector::TerminalRenderer.new(Object.new) }
-    assert_raises(ArgumentError) { Connector::TerminalRenderer.new(StringIO.new, max_line_bytes: 0) }
+    assert_raises(ArgumentError) { Connector::Terminal::Renderer.new(Object.new) }
+    assert_raises(ArgumentError) { Connector::Terminal::Renderer.new(StringIO.new, max_line_bytes: 0) }
     ["abcde", "\e[99CX"].each do |input|
-      renderer = Connector::TerminalRenderer.new(StringIO.new, max_line_bytes: 4)
+      renderer = Connector::Terminal::Renderer.new(StringIO.new, max_line_bytes: 4)
       assert_raises(Connector::OutputLimitExceeded) { renderer.write(input) }
     end
-    renderer = Connector::TerminalRenderer.new(StringIO.new)
+    renderer = Connector::Terminal::Renderer.new(StringIO.new)
     assert_raises(Connector::OutputLimitExceeded) { renderer.write("\e[" + ("1" * 65)) }
   end
 
   def test_terminal_line_limit_preserves_the_consumed_prefix_and_allows_recovery
     output = StringIO.new("".b)
-    renderer = Connector::TerminalRenderer.new(output, max_line_bytes: 4)
+    renderer = Connector::Terminal::Renderer.new(output, max_line_bytes: 4)
     assert_equal 4, renderer.write("abcd")
     assert_raises(Connector::OutputLimitExceeded) { renderer.write("\r12345") }
     renderer.write("\nnext")
@@ -312,7 +312,7 @@ class EngineBoundaryTest < Minitest::Test
 
   def test_strict_terminal_rendering_validates_utf8_after_fragmented_edits
     output = StringIO.new("".b)
-    renderer = Connector::TerminalRenderer.new(output, strict_utf8: true)
+    renderer = Connector::Terminal::Renderer.new(output, strict_utf8: true)
     bytes = "名称".b
     renderer.write(bytes.byteslice(0, 2))
     renderer.write(bytes.byteslice(2..))
@@ -320,20 +320,20 @@ class EngineBoundaryTest < Minitest::Test
     renderer.finish
     assert_equal "名称\n".b, output.string
     assert_raises(Encoding::InvalidByteSequenceError) do
-      Connector::TerminalRenderer.render("名\bX", strict_utf8: true)
+      Connector::Terminal::Renderer.render("名\bX", strict_utf8: true)
     end
   end
 
   def test_plain_terminal_rendering_returns_owned_bytes_and_retains_default_validation
     input = "status  ".freeze
-    rendered = Connector::TerminalRenderer.render(input, strict_utf8: true)
+    rendered = Connector::Terminal::Renderer.render(input, strict_utf8: true)
     assert_equal "status", rendered
     assert_equal Encoding::BINARY, rendered.encoding
     refute rendered.frozen?
     rendered.replace("changed")
     assert_equal "status  ", input
-    assert_raises(ArgumentError) { Connector::TerminalRenderer.render("status", strict_utf8: nil) }
-    assert_raises(Connector::OutputLimitExceeded) { Connector::TerminalRenderer.render("a" * ((32 * 1024 * 1024) + 1)) }
+    assert_raises(ArgumentError) { Connector::Terminal::Renderer.render("status", strict_utf8: nil) }
+    assert_raises(Connector::OutputLimitExceeded) { Connector::Terminal::Renderer.render("a" * ((32 * 1024 * 1024) + 1)) }
   end
 
   def test_invalid_interaction_rules_are_rejected_before_execution

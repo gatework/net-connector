@@ -19,7 +19,7 @@ class NetdiscoReliabilityTest < Minitest::Test
       Thread.current.raise(failure)
       connector
     end
-    fleet = Netdisco::Fleet.new(client: Struct.new(:devices).new(rows), result_store: nil,
+    fleet = Netdisco::Fleet.new(inventory: Struct.new(:devices).new(rows), report_store: nil,
                                credentials: ->(_) { { username: "backup" } }, connector_factory: factory)
     observed = assert_raises(Interrupt) { fleet.tftp_backup_all(server: "192.0.2.10", concurrency: 1) }
     assert_same failure, observed
@@ -155,7 +155,7 @@ class NetdiscoReliabilityTest < Minitest::Test
     rows = [{ "ip" => "192.0.2.1", "name" => "firewall", "vendor" => "Palo Alto" }]
     paths = []
     factory = lambda do |settings|
-      Netdisco::Fleet.new(settings: settings, client: Struct.new(:devices).new(rows), result_store: nil,
+      Netdisco::Fleet.new(settings: settings, inventory: Struct.new(:devices).new(rows), report_store: nil,
                           credentials: ->(_) { { username: "backup" } }, connector_factory: lambda { |*_args|
           Object.new.tap do |connector|
             connector.define_singleton_method(:tftp_backup) do |**options|
@@ -184,23 +184,23 @@ class NetdiscoReliabilityTest < Minitest::Test
     end
   end
 
-  def test_client_does_not_expose_raw_response_through_exception_cause
+  def test_inventory_does_not_expose_raw_response_through_exception_cause
     response = Net::HTTPOK.new("1.1", "200", "OK")
     response.define_singleton_method(:body) { "invalid-json private-api-token" }
-    client = Netdisco::Client.new(url: "https://inventory.example", api_key: "token",
+    inventory = Netdisco::Inventory::HTTP.new(url: "https://inventory.example", api_key: "token",
                                   requester: ->(*) { response })
 
-    error = assert_raises(Netdisco::Client::Error) { client.devices }
+    error = assert_raises(Netdisco::Inventory::Error) { inventory.devices }
     assert_equal "Netdisco returned invalid JSON", error.message
     assert_nil error.cause
     refute_includes error.full_message, "private-api-token"
   end
 
-  def test_client_does_not_expose_transport_exception_credentials
-    client = Netdisco::Client.new(url: "https://inventory.example", api_key: "token",
+  def test_inventory_does_not_expose_transport_exception_credentials
+    inventory = Netdisco::Inventory::HTTP.new(url: "https://inventory.example", api_key: "token",
                                   requester: ->(*) { raise IOError, "private-api-token" })
 
-    error = assert_raises(Netdisco::Client::Error) { client.devices }
+    error = assert_raises(Netdisco::Inventory::Error) { inventory.devices }
     assert_equal "Netdisco connection failed (IOError)", error.message
     assert_nil error.cause
     refute_includes error.full_message, "private-api-token"

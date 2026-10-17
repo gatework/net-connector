@@ -97,7 +97,7 @@ debug Logger 计数目标样本；不关闭协议检查、丢弃步骤或共享�
 | --- | --- | --- |
 | 核心引擎 | `lib/net/connector/engine/**/*.rb` | 80% / 80% |
 | 脱敏与错误处理 | `lib/net/connector/engine/errors.rb`，包含 `Redactor` | 80% / 80% |
-| 批量并发 | `lib/net/connector/background_task.rb`、`execution_pool.rb`、`device_session.rb`、`netdisco/worker.rb` | 80% / 80% |
+| 批量并发 | `lib/net/connector/concurrency/observer.rb`、`lib/net/connector/concurrency/pool.rb`、`lib/net/connector/device/scope.rb`、`netdisco/worker.rb` | 80% / 80% |
 
 关键组为空、任一关键文件未测量或组内没有可执行行时均失败。没有分支的组
 不需要分支命中，但仍须通过行覆盖率及文件加载检查。
@@ -141,7 +141,7 @@ SHA-256，首次使用时从官方 GitHub Release 下载，缓存到 `tmp/tools/
 
 `test/tftp_boundary_test.rb` 验证内置策略在首次 I/O 前拒绝不支持的参数组合，使用 Queue 固定 H3C 源探测后的竞争窗口，检查线程/Fiber 拒绝。上传确认后的日志、命令清理、租约清理、路径和元数据钩子失败保留回执且不重传；随机假秘密不进入新错误正文。统一回执测试核对配置来源、实际路径、设备报告等级和冻结字段；Fleet 拒绝第三方和子类提供的完成事实。既有成功/失败/echo/控制符证据用同一套合成夹具继续测试，来源和 unknown 固件范围见 `test/fixtures/tftp/README.md`。普通及最小 Bundler 安装通过本地 PTY 验证唯一的 TFTP 回执入口，没有连接真实 TFTP 服务器或上传配置。
 
-`test/netdisco_reporting_test.rb` 覆盖 strict/selected 的状态决策矩阵、显式 CLI 退出码、统一 schema 2、Outcome 的耗时与诊断成员、Fleet/ResultStore 的 Report 契约，以及部分成功/回调/报告错误阻止 selected 成功。动态假秘密放入异常消息、输出、命令、source、line、phase、code 和自定义类型名，报告与私有 JSON 不得含它。受控文件/TFTP 回执阶段跨 Worker 复制仍保留，普通文件异常不能冒充设备产物。可控时钟让 UTC 倒退而单调时间前进，断言设备及批次耗时准确且无负值；没有用固定睡眠推断时间行为。
+`test/netdisco_reporting_test.rb` 覆盖 strict/selected 的状态决策矩阵、显式 CLI 退出码、统一 schema 2、Outcome 的耗时与诊断成员、Fleet/Report::Store 的 Report 契约，以及部分成功/回调/报告错误阻止 selected 成功。动态假秘密放入异常消息、输出、命令、source、line、phase、code 和自定义类型名，报告与私有 JSON 不得含它。受控文件/TFTP 回执阶段跨 Worker 复制仍保留，普通文件异常不能冒充设备产物。可控时钟让 UTC 倒退而单调时间前进，断言设备及批次耗时准确且无负值；没有用固定睡眠推断时间行为。
 
 `test/backup_lock_test.rb` 通过 Queue、独立 Ruby 进程及可控单调时钟检查采集前互斥、有限等待、锁释放、线程/Fiber/回调递归、路径别名、私有权限、硬链接/FIFO 拒绝和符号链接替换。`test/backup_identity_test.rb` 验证规范地址命名、改名后的稳定身份、mtime、非普通文件拒绝和非规范文件不参与比较；稳定锁文件不作为多余备份计数。
 
@@ -232,7 +232,7 @@ BUNDLE_GEMFILE=gemfiles/json3.gemfile bundle exec ruby script/verify_json3.rb
 
 `test/examples_test.rb` 验证示例进程退出码与报告策略一致、报告写入错误、统一 devices 结构、
 TFTP 远端未核验回执以及自定义日志目录；离线复核同时支持历史 outcomes 和新 devices 报告。
-`test/tftp_verification_test.rb` 验证空文件、旧文件、符号链接、目录逃逸和 verified 策略。
+`test/tftp_verifier_test.rb` 验证空文件、旧文件、符号链接、目录逃逸和 verified 策略。
 
 ## Ruby 惯用法重构回归
 

@@ -31,7 +31,7 @@ end
 
 ## 支持的设备
 
-H3C Comware 及无线控制器、Cisco IOS/IOS XE 与 NX-OS、华为、山石 StoneOS、Radware Alteon 和 Palo Alto PAN-OS。各厂商能力不同，详见[设备操作指南](docs/usage.zh-CN.md#支持的设备)。合成测试不代表所有固件均已现场验证。
+H3C Comware 及无线控制器、Cisco IOS/IOS XE 与 NX-OS、华为、山石 StoneOS、Radware Alteon 、Palo Alto PAN-OS、天融信 TopOS、Fortinet FortiOS 和 Juniper Junos OS。各厂商能力不同，详见[设备操作指南](docs/usage.zh-CN.md#支持的设备)。合成测试不代表所有固件均已现场验证。
 
 ## 批量备份
 

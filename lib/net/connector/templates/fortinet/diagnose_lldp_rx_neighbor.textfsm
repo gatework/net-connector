@@ -1,0 +1,7 @@
+Value Required LOCAL_INTERFACE ([^']+)
+Value Required CHASSIS_ID (\S+)
+Value Required NEIGHBOR_INTERFACE ([^']+)
+Value NEIGHBOR_NAME ([^']*)
+
+Start
+  ^\s*\d+\s+port\s+'${LOCAL_INTERFACE}'\s+\d+\s+mac\s+\S+\s+chassis\s+${CHASSIS_ID}\s+port\s+'${NEIGHBOR_INTERFACE}'\s+system\s+'${NEIGHBOR_NAME}'\s*$$ -> Record

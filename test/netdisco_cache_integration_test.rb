@@ -40,37 +40,37 @@ class NetdiscoCacheIntegrationTest < Minitest::Test
     end
   end
 
-  def test_client_uses_environment_ttl_to_expire_existing_cache
+  def test_inventory_uses_environment_ttl_to_expire_existing_cache
     with_settings do |settings, env, _defaults|
       env["ND_CACHE_TTL"] = "10"
       calls = 0
       builder = lambda do |**_options|
-        Object.new.tap do |client|
-          client.define_singleton_method(:devices) { calls += 1; [{ "ip" => "192.0.2.1" }] }
+        Object.new.tap do |inventory|
+          inventory.define_singleton_method(:devices) { calls += 1; [{ "ip" => "192.0.2.1" }] }
         end
       end
-      Netdisco::Client.stub(:new, builder) do
+      Netdisco::Inventory::HTTP.stub(:new, builder) do
         now = Time.now.utc
-        Time.stub(:now, now) { settings.client.devices }
-        Time.stub(:now, now + 2) { settings.client.devices }
+        Time.stub(:now, now) { settings.inventory.devices }
+        Time.stub(:now, now + 2) { settings.inventory.devices }
         assert_equal 1, calls
         env["ND_CACHE_TTL"] = "1"
-        Time.stub(:now, now + 2) { settings.client.devices }
+        Time.stub(:now, now + 2) { settings.inventory.devices }
         assert_equal 2, calls
       end
     end
   end
 
-  def test_client_cache_identity_rules_rotation_and_force_refresh
+  def test_inventory_cache_identity_rules_rotation_and_force_refresh
     with_settings do |settings, env, defaults|
       calls = []
       rows = [{ "ip" => "192.0.2.1", "vendor" => "H3C", "extra_secret" => "must-not-persist" }]
       builder = lambda do |**options|
-        Struct.new(:fetcher).new(-> { calls << options[:username]; rows }).tap do |client|
-          client.define_singleton_method(:devices) { fetcher.call }
+        Struct.new(:fetcher).new(-> { calls << options[:username]; rows }).tap do |inventory|
+          inventory.define_singleton_method(:devices) { fetcher.call }
         end
       end
-      Netdisco::Client.stub(:new, builder) do
+      Netdisco::Inventory::HTTP.stub(:new, builder) do
         fleet = Netdisco::Fleet.new(settings: settings)
         assert_equal :h3c, fleet.devices.first.vendor
         assert_equal :refreshed, fleet.inventory_status.fetch(:source)
@@ -96,13 +96,13 @@ class NetdiscoCacheIntegrationTest < Minitest::Test
 
   def test_failed_inventory_does_not_retain_last_success_metadata
     rows = []
-    client = Object.new
-    client.define_singleton_method(:devices) { rows }
-    fleet = Netdisco::Fleet.new(client: client, settings: Netdisco::Settings.new(env: {}))
+    inventory = Object.new
+    inventory.define_singleton_method(:devices) { rows }
+    fleet = Netdisco::Fleet.new(inventory: inventory, settings: Netdisco::Settings.new(env: {}))
     fleet.devices
     assert_equal :uncached, fleet.inventory_status.fetch(:source)
-    client.define_singleton_method(:devices) { raise Netdisco::Client::Error, "failed" }
-    assert_raises(Netdisco::Client::Error) { fleet.devices }
+    inventory.define_singleton_method(:devices) { raise Netdisco::Inventory::Error, "failed" }
+    assert_raises(Netdisco::Inventory::Error) { fleet.devices }
     assert_nil fleet.inventory_status
   end
 
@@ -120,17 +120,17 @@ class NetdiscoCacheIntegrationTest < Minitest::Test
       calls = []
       rows = [{ "ip" => "192.0.2.1" }]
       builder = ->(**options) { calls << options; Struct.new(:devices).new(rows) }
-      Netdisco::Client.stub(:new, builder) do
-        settings.client.devices
-        settings.client(credentials: { username: "operator", password: "stdin-secret" }).devices
+      Netdisco::Inventory::HTTP.stub(:new, builder) do
+        settings.inventory.devices
+        settings.inventory(credentials: { username: "operator", password: "stdin-secret" }).devices
         assert_equal 2, Dir[File.join(defaults.fetch("ND_CACHE_DIRECTORY"), "*.json")].size
       end
       postgres = Netdisco::Settings.new(env: { "ND_DB_HOST" => "database.example", "ND_DB_NAME" => "inventory",
                                               "ND_DB_USER" => "reader", "ND_DB_PASS" => "database-secret" },
                                          defaults: defaults.merge("ND_SOURCE" => "postgres", "ND_QUERY" => "SELECT ip FROM device"))
-      Netdisco::DatabaseClient.stub(:new, builder) do
-        postgres.client.devices
-        postgres.with_overrides("ND_QUERY_PARAMS" => '["east"]').client.devices
+      Netdisco::Inventory::Postgres.stub(:new, builder) do
+        postgres.inventory.devices
+        postgres.with_overrides("ND_QUERY_PARAMS" => '["east"]').inventory.devices
         assert_equal 4, Dir[File.join(defaults.fetch("ND_CACHE_DIRECTORY"), "*.json")].size
       end
       assert_equal 4, calls.size
@@ -141,19 +141,19 @@ class NetdiscoCacheIntegrationTest < Minitest::Test
     with_settings do |settings, _env, _defaults|
       failure = nil
       builder = lambda do |**|
-        Object.new.tap do |client|
-          client.define_singleton_method(:devices) do
+        Object.new.tap do |inventory|
+          inventory.define_singleton_method(:devices) do
             raise failure if failure
 
             [{ "ip" => "192.0.2.1", "vendor" => "H3C" }]
           end
         end
       end
-      Netdisco::Client.stub(:new, builder) do
+      Netdisco::Inventory::HTTP.stub(:new, builder) do
         fleet = Netdisco::Fleet.new(settings: settings)
         fleet.devices
         timestamp = fleet.inventory_status.fetch(:fetched_at)
-        failure = Netdisco::Client::Error.new("private-response", code: :connection_failed)
+        failure = Netdisco::Inventory::Error.new("private-response", code: :connection_failed)
         assert_equal "192.0.2.1", fleet.devices(force_refresh: true).first.host
         assert_equal :stale_cache, fleet.inventory_status.fetch(:source)
         assert_equal timestamp, fleet.inventory_status.fetch(:fetched_at)

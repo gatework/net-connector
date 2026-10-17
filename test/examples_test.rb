@@ -306,7 +306,7 @@ class ConnectorExamplesTest < Minitest::Test
       preload = File.join(directory, "inventory.rb")
       File.write(preload, <<~RUBY)
         require "net/connector/netdisco"
-        class Net::Connector::Netdisco::Client
+        class Net::Connector::Netdisco::Inventory::HTTP
           def devices = #{rows.inspect}
         end
         #{preload_code}

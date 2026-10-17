@@ -9,10 +9,10 @@ require_relative "../lib/net/connector/netdisco"
 class FilePersistenceTest < Minitest::Test
   Storage = Net::Connector::Storage
   LocalBackup = Net::Connector::LocalBackup
-  PrivateFile = Storage::PrivateFile
+  AtomicFile = Storage::AtomicFile
   Netdisco = Net::Connector::Netdisco
 
-  class ExternalWriteError < PrivateFile::PersistenceError
+  class ExternalWriteError < AtomicFile::PersistenceError
     def message = underlying_type
   end
 
@@ -30,7 +30,7 @@ class FilePersistenceTest < Minitest::Test
   def test_success_returns_a_durable_write_receipt
     Dir.mktmpdir do |directory|
       path = File.join(directory, "data.txt")
-      receipt = PrivateFile.write(path, "first")
+      receipt = AtomicFile.write(path, "first")
       assert_equal path, receipt.path
       assert_equal :durable, receipt.state
       assert_equal :complete, receipt.phase
@@ -38,7 +38,7 @@ class FilePersistenceTest < Minitest::Test
       assert receipt.durable?
       assert receipt.frozen?
       assert receipt.path.frozen?
-      assert PrivateFile.write(path, "second").durable?
+      assert AtomicFile.write(path, "second").durable?
       assert_equal "second", File.read(path)
       assert_equal 0o600, File.stat(path).mode & 0o777
     end
@@ -50,7 +50,7 @@ class FilePersistenceTest < Minitest::Test
         path = File.join(directory, "data.txt")
         File.write(path, "old")
         failure = with_temporary_failure(operation) do
-          assert_raises(IOError) { PrivateFile.write(path, @secret) }
+          assert_raises(IOError) { AtomicFile.write(path, @secret) }
         end
         assert_equal :not_committed, failure.receipt.state
         assert_equal phase, failure.receipt.phase
@@ -69,7 +69,7 @@ class FilePersistenceTest < Minitest::Test
       path = File.join(directory, "data.txt")
       File.write(path, "old")
       File.stub(:rename, ->(*) { raise Errno::EIO, @secret }) do
-        error = assert_raises(IOError) { PrivateFile.write(path, "new") }
+        error = assert_raises(IOError) { AtomicFile.write(path, "new") }
         assert_equal :not_committed, error.receipt.state
         assert_equal :rename, error.receipt.phase
         assert_equal "old", File.read(path)
@@ -84,9 +84,9 @@ class FilePersistenceTest < Minitest::Test
       path = File.join(directory, "data.txt")
       File.write(path, "old")
       failure = with_directory_sync_failure(directory) do
-        assert_raises(IOError) { PrivateFile.write(path, "new") }
+        assert_raises(IOError) { AtomicFile.write(path, "new") }
       end
-      assert_instance_of PrivateFile::PersistenceError, failure
+      assert_instance_of AtomicFile::PersistenceError, failure
       assert_equal :committed, failure.receipt.state
       assert_equal :directory_sync, failure.receipt.phase
       assert_equal :file_persistence_unconfirmed, failure.code
@@ -103,9 +103,9 @@ class FilePersistenceTest < Minitest::Test
       Dir.mktmpdir do |directory|
         path = File.join(directory, "data.txt")
         failure = with_directory_sync_failure(directory, exception: exception) do
-          assert_raises(IOError) { PrivateFile.write(path, "new") }
+          assert_raises(IOError) { AtomicFile.write(path, "new") }
         end
-        assert_instance_of PrivateFile::DirectorySyncUnsupported, failure
+        assert_instance_of AtomicFile::DirectorySyncUnsupported, failure
         assert_equal :directory_sync_unsupported, failure.code
         assert_equal :committed, failure.receipt.state
         assert_equal "new", File.read(path)
@@ -124,7 +124,7 @@ class FilePersistenceTest < Minitest::Test
 
         original.call(target, *args, **options, &block)
       end
-      error = File.stub(:open, open) { assert_raises(IOError) { PrivateFile.write(path, "committed") } }
+      error = File.stub(:open, open) { assert_raises(IOError) { AtomicFile.write(path, "committed") } }
       assert_equal :committed, error.receipt.state
       assert_equal :directory_open, error.receipt.phase
       assert_equal "committed", File.read(path)
@@ -135,7 +135,7 @@ class FilePersistenceTest < Minitest::Test
         create.call(*args, **options, &block)
         raise Errno::EIO, @secret
       end
-      error = Tempfile.stub(:create, cleanup) { assert_raises(IOError) { PrivateFile.write(path, "durable") } }
+      error = Tempfile.stub(:create, cleanup) { assert_raises(IOError) { AtomicFile.write(path, "durable") } }
       assert_equal :durable, error.receipt.state
       assert_equal :cleanup, error.receipt.phase
       assert_equal :file_finalize_failed, error.code
@@ -163,7 +163,7 @@ class FilePersistenceTest < Minitest::Test
       Tempfile.stub(:create, create_probe) do
         File.stub(:rename, rename_probe) do
           with_directory_sync_probe(directory, ->(file) { events << :directory_sync; file.fsync }) do
-            PrivateFile.write(path, "new")
+            AtomicFile.write(path, "new")
           end
         end
       end
@@ -282,11 +282,11 @@ class FilePersistenceTest < Minitest::Test
 
   def test_report_keeps_its_committed_location_when_directory_sync_fails
     Dir.mktmpdir do |directory|
-      fleet = fleet_for(local_device { "configuration" }, result_store: Netdisco::ResultStore::Json.new)
+      fleet = fleet_for(local_device { "configuration" }, report_store: Netdisco::Report::Store::Json.new)
       batch = with_directory_sync_failure(directory, fail_on: 2) { fleet.backup_all(directory: directory) }
       refute batch.success?
       assert_equal :backed_up, batch.outcomes.first.status
-      assert_equal "Net::Connector::Storage::PrivateFile::PersistenceError", batch.report_error
+      assert_equal "Net::Connector::Storage::AtomicFile::PersistenceError", batch.report_error
       refute_nil batch.report_location
       assert_equal batch.outcomes.first.backup.path,
                    JSON.parse(File.read(batch.report_location)).fetch("devices").first.fetch("path")
@@ -297,20 +297,20 @@ class FilePersistenceTest < Minitest::Test
   def test_external_write_error_subclasses_do_not_supply_trusted_receipts_or_messages
     Dir.mktmpdir do |directory|
       target = File.join(directory, "unwritten.txt")
-      receipt = PrivateFile::Receipt.new(path: target, state: :committed, phase: :directory_sync)
+      receipt = AtomicFile::Receipt.new(path: target, state: :committed, phase: :directory_sync)
       error = ExternalWriteError.new(receipt: receipt, underlying_type: @secret)
       backup = Net::Connector::Backup.new(path: target, bytes: 1, sha256: "test", collected_at: Time.now.utc)
       assert_raises(ArgumentError) { Net::Connector::BackupPersistenceError.new(backup: backup, write_error: error) }
 
       store = Object.new
       store.define_singleton_method(:write) { |*_, **_options| raise error }
-      batch = fleet_for(local_device { "configuration" }, result_store: store).backup_all(directory: directory)
+      batch = fleet_for(local_device { "configuration" }, report_store: store).backup_all(directory: directory)
       assert_equal "StandardError", batch.report_error
       assert_nil batch.report_location
       refute batch.success?
 
       output, stderr = StringIO.new, StringIO.new
-      status = PrivateFile.stub(:write, ->(*) { raise error }) do
+      status = AtomicFile.stub(:write, ->(*) { raise error }) do
         Netdisco::CLI.new(argv: ["--directory", directory, "--export", "192.0.2.1", "--output", target],
                           env: {}, output: output, error: stderr).run
       end
@@ -350,9 +350,9 @@ class FilePersistenceTest < Minitest::Test
     end
   end
 
-  def fleet_for(connector, result_store: nil)
-    client = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
-    Netdisco::Fleet.new(client: client, settings: Netdisco::Settings.new(env: {}), result_store: result_store,
+  def fleet_for(connector, report_store: nil)
+    inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
+    Netdisco::Fleet.new(inventory: inventory, settings: Netdisco::Settings.new(env: {}), report_store: report_store,
                         credentials: ->(*) { { username: "test" } }, connector_factory: ->(*) { connector })
   end
 

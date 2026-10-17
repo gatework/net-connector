@@ -4,11 +4,10 @@ require "minitest/autorun"
 require "tmpdir"
 require "fileutils"
 require "timeout"
-require_relative "../lib/net/connector/netdisco/inventory_cache"
+require_relative "../lib/net/connector/netdisco/inventory/cache"
 
 class NetdiscoInventoryCacheTest < Minitest::Test
-  Cache = Net::Connector::Netdisco::InventoryCache
-  Client = Net::Connector::Netdisco::Client
+  Cache = Net::Connector::Netdisco::Inventory::Cache
 
   def setup
     @directory = Dir.mktmpdir
@@ -16,17 +15,17 @@ class NetdiscoInventoryCacheTest < Minitest::Test
     @calls = 0
     @rows = [{ "ip" => "192.0.2.1", "vendor" => "H3C" }]
     @failure = nil
-    @client = Object.new
+    @inventory = Object.new
     test = self
-    @client.define_singleton_method(:devices) { test.request }
+    @inventory.define_singleton_method(:devices) { test.request }
   end
 
   def test_external_error_metadata_is_not_written_to_public_cache_status
     inventory = cache
     inventory.devices
-    @failure = Net::Connector::Netdisco::Client::Error.new("private-value", code: "private-code\nsecond-line")
+    @failure = Net::Connector::Netdisco::Inventory::Error.new("private-value", code: "private-code\nsecond-line")
     inventory.devices(force_refresh: true)
-    assert_equal :client_error, inventory.refresh_error_code
+    assert_equal :inventory_error, inventory.refresh_error_code
     refute_includes inventory.inspect, "private"
   end
 
@@ -48,7 +47,7 @@ class NetdiscoInventoryCacheTest < Minitest::Test
   end
 
   def cache(**options)
-    Cache.new(client: @client, directory: @directory, identity: "source-one", clock: -> { @now }, **options)
+    Cache.new(inventory: @inventory, directory: @directory, identity: "source-one", clock: -> { @now }, **options)
   end
 
   def path = Dir.glob(File.join(@directory, "*.json")).fetch(0)
@@ -92,7 +91,7 @@ class NetdiscoInventoryCacheTest < Minitest::Test
     instance.devices
     original = File.binread(path)
     @now += 259_200
-    @failure = Client::InventoryTimeout.new
+    @failure = Net::Connector::Netdisco::Inventory::Timeout.new
     assert_equal @rows, instance.devices
     assert_equal :stale_cache, instance.status
     assert_equal @now - 259_200, instance.fetched_at
@@ -104,7 +103,7 @@ class NetdiscoInventoryCacheTest < Minitest::Test
   def test_force_refresh_failure_returns_fresh_history_with_explicit_stale_status
     instance = cache
     instance.devices
-    @failure = Client::Error.new("secret response", code: :request_failed)
+    @failure = Net::Connector::Netdisco::Inventory::Error.new("secret response", code: :request_failed)
     assert_equal @rows, instance.devices(force_refresh: true)
     assert_equal :stale_cache, instance.status
     assert_equal :request_failed, instance.refresh_error_code
@@ -112,8 +111,8 @@ class NetdiscoInventoryCacheTest < Minitest::Test
   end
 
   def test_refresh_failure_without_history_is_rethrown
-    @failure = Client::Error.new("failed", code: :connection_failed)
-    assert_same @failure, assert_raises(Client::Error) { cache.devices }
+    @failure = Net::Connector::Netdisco::Inventory::Error.new("failed", code: :connection_failed)
+    assert_same @failure, assert_raises(Net::Connector::Netdisco::Inventory::Error) { cache.devices }
   end
 
   def test_program_errors_and_interrupt_never_fall_back
@@ -170,8 +169,8 @@ class NetdiscoInventoryCacheTest < Minitest::Test
   def test_empty_cache_cannot_hide_a_remote_failure
     cache.devices
     File.write(path, "")
-    @failure = Client::Error.new("offline", code: :connection_failed)
-    assert_same @failure, assert_raises(Client::Error) { cache.devices }
+    @failure = Net::Connector::Netdisco::Inventory::Error.new("offline", code: :connection_failed)
+    assert_same @failure, assert_raises(Net::Connector::Netdisco::Inventory::Error) { cache.devices }
   end
 
   def test_row_copy_preserves_nil_fields_and_excludes_absent_fields
@@ -206,14 +205,14 @@ class NetdiscoInventoryCacheTest < Minitest::Test
   def test_changed_max_devices_does_not_allow_fallback_to_over_limit_history
     @rows = [{ "ip" => "192.0.2.1" }, { "ip" => "192.0.2.2" }]
     cache.devices
-    @failure = Client::Error.new("offline")
-    assert_raises(Client::Error) { cache(max_devices: 1).devices }
+    @failure = Net::Connector::Netdisco::Inventory::Error.new("offline")
+    assert_raises(Net::Connector::Netdisco::Inventory::Error) { cache(max_devices: 1).devices }
   end
 
   def test_changed_byte_limit_does_not_allow_fallback_to_over_limit_history
     cache.devices
-    @failure = Client::Error.new("offline")
-    assert_raises(Client::Error) { cache(max_inventory_bytes: 10).devices }
+    @failure = Net::Connector::Netdisco::Inventory::Error.new("offline")
+    assert_raises(Net::Connector::Netdisco::Inventory::Error) { cache(max_inventory_bytes: 10).devices }
   end
 
   def test_invalid_remote_rows_do_not_overwrite_history
@@ -228,11 +227,11 @@ class NetdiscoInventoryCacheTest < Minitest::Test
 
   def test_invalid_remote_rows_without_history_raise_inventory_error
     @rows = [{ "ip" => "192.0.2.1", "vendor" => Object.new }]
-    assert_equal :invalid_inventory, assert_raises(Client::Error) { cache.devices }.code
+    assert_equal :invalid_inventory, assert_raises(Net::Connector::Netdisco::Inventory::Error) { cache.devices }.code
   end
 
   def test_successful_remote_read_survives_cache_write_error
-    writer = Net::Connector::Storage::PrivateFile
+    writer = Net::Connector::Storage::AtomicFile
     writer.stub(:write, ->(*) { raise IOError, "filesystem detail" }) do
       instance = cache
       assert_equal @rows, instance.devices
@@ -245,7 +244,7 @@ class NetdiscoInventoryCacheTest < Minitest::Test
   def test_status_errors_are_reset_after_success
     instance = cache
     instance.devices
-    @failure = Client::Error.new("offline", code: :connection_failed)
+    @failure = Net::Connector::Netdisco::Inventory::Error.new("offline", code: :connection_failed)
     instance.devices(force_refresh: true)
     @failure = nil
     instance.devices(force_refresh: true)
@@ -256,7 +255,7 @@ class NetdiscoInventoryCacheTest < Minitest::Test
 
   # 已提交的新文件不能因目录同步失败被当成旧历史，亦不能触发第二次远端调用。
   def test_post_commit_write_failure_keeps_new_rows_and_cache
-    writer = Net::Connector::Storage::PrivateFile
+    writer = Net::Connector::Storage::AtomicFile
     original = writer.method(:write)
     replacement = lambda do |*arguments|
       receipt = original.call(*arguments)
@@ -334,16 +333,16 @@ class NetdiscoInventoryCacheTest < Minitest::Test
     entered = Queue.new
     release = Queue.new
     calls = 0
-    client = Object.new
-    client.define_singleton_method(:devices) do
+    inventory = Object.new
+    inventory.define_singleton_method(:devices) do
       calls += 1
       entered << true
       release.pop
       [{ "ip" => "192.0.2.1" }]
     end
-    first = Thread.new { cache(client: client).devices }
+    first = Thread.new { cache(inventory: inventory).devices }
     Timeout.timeout(2) { entered.pop }
-    second = Thread.new { cache(client: client).devices }
+    second = Thread.new { cache(inventory: inventory).devices }
     release << true
     assert_equal first.value, second.value
     assert_equal 1, calls
@@ -364,14 +363,14 @@ class NetdiscoInventoryCacheTest < Minitest::Test
     marker = File.join(@directory, "remote-calls")
     children = 2.times.map do
       fork do
-        client = Object.new
-        client.define_singleton_method(:devices) do
+        inventory = Object.new
+        inventory.define_singleton_method(:devices) do
           File.open(marker, "a", 0o600) { |file| file.puts("called") }
           sleep(0.15)
           [{ "ip" => "192.0.2.1" }]
         end
         begin
-          rows = cache(client: client).devices
+          rows = cache(inventory: inventory).devices
           exit!(rows == [{ "ip" => "192.0.2.1" }] ? 0 : 1)
         rescue StandardError
           exit!(1)
@@ -402,7 +401,7 @@ class NetdiscoInventoryCacheTest < Minitest::Test
     end
     assert_raises(ArgumentError) { cache(identity: "") }
     assert_raises(ArgumentError) { cache(directory: "") }
-    assert_raises(ArgumentError) { cache(client: Object.new) }
+    assert_raises(ArgumentError) { cache(inventory: Object.new) }
     assert_raises(ArgumentError) { cache.devices(force_refresh: nil) }
     assert_equal 0, @calls
     assert_empty Dir.children(@directory)

@@ -1,0 +1,10 @@
+Value Filldown VRF ([^\"]+)
+Value Required INTERFACE (\S+)
+Value IP_ADDRESS (\S+)
+Value PROTOCOL (up|down)
+Value LINK_STATUS (up|down)
+Value ADMIN_STATUS (up|down)
+
+Start
+  ^IP Interface Status for VRF "${VRF}"(?:\(\d+\))?\s*$$
+  ^${INTERFACE}\s+${IP_ADDRESS}\s+protocol-${PROTOCOL}/link-${LINK_STATUS}/admin-${ADMIN_STATUS}\s*$$ -> Record

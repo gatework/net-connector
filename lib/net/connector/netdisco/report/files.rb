@@ -14,7 +14,7 @@ module Net
             destination = File.join(directory, "summary.json")
             finalized = report.with(report_location: destination)
             Text.write(directory: directory, report: finalized, plan: plan, concurrency: concurrency)
-            Storage::PrivateFile.write(destination, JSON.pretty_generate(finalized.summary))
+            Storage::AtomicFile.write(destination, JSON.pretty_generate(finalized.summary))
             finalized
           rescue StandardError => error
             location = committed_location(error, destination) || report.report_location
@@ -22,7 +22,7 @@ module Net
             failed = report.report_error ? report.with(report_location: location) : report.with_report_error(error, location: location)
             begin
               saved = failed.with(report_location: destination)
-              Storage::PrivateFile.write(destination, JSON.pretty_generate(saved.summary))
+              Storage::AtomicFile.write(destination, JSON.pretty_generate(saved.summary))
               failed = saved
             rescue StandardError => persistence_error
               # 补写也可能在替换后失败；保留位置，但不覆盖首次报告故障。
@@ -37,7 +37,7 @@ module Net
           end
 
           def self.committed_location(error, destination)
-            destination if Storage::PrivateFile.receipt_error?(error) && error.receipt.committed? && error.receipt.path == File.expand_path(destination)
+            destination if Storage::AtomicFile.receipt_error?(error) && error.receipt.committed? && error.receipt.path == File.expand_path(destination)
           end
           private_class_method :committed_location
         end

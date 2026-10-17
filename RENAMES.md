@@ -107,7 +107,7 @@ Worker 接受并发范围两个端点。预算和钩子复用既有行为测试�
 ## 完成度复核与补充（2026-09-28）
 
 主任务书逐项复核后，补充两处 private 抛错校验的 bang 后缀：
-`Profile#validate_terminal_size!`、`DatabaseClient#validate_connection_options!`。
+`Profile#validate_terminal_size!`、`Inventory::Postgres#validate_connection_options!`。
 原参数、返回的冻结副本、异常和调用位置保持，不新增别名。
 `verify_descriptions!` 执行实际配置读回，`verify_lock!` 核对文件系统身份，继续使用
 表达证据复核的 verify；公开的 `Session#assert_path_lock_order!` 保持原兼容接口。
@@ -164,3 +164,13 @@ Worker 接受并发范围两个端点。预算和钩子复用既有行为测试�
 以上命令退出状态均为 0，最终日志为 `tmp/ruby-completion-{ci,ruby32,postgres}.log`。
 完整接口比较快照与本轮增量仍保存在前述 tmp 路径；Ruby 3.3/3.4、远端 CI 和真实
 设备/TFTP 服务端未验证。不因全量本地门禁通过而宣称全平台或真实设备验证完成。
+
+## 并发与设备作用域（2026-10-17）
+
+| 原名称 | 当前名称 | 业务边界 |
+| --- | --- | --- |
+| `BackgroundTask` | `Concurrency::Observer` | 调用作用域内的后台观察线程；负责停止、等待及异常交付 |
+| `ExecutionPool` | `Concurrency::Pool` | 有限并发的保序 map；负责启动闸门、故障传播及线程回收 |
+| `DeviceSession` | `Device::Scope` | 工厂返回后的设备对象所有权；关闭后分别交付业务值与故障 |
+
+三个旧加载路径及常量均移除，不保留兼容别名。并发线程与设备关闭保持原有取消、异常优先级和非局部退出语义。覆盖率门槛继续覆盖这三个实现及 Netdisco Worker。

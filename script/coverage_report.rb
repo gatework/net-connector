@@ -7,7 +7,7 @@ class CoverageReport
   GROUPS = {
     "核心引擎" => "net/connector/engine/**/*.rb",
     "脱敏与错误（含 Redactor）" => "net/connector/engine/{errors,redactor}.rb",
-    "批量并发" => "net/connector/{background_task,execution_pool,device_session,netdisco/worker}.rb"
+    "批量并发" => "net/connector/{concurrency/observer,concurrency/pool,device/scope,netdisco/worker}.rb"
   }.freeze
 
   def initialize(result, library: File.expand_path("../lib", __dir__), output: $stdout, baseline: nil)

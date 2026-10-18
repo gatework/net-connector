@@ -16,7 +16,7 @@ module Net
         @host = host
         @phase = phase
         @command = command
-        @output = output.freeze
+        @output = output.dup.freeze
         @source = source
         @line = line
         @underlying = underlying
@@ -27,7 +27,7 @@ module Net
       def with_diagnostics(message:, **context)
         context = { code: code, host: host, phase: phase, command: command, output: output,
                     source: source, line: line, underlying: underlying }.merge(context)
-        return self.class.new(message, **context) unless Error::Metadata.known_type?(self.class.name)
+        return self.class.new(message, **context) unless Error::Metadata.trusted_error_class?(self.class)
 
         copy = self.class.allocate
         instance_variables.each { |name| copy.instance_variable_set(name, instance_variable_get(name)) }
@@ -56,6 +56,8 @@ module Net
     class TransportError < ConnectionError; end
 
     class DeviceError < Error; end
+
+    class ConfigurationError < Error; end
 
     class ScriptError < Error; end
 

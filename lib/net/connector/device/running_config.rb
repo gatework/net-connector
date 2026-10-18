@@ -18,7 +18,7 @@ module Net
           commands = profile.config_commands
           return commands if commands
 
-          raise NotImplementedError, "#{self.class} must define running configuration commands"
+          raise ConfigurationError, "#{self.class} must define running configuration commands"
         end
 
         # 子类可覆盖并调用 super，复用本次响应检查积累的策略状态。

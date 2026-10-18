@@ -79,6 +79,8 @@ Fleet 在规范目标校验、凭据解析及连接器构造之前加同一把�
 
 `Storage::AtomicFile.write` 统一返回 `Receipt`，执行临时文件写入、flush/fsync、rename、父目录 fsync，并跟踪 not_committed/committed/durable 和出错阶段。rename 前失败保留旧文件；之后失败保留新文件。目录 fsync 的 EINVAL/ENOSYS/ENOTSUP/EOPNOTSUPP/NotImplementedError 单独表示不支持；其他错误不能降级为成功。durable 只表示同步调用成功，未变内容不补验过去写入，断电恢复也未在本地测试中验证。
 
+`KnownHosts` 在跨进程锁内重读和合并已认证的会话密钥，条目索引保留原顺序及已有重复行，新增行只登记一次。提交复用 `AtomicFile`；目录同步失败保留已替换文件并报告 `file_persistence_unconfirmed`，不能触发再次登记。不安全的非普通共享信任文件报告 `known_hosts_unsafe`，strict 模式仍由 OpenSSH 管理。写入器仅在实际提交时加载，纯会话引擎加载不引入存储层。
+
 提交后的 `BackupPersistenceError` 只携带原 `Backup` 元数据和受控写入回执，Fleet 保留产物并使用已有 saved_with_error 分类。只接受库定义的具体完成错误及匹配产物类型，第三方异常的 backup 属性或自定义 WriteError 子类不作为完成证据。报告保留已提交位置，导出错误说明 committed；设备命令不会自动重放。
 
 直接备份在路径锁退出前保存完成元数据，锁关闭的普通故障转换为 `BackupFinalizeError`，其中 `backup` 保留结果，`underlying_type` 经过类型白名单。该错误只确认备份操作已完成，不制造文件同步回执；未变文件的历史持久性仍未补验。Fleet 的外层路径锁及 TFTP 归档锁同样保存最新结果，退出故障转为 saved_with_error 或 reported_with_error，已有设备诊断优先，中断继续传播。
@@ -135,7 +137,7 @@ Diagnostic 只保存固定词表中的码、类型、阶段和受控产物状态
 
 `CLI::Backup` 在创建批次目录和读取凭据前固定并验证策略。已固定的 `Settings#with_overrides` 只复制非敏感快照上的覆盖值，不重新读取环境中的策略字段；后续 `snapshot(mode:)` 继续按当前业务模式校验，离线导出不会隐式转成网络备份校验。原凭据来源仍保持动态。
 
-`Inventory::HTTP#devices` 每次持有独立 `Inventory::Budget`，认证、分页、QueryRequired 查询共同累计正文字节和去重前记录数，并共享单调时钟 deadline。默认 HTTP 使用 `read_body`，先检查实际接收字节再追加，不信任 Content-Length。每阶段缩短原生连接/读/写超时；总期限还覆盖慢速响应头。期限观察线程只关闭本次拥有的 HTTP 连接，防止 chunked 的收尾读取拖延返回，调用结束即唤醒并 join。默认 HTTP 不做隐式 GET 重试；这一机制不进入设备命令路径。
+`Inventory::HTTP#devices` 每次持有独立 `Inventory::Budget`，认证、分页、QueryRequired 查询共同累计正文字节和去重前记录数，并共享单调时钟 deadline。每次调用独占一个 HTTP 连接作用域和期限观察线程，认证与分页复用连接；服务端关闭 keep-alive 后，后续请求可以重新建连，但失败请求不自动重试。连接不存入来源实例，并发调用不共用传输状态。默认 HTTP 使用 `read_body`，先检查实际接收字节再追加，不信任 Content-Length。每阶段缩短原生连接/读/写超时；总期限还覆盖慢速响应头。期限观察线程只关闭本次拥有的 HTTP 连接，防止 chunked 的收尾读取拖延返回，调用结束即唤醒并 join。默认 HTTP 不做隐式 GET 重试；这一机制不进入设备命令路径。
 
 注入的 `requester` 接收 URI 和 request。它返回后才接受长度和期限检查，不在任意用户 Ruby 回调中注入异步异常。解析和集合操作完成后也检查期限，但这不构成任意 CPU 回调的抢占保证。预算失败仅报告错误码与安全类型，没有部分清单、响应正文或底层 cause。HTTPS 的标准证书检查不变；默认允许明文 HTTP，可通过显式策略禁止。
 
@@ -409,7 +411,7 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 
 业务执行与完成事件的异常范围分开：完成事件只尝试一次，观察者失败不能触发第二次相同通知。已有登录、命令或业务错误优先于失败日志的错误；脚本最终处理已生成的 Result.config 与 steps 不因日志收尾丢失。日志上下文刷新和传输接线恢复仍执行清理，但保留正在传播的主错误及 Interrupt。TFTP 的失败证据同样先决定错误码，再尝试记录失败事件。
 
-错误归一化通过 `Error#with_diagnostics` 保留内置错误的业务回执，并新建异常的原生状态，避免复制原 cause 或调用栈。自定义错误子类使用脱敏后的参数重新构造，不能复制可能参与消息呈现的原始私有字段。会话租约退出时若日志收尾失败，已返回的 Result 仍保留步骤、配置和原业务错误；仅在原操作成功时附加日志错误。
+错误归一化通过 `Error#with_diagnostics` 保留内置错误的业务回执，并新建异常的原生状态，避免复制原 cause 或调用栈。复制还要求实际类与白名单常量身份一致，不能只凭可重写的类名取得信任。自定义错误子类使用脱敏后的参数重新构造，不能复制可能参与消息呈现的原始私有字段。错误输出持有独立冻结副本，不冻结调用方的原始缓冲。缺少必需设备提示符或抽象命令抛出 `ConfigurationError`，属于可隔离的普通故障。会话租约退出时若日志收尾失败，已返回的 Result 仍保留步骤、配置和原业务错误；仅在原操作成功时附加日志错误。
 
 单条命令的完整响应在输出日志和完成事件之前保存；即使这些日志处理失败，Session 仍在脱敏作用域退出前把响应交给 Execution，保留已完成步骤与输出预算。TFTP 可从失败结果的完成步骤构造设备回执，再报告日志错误；不会据此重放命令。
 

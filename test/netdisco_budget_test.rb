@@ -5,10 +5,86 @@ require "stringio"
 require "socket"
 require "tmpdir"
 require_relative "../lib/net/connector/netdisco"
+require_relative "support/inventory_http_server"
 
 class NetdiscoBudgetTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
   HTTP = Netdisco::Inventory::HTTP
+
+  def test_authentication_and_pages_reuse_one_connection_per_devices_call
+    reply = lambda do |request|
+      next '{"api_key":"test"}' if request.start_with?("POST /login ")
+
+      request.include?("offset=0 ") ? '[{"ip":"192.0.2.1"}]' : "[]"
+    end
+    InventoryHTTPServer.open(count: 6, reply: reply) do |server|
+      source = HTTP.new(url: server.url, username: "fixture", password: "fixture-password")
+      2.times { assert_equal [{ "ip" => "192.0.2.1" }], source.devices }
+      assert_equal 2, server.connections
+      assert_equal 6, server.requests.size
+    end
+  end
+
+  def test_pagination_reconnects_when_server_closes_keep_alive
+    reply = ->(request) { request.include?("offset=0 ") ? '[{"ip":"192.0.2.1"}]' : "[]" }
+    InventoryHTTPServer.open(count: 2, close_connection: true, reply: reply) do |server|
+      assert_equal [{ "ip" => "192.0.2.1" }], HTTP.new(url: server.url, api_key: "test").devices
+      assert_equal 2, server.connections
+    end
+  end
+
+  def test_connection_setup_failure_is_sanitized_before_leaving_the_inventory_boundary
+    Net::HTTP.stub(:start, ->(*) { raise IOError, "unregistered-test-secret" }) do
+      assert_inventory_failure(inventory, :connection_failed)
+    end
+  end
+
+  def test_authentication_and_reconnected_pages_do_not_restart_the_total_deadline
+    now = 0.0
+    reply = lambda do |request|
+      now += 0.75
+      next '{"api_key":"test"}' if request.start_with?("POST /login ")
+
+      request.include?("offset=0 ") ? '[{"ip":"192.0.2.1"}]' : "[]"
+    end
+    InventoryHTTPServer.open(count: 3, close_connection: true, reply: reply) do |server|
+      source = HTTP.new(url: server.url, username: "fixture", password: "fixture-password", inventory_timeout: 2)
+      source.stub(:monotonic, -> { now }) { assert_inventory_failure(source, :inventory_timeout) }
+      assert_equal 3, server.connections
+    end
+  end
+
+  def test_cancelled_http_call_closes_the_connection_and_joins_its_observer
+    Timeout.timeout(1) { Thread.pass }
+    before = Thread.list
+    entered = Queue.new
+    disconnected = Queue.new
+    worker = nil
+    failure = Interrupt.new("inventory cancelled")
+    serve = lambda do |socket|
+      socket.write("HTTP/1.1 200 OK\r\nX-Unfinished: ")
+      entered << true
+      ready = socket.wait_readable(3)
+      disconnected << (ready && socket.read(1).nil?)
+    rescue Errno::ECONNRESET
+      disconnected << true
+    end
+    with_http_server(serve) do |url|
+      worker = Thread.new do
+        HTTP.new(url: url, api_key: "test").devices
+      rescue Interrupt => error
+        error
+      end
+      Timeout.timeout(3) { entered.pop }
+      worker.raise(failure)
+      assert worker.join(3), "取消后必须完成自有 HTTP 作用域的清理"
+      assert_same failure, worker.value
+    end
+    assert_equal true, disconnected.pop
+    assert_empty Thread.list - before
+  ensure
+    worker&.kill&.join if worker&.alive?
+  end
 
   def response(body, code: "200")
     klass = code == "200" ? Net::HTTPOK : Net::HTTPBadRequest

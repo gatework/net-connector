@@ -29,7 +29,11 @@ module Net
           ensure
             begin
               # 二次异步取消须等待关闭完成，不能在收尾中再次丢失资源所有权。
-              Thread.handle_interrupt(Exception => :never) { connector&.close }
+              Thread.handle_interrupt(Exception => :never) do
+                connector&.close
+              rescue Exception => error # rubocop:disable Lint/RescueException -- 在恢复交付待处理中断前保存同步关闭故障。
+                failure ||= error
+              end
             rescue Exception => error # rubocop:disable Lint/RescueException -- 关闭故障不能覆盖原操作故障，包括 Interrupt。
               failure ||= error
             end

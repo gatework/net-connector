@@ -255,6 +255,15 @@ bundle exec ruby script/benchmarks/report_workload.rb 100000 20
 
 脚本分别输出批次构造、首次统计及重复统计的单调时钟耗时与对象分配数；合成结果的创建不计入测量。比较两个源码版本时，在同一 Ruby 与主机上各运行至少三次。批次构造会复制结果容器并累计状态，重复统计复用计数；不读取报告的调用方也承担构造成本。TFTP 文件核验与逐设备明细仍有线性成本，此基准不测网络吞吐或现场设备性能。
 
+## 清单连接与信任文件合并基准
+
+```sh
+bundle exec ruby script/benchmarks/http_workload.rb 200 5
+bundle exec ruby script/benchmarks/known_hosts_workload.rb 30000 3000 5
+```
+
+HTTP 基准使用本地 TCP 服务返回 200 页和空结束页，记录总耗时、分配数和连接数，并验证清单内容与顺序；known_hosts 基准包含真实 ssh-keygen 检查和文件提交，验证旧条目及新增条目完整保序。两者均不包含设备登录或现场网络吞吐，比较时须保持相同 Ruby、主机、输入和运行次数。`test/netdisco_budget_test.rb` 另覆盖认证和重连共用总期限、慢速响应头、超额正文及取消后的 socket/观察线程回收。
+
 ## 厂商能力与模板一致性
 
 `test/capabilities_test.rb` 离线核对全部已注册平台的能力；`test/vendor_topology_parity_test.rb` 覆盖 Huawei LLDP 简表与接口描述、FortiOS 顶层接口描述/嵌套表隔离，以及 Junos 物理接口和逻辑单元描述。`test/textfsm_test.rb` 同时检查 H3C 两种列序在通用命令解析入口中的语义、内置厂商/命令的完整匹配，以及各配置方言的索引入口。完整性拒绝路径覆盖缺失表头、残缺记录、未闭合接口表/引号、VDOM 作用域不明和没有值的 Junos description。

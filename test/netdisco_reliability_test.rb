@@ -8,6 +8,23 @@ require_relative "../lib/net/connector/netdisco"
 class NetdiscoReliabilityTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
 
+  def test_worker_calls_a_callable_without_coercing_it_to_an_array
+    device = Struct.new(:host).new("192.0.2.1")
+    result_type = Data.define(:started_at, :finished_at, :duration_ms)
+    received = []
+    callback = Object.new
+    callback.define_singleton_method(:call) { |result| received << result }
+    callback.define_singleton_method(:to_a) { [] }
+    outcomes = [nil]
+    errors = Netdisco::Worker.new(concurrency: 1).run([[0, device]], outcomes: outcomes,
+                                                    on_error: ->(*) { flunk "unexpected failure" }, on_result: callback) do
+      result_type.new(started_at: nil, finished_at: nil, duration_ms: nil)
+    end
+    assert_empty errors
+    assert_equal outcomes, received
+    assert_instance_of Time, received.first.started_at
+  end
+
   def test_fleet_factory_return_handoff_is_owned_and_closed_on_cancel
     rows = [{ "ip" => "192.0.2.1", "name" => "core-a", "vendor" => "H3C" }]
     closed = Queue.new

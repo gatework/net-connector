@@ -31,28 +31,28 @@ module Net
       end
 
       def commit
-        additions = File.binread(path).lines("\n") - @original.lines("\n")
-        return if additions.empty?
+        # 纯会话引擎加载不触及文件业务；实际登记信任时才加载持久化协议。
+        require_relative "../storage/atomic_file"
+        begin
+          additions = File.binread(path).lines("\n") - @original.lines("\n")
+          return if additions.empty?
 
-        with_lock do
-          current = read_shared
-          Tempfile.create([".nc-known-hosts-merge-", ""], File.dirname(@destination)) do |file|
-            file.write(current)
-            file.flush
-            reject_changed_key!(file.path) unless @replace
-            remove_host(file.path) if @replace
-            contents = File.binread(file.path)
-            entries = contents.lines("\n")
-            additions.each { |line| entries << line unless entries.include?(line) }
-            File.open(file.path, "wb", 0o600) do |replacement|
-              replacement.write(entries.map { |line| line.end_with?("\n") ? line : line + "\n" }.join(""))
-              replacement.flush
-              replacement.fsync
+          with_lock do
+            current = read_shared
+            Tempfile.create([".nc-known-hosts-merge-", ""], File.dirname(@destination)) do |file|
+              file.write(current)
+              file.flush
+              reject_changed_key!(file.path) unless @replace
+              remove_host(file.path) if @replace
+              contents = merge_entries(File.binread(file.path), additions)
+              Storage::AtomicFile.write(@destination, contents)
+            ensure
+              File.unlink(file.path + ".old") if file && File.exist?(file.path + ".old")
             end
-            File.rename(file.path, @destination)
-          ensure
-            File.unlink(file.path + ".old") if file && File.exist?(file.path + ".old")
           end
+        rescue Storage::AtomicFile::WriteError => error
+          # 已替换但目录未同步时报告完成边界，不能把新信任误当作尚未写入。
+          raise ConnectionError.new(error.message, code: error.code, host: @host, phase: :login), cause: nil
         end
       end
 
@@ -70,6 +70,19 @@ module Net
       end
 
       private
+
+      # 保留已有条目和顺序；新增条目只登记一次，避免每条新增密钥扫描整份清单。
+      def merge_entries(contents, additions)
+        entries = contents.lines("\n")
+        present = entries.each_with_object({}) { |line, index| index[line.freeze] = true }
+        additions.each do |line|
+          next if present.key?(line)
+
+          entries << line
+          present[line.freeze] = true
+        end
+        entries.map { |line| line.end_with?("\n") ? line : line + "\n" }.join("")
+      end
 
       # 临时文件返回后先登记所有权，阻塞构造期间仍允许取消。
       def create_snapshot
@@ -110,12 +123,18 @@ module Net
 
       def read_shared
         File.open(@destination, File::RDONLY | File::NOFOLLOW | File::NONBLOCK) do |file|
-          raise IOError, "known_hosts must be a regular file" unless file.stat.file?
+          raise unsafe_file_error, cause: nil unless file.stat.file?
 
           file.read
         end
       rescue Errno::ENOENT
         ""
+      rescue Errno::ELOOP, Errno::EISDIR, Errno::ENXIO
+        raise unsafe_file_error, cause: nil
+      end
+
+      def unsafe_file_error
+        ConnectionError.new("known_hosts must be a managed regular file", code: :known_hosts_unsafe, host: @host, phase: :login)
       end
 
       def reject_changed_key!(current_path)

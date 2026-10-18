@@ -44,6 +44,23 @@ class ModuleLoadingTest < Minitest::Test
     refute(result.fetch("features").any? { |path| path.match?(%r{/lib/textfsm(?:/|\.rb)}) })
   end
 
+  def test_cancelled_known_hosts_dependency_load_preserves_the_original_failure
+    result = isolated(<<~'RUBY')
+      require "net/connector/engine/known_hosts"
+      entry = Net::Connector::KnownHosts.allocate
+      original = Interrupt.new("dependency load cancelled")
+      entry.define_singleton_method(:require_relative) { |_| raise original }
+      observed = begin
+        entry.commit
+      rescue Exception => error
+        error
+      end
+      puts JSON.generate(type: observed.class.name, original: observed.equal?(original))
+    RUBY
+    assert_equal "Interrupt", result.fetch("type")
+    assert result.fetch("original")
+  end
+
   def test_protocol_objects_load_without_the_response_loop_or_redaction_runtime
     result = isolated(<<~'RUBY')
       require "net/connector/engine/dialogue"

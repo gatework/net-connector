@@ -20,10 +20,11 @@ module Net
         # 按清单顺序收集结果，并隔离设备及回调异常。
         def run(tasks, outcomes:, on_error:, on_start: nil, on_result: nil)
           callback_errors = Queue.new
+          callbacks = (on_result.is_a?(Array) ? on_result : [on_result]).compact
           Concurrency::Pool.new(concurrency: @concurrency).map(tasks) do |index, device|
             result = run_task(device, on_error, on_start, callback_errors) { yield device }
             outcomes[index] = result
-            Array(on_result).each do |callback|
+            callbacks.each do |callback|
               notify(callback, result, host: device.host, errors: callback_errors)
             end
           end

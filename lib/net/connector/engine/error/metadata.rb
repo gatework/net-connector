@@ -8,7 +8,7 @@ module Net
       # 日志与报告共用固定诊断词表；未知元数据可能来自配置正文，不能作为自由文本输出。
       module Metadata
         CONNECTOR_TYPES = %w[Error ConnectionError AuthenticationError LoginTimeout CommandTimeout WriteTimeout
-                             PromptError ConnectionClosed TransportError DeviceError ScriptError InternalError
+                             PromptError ConnectionClosed TransportError DeviceError ConfigurationError ScriptError InternalError
                              OutputLimitExceeded ScriptOutputLimitExceeded SessionBusy UnsupportedOperation LogError ParsingError BackupBusy
                              BackupPersistenceError BackupFinalizeError TftpCompletionError].freeze
         TYPES = (CONNECTOR_TYPES.map { |name| "Net::Connector::#{name}" } +
@@ -24,7 +24,7 @@ module Net
              Net::Connector::Netdisco::Tftp::Archive::Unavailable Net::Connector::Netdisco::Tftp::Archive::Failure]).freeze
         CODES = (CONNECTOR_TYPES.map { |name| name.gsub(/([a-z])([A-Z])/, '\1_\2').downcase.to_sym } +
           %i[authentication_failed connection_failed connection_refused no_route connection_reset
-             connection_timeout host_key_changed host_key_untrusted known_hosts_busy rsa_too_small unsupported_cipher
+             connection_timeout host_key_changed host_key_untrusted known_hosts_busy known_hosts_unsafe rsa_too_small unsupported_cipher
              ambiguous_description ambiguous_neighbor confirmation_required description_stages_unsupported
              description_unconfirmed description_unsupported incomplete_configuration interface_missing
              neighbor_discovery_unsupported parse_failed invalid_output_encoding persistence_unconfirmed stale_plan startup_config_missing
@@ -45,6 +45,14 @@ module Net
         def phase(value) = PHASES.include?(value) ? value : nil
 
         def known_type?(name) = name.instance_of?(String) && TYPES.include?(name)
+
+        # 显示名白名单不授予复制私有字段的权限；外部子类可以重写 Class.name。
+        def trusted_error_class?(type)
+          name = type.name
+          known_type?(name) && Object.const_get(name).equal?(type)
+        rescue NameError
+          false
+        end
 
         def type(name)
           return if name.nil?

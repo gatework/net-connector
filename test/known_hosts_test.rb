@@ -37,6 +37,54 @@ class KnownHostsTest < Minitest::Test
     end
   end
 
+  def test_commit_reports_directory_sync_failure_without_losing_the_registered_key
+    entry = snapshot(1)
+    contents = "192.0.2.1 #{@key}\n"
+    File.write(entry.path, contents)
+    open_file = File.method(:open)
+    open = lambda do |path, *arguments, **options, &block|
+      next open_file.call(path, *arguments, **options) unless block
+
+      open_file.call(path, *arguments, **options) do |file|
+        if file.stat.directory? && File.realpath(path) == File.realpath(@directory)
+          file.define_singleton_method(:fsync) { raise Errno::EIO, "directory sync failed" }
+        end
+        block.call(file)
+      end
+    end
+    error = File.stub(:open, open) { assert_raises(Net::Connector::ConnectionError) { entry.commit } }
+    assert_equal :file_persistence_unconfirmed, error.code
+    assert_nil error.cause
+    assert_equal contents, File.binread(@destination)
+    assert_equal 0o600, File.stat(@destination).mode & 0o777
+    assert_empty Dir[File.join(@directory, ".net-connector-*")]
+  ensure
+    entry&.close
+  end
+
+  def test_nonregular_shared_trust_is_a_domain_failure_and_is_not_replaced
+    target = File.join(@directory, "target")
+    File.write(target, "untouched")
+    File.symlink(target, @destination)
+    error = assert_raises(Net::Connector::ConnectionError) { snapshot(1) }
+    assert_equal :known_hosts_unsafe, error.code
+    assert_nil error.cause
+    assert File.symlink?(@destination)
+    assert_equal "untouched", File.read(target)
+  end
+
+  def test_merge_preserves_existing_duplicates_and_adds_each_new_line_once
+    original = "192.0.2.9 #{@key}\n" * 2
+    File.write(@destination, original)
+    entry = snapshot(1)
+    added = "192.0.2.1 #{@new_key}\n"
+    File.write(entry.path, original + (added * 2))
+    entry.commit
+    assert_equal original + added, File.binread(@destination)
+  ensure
+    entry&.close
+  end
+
   def test_close_removes_snapshot_even_when_old_file_removal_fails
     config = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit", known_hosts: @destination)
     entry = Net::Connector::KnownHosts.new(config)

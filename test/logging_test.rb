@@ -332,6 +332,22 @@ class LoggingTest < Minitest::Test
     assert_includes result.output, secret
   end
 
+  def test_a_custom_error_cannot_gain_diagnostic_trust_by_spoofing_its_class_name
+    secret = "private-spoofed-error-detail"
+    error_type = Class.new(RenderedDetailError) do
+      def self.name = "Net::Connector::DeviceError"
+    end
+    device = build("router#", "#{secret}\nrouter#")
+    command = Net::Connector::Command.new("show config", output_sensitive: true)
+    result = device.execute_operation(Net::Connector::Script.new([command]), name: :collect) do |completed|
+      Net::Connector::Result.new(steps: completed.steps, error: error_type.new(completed.output))
+    end
+    assert_instance_of error_type, result.error
+    refute_includes result.error.message, secret
+    refute_includes @output.string, secret
+    assert_includes result.output, secret
+  end
+
   def test_lease_context_covers_internal_scripts_and_is_released_afterward
     device = build("router#", "router#", "router#")
     device.with_operation(:audit) do

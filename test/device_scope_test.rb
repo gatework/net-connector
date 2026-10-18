@@ -15,6 +15,22 @@ class DeviceScopeTest < Minitest::Test
     assert_same failure, error
   end
 
+  def test_close_failure_precedes_cancellation_deferred_during_close
+    failure = IOError.new("close failed before cancellation")
+    connector = Object.new
+    connector.define_singleton_method(:close) do
+      Thread.current.raise(Interrupt.new("secondary cancellation"))
+      raise failure
+    end
+    observed = begin
+      Session.call(factory: -> { connector }) { :completed }
+    rescue Exception => error # rubocop:disable Lint/RescueException -- 将错误传播的二次取消转成断言，不能中断测试进程。
+      error
+    end
+    assert_equal [:completed, failure], observed
+    assert_nil failure.cause
+  end
+
   def test_first_interrupt_survives_secondary_cleanup_interrupt
     failure = Interrupt.new("operation interrupted")
     connector = Object.new

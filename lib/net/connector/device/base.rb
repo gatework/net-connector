@@ -111,7 +111,7 @@ module Net
         else
           false
         end
-      rescue NotImplementedError
+      rescue ConfigurationError
         false
       end
 
@@ -200,7 +200,7 @@ module Net
         prompt = profile.login_prompt
         return prompt if prompt
 
-        raise NotImplementedError, "#{self.class} must define login_prompt"
+        raise ConfigurationError, "#{self.class} must define login_prompt"
       end
 
       # 返回普通命令提示；厂商必须实现。
@@ -208,7 +208,7 @@ module Net
         prompt = profile.command_prompt
         return prompt if prompt
 
-        raise NotImplementedError, "#{self.class} must define command_prompt"
+        raise ConfigurationError, "#{self.class} must define command_prompt"
       end
 
       # 登录成功后执行厂商初始化钩子。

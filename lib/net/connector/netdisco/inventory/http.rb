@@ -18,6 +18,8 @@ module Net
           private_constant :QueryRequired
 
           DEFAULTS = Inventory::DEFAULTS.merge(allow_insecure_http: true).freeze
+          OPTIONAL_FIELDS = FIELDS.drop(1).freeze
+          private_constant :OPTIONAL_FIELDS
 
           def self.options(**values)
             raise ArgumentError, "unknown HTTP inventory options" unless (values.keys - DEFAULTS.keys).empty?
@@ -54,24 +56,26 @@ module Net
 
           def devices
             budget = Inventory::Budget.new(@options, clock: method(:monotonic))
-            token = @api_key || authenticate(budget)
-            rows = inventory(token, budget)
-            budget.remaining
-            rows
+            with_connection(budget) do |http|
+              token = @api_key || authenticate(budget, http)
+              rows = inventory(token, budget, http)
+              budget.remaining
+              rows
+            end
           end
 
           def inspect = "#<#{self.class} url=#{@url.scheme}://#{@url.host}>"
 
           private
 
-          def inventory(token, budget)
+          def inventory(token, budget, http)
             rows = []
             seen_ips = {}
             @options.fetch(:max_pages).times do |index|
               uri = endpoint("api/v1/search/device")
               uri.query = URI.encode_www_form(fields: FIELDS.join(","), limit: @options.fetch(:page_size),
                                               offset: index * @options.fetch(:page_size))
-              page = request_json(uri, authorized_get(uri, token), budget, allow_empty: true, query_fallback: true)
+              page = request_json(uri, authorized_get(uri, token), budget, http, allow_empty: true, query_fallback: true)
               validate_rows!(page, budget)
               return rows.uniq if page.empty?
 
@@ -83,22 +87,22 @@ module Net
             end
             raise Error.new("Netdisco inventory exceeded max_pages", code: :max_pages), cause: nil
           rescue QueryRequired
-            query_required_devices(token, budget)
+            query_required_devices(token, budget, http)
           end
 
-          def query_required_devices(token, budget)
+          def query_required_devices(token, budget, http)
             uri = endpoint("api/v1/search/device")
             uri.query = URI.encode_www_form(q: "%", seeallcolumns: true)
-            rows = request_json(uri, authorized_get(uri, token), budget, allow_empty: true)
+            rows = request_json(uri, authorized_get(uri, token), budget, http, allow_empty: true)
             validate_rows!(rows, budget)
             rows.map { |row| row.slice(*FIELDS) }.uniq
           end
 
-          def authenticate(budget)
+          def authenticate(budget, http)
             uri = endpoint("login")
             request = ::Net::HTTP::Post.new(uri)
             request.basic_auth(@username, @password)
-            data = request_json(uri, request, budget)
+            data = request_json(uri, request, budget, http)
             token = data["api_key"] if data.is_a?(Hash)
             raise Error, "Netdisco login did not return an API key" unless present?(token) && !token.match?(/[\r\n\x00]/)
 
@@ -114,10 +118,10 @@ module Net
           end
 
           # 只保留稳定错误码及类型，不将服务正文、URI 或底层异常 cause 带进报告。
-          def request_json(uri, request, budget, allow_empty: false, query_fallback: false)
+          def request_json(uri, request, budget, http, allow_empty: false, query_fallback: false)
             request["Accept"] = "application/json"
             budget.remaining
-            response, body = request_body(uri, request, budget)
+            response, body = request_body(uri, request, budget, http)
             if query_fallback && response.code == "400"
               parsed = JSON.parse(body)
               raise QueryRequired, "Netdisco requires a search query" if parsed.is_a?(Hash) && parsed["error"] == "Missing query"
@@ -138,8 +142,11 @@ module Net
             raise Error.new("Netdisco connection failed (#{error.class})", code: :connection_failed), cause: nil
           end
 
-          def request_body(uri, request, budget)
-            return default_request(uri, request, budget) unless @requester
+          def request_body(uri, request, budget, http)
+            unless @requester
+              apply_timeouts(http, budget)
+              return read_response(http, request, budget)
+            end
 
             response = injected_request(uri, request, budget)
             budget.remaining
@@ -157,15 +164,22 @@ module Net
           end
 
           # 仅对自有 HTTP 传输施加总期限，覆盖响应头的持续慢速输入；不异步中断用户回调。
-          # start 的块负责关闭连接；禁用隐式 GET 重试，所有阶段同时使用剩余的原生超时。
-          def default_request(uri, request, budget)
+          # 一次调用独占连接与观察器，认证和分页共享预算；不把连接存入实例供并发调用共用。
+          # start 的块负责关闭连接；禁用隐式 GET 重试，服务端主动断开时允许新请求正常重连。
+          def with_connection(budget)
+            return yield nil if @requester
+
             ::Timeout.timeout(budget.remaining, Inventory::Timeout) do
-              ::Net::HTTP.start(uri.host, uri.port, use_ssl: uri.scheme == "https", max_retries: 0,
+              ::Net::HTTP.start(@url.host, @url.port, use_ssl: @url.scheme == "https", max_retries: 0,
                                 **http_timeouts(budget)) do |http|
-                apply_timeouts(http, budget)
-                with_http_deadline(http, budget) { read_response(http, request, budget) }
+                with_http_deadline(http, budget) { yield http }
               end
             end
+          rescue Inventory::Error => error
+            raise error, cause: nil
+          rescue StandardError => error
+            budget.remaining
+            raise Inventory::Error.new("Netdisco connection failed (#{error.class})", code: :connection_failed), cause: nil
           end
 
           # 异步超时展开栈时，Net::HTTP 的 chunked ensure 可能再次等待读取。
@@ -228,7 +242,7 @@ module Net
             budget.consume_devices(rows.size)
             valid = rows.all? do |row|
               row.is_a?(Hash) && present?(row["ip"]) &&
-                FIELDS.drop(1).all? { |field| row[field].nil? || row[field].is_a?(String) }
+                OPTIONAL_FIELDS.all? { |field| row[field].nil? || row[field].is_a?(String) }
             end
             return if valid
 

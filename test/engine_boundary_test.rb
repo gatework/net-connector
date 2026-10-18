@@ -10,6 +10,24 @@ require_relative "support/fake_transport"
 class EngineBoundaryTest < Minitest::Test
   Connector = Net::Connector
 
+  def test_error_owns_output_without_freezing_the_callers_buffer
+    output = +"device output"
+    error = Connector::DeviceError.new("failed", output: output)
+    refute output.frozen?
+    output << " appended"
+    assert_equal "device output", error.output
+    assert error.output.frozen?
+  end
+
+  def test_missing_device_prompt_is_an_isolated_configuration_failure
+    error = assert_raises(StandardError) do
+      Connector::Base.new(host: "192.0.2.1", username: "operator")
+    end
+    assert_instance_of Connector::ConfigurationError, error
+    assert_equal :configuration_error, error.code
+    assert_equal :configuration_error, Connector::Error::Metadata.code(error.code)
+  end
+
   def test_open_preserves_its_block_failure_when_close_is_interrupted
     [IOError.new("block failed"), Interrupt.new("block interrupted")].each do |original|
       transport = ConnectorFake.new("router#")

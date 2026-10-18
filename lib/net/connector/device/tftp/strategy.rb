@@ -54,7 +54,7 @@ module Net
         private
 
         def transfer_command(_target, **)
-          raise NotImplementedError, "TFTP strategy must provide a transfer command"
+          raise ConfigurationError, "TFTP strategy must provide a transfer command"
         end
 
         def transfer_interactions(_target, **) = []

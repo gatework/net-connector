@@ -89,7 +89,7 @@ net-backup --config config.yml --export 192.0.2.7 --output ./exports/device.cfg
 
 ### PostgreSQL 联机查询
 
-设置 `netdisco.source: postgres` 可以直接从数据库查询清单，继续使用同一套 Fleet、规则、计划和备份流程。库不内置表名、SQL 或业务筛选条件；必须提供查询，可直接修改 [YAML 示例](../examples/inventory_sql.yml)：
+设置 `netdisco.source: postgres` 可以直接从数据库查询清单，继续使用同一套 Fleet、规则、计划和备份流程。库不内置表名、SQL 或业务筛选条件；必须提供查询，可直接修改 [YAML 示例](../examples/inventory.yml)：
 
 ```yaml
 netdisco:
@@ -116,10 +116,10 @@ export ND_DB_NAME=netdisco
 export ND_DB_USER=inventory-reader
 export ND_DB_PASS='replace-me'
 
-net-backup --config examples/inventory_sql.yml --show-config
-net-backup --config examples/inventory_sql.yml --plan
+net-backup --config examples/inventory.yml --show-config
+net-backup --config examples/inventory.yml --plan
 # 覆盖查询参数；实际备份仍需设置 NC_DEVICE_* 凭据。
-net-backup --config examples/inventory_sql.yml --plan --query-params '["Cisco"]'
+net-backup --config examples/inventory.yml --plan --query-params '["Cisco"]'
 ```
 
 SQL、参数和来源也可分别通过 `--query SQL`、`--query-params JSON`、`--source postgres` 覆盖 YAML，不再从环境变量读取。SQL 和参数属于可公开配置，会出现在 `--show-config` 中；数据库密码只放在连接环境变量中。身份凭据不进入策略快照、计划、报告或 `inspect`；端口、TLS 和超时属于公开策略，进入快照与配置摘要。已有 Fleet 每次重新查询时读取最新连接凭据；传入已有 `plan:` 执行时不会重新查询。
@@ -140,7 +140,7 @@ CLI 的计划与批次摘要使用 JSON。默认 `--success-policy strict` 使�
 
 本地批量示例和 TFTP 批量示例默认全量；显式 `--sample N` 或 YAML `backup.limit_per_vendor` 才限制每厂商数量（示例允许 1 至 5）。优先级为 CLI > YAML。并发默认 4，可用 `--concurrency N`、环境变量 `NC_CONCURRENCY` 或 YAML `backup.concurrency` 覆盖，优先级依次降低。两类示例在备份目录下创建唯一批次目录。TFTP 批量示例在可访问服务器目录时使用 hostname-ip 远端文件名并逐批归档；无法访问服务器目录时使用带批次标识的远端文件名，避免覆盖旧文件；上传完成与服务器文件验证是不同状态。
 
-全量 TFTP 计划保存为 `plan.json`。目标文件名通常为 `<设备名>-<IP>.cfg`，Radware 用 `.tgz`，山石用 `.dat`。可访问本机 TFTP 服务器目录时，批量示例直接使用 `<设备名>-<IP>.<扩展名>` 上传，并在服务器的 `archive/<批次>/` 与本地 `<批次目录>/tftp/` 各保留一份；上传前已有的同名文件先保存到新归档目录的 `previous/`。无法访问服务器目录时，远端文件名增加东八区批次标识及同秒序号，避免覆盖旧文件；实际文件名见 `summary.json` 的 `remote_path`。计划仍检查同批目标名冲突。PAN-OS 固定使用 `running-config.xml`，还要求 `Sent ... bytes` 完成行；为避免下次上传覆盖它，运行批量示例时必须能访问本机 TFTP 服务器目录，否则该设备会明确失败且不会发起上传。H3C 从 `display startup` 发现源文件，可用 YAML `tftp.h3c_source_file` 覆盖；华为默认 `flash:/startup.cfg`。Nexus 9000 默认 VRF 为 `management`，山石为 `mgt-vr`；YAML `tftp.vrfs` 接受按厂商键配置的映射。山石命令在 `vrouter` 参数后追加唯一的 `.dat` 文件名；直接调用山石连接器且不指定 `path:` 时，由设备生成文件名并在结果中返回。通过 `--tftp-root DIR` 或 YAML `tftp.verification_root` 指定本机或已挂载的服务器目录时，批量示例在每台设备完成后核验实际回执路径、非空文件、修改时间和 SHA-256，并立即保存两份历史文件；报告的 `local_file` 和 `server_archive_file` 分别指向本地批次副本和服务器归档副本。核验或归档失败不会报告成功。未提供本机目录时，可命名设备仍使用不覆盖旧文件的远端文件名，回执保留为 `device_reported`，本地批次不包含配置副本。默认示例使用 `selected` 策略；要求服务器文件核验时使用 `--success-policy verified`，并提供本机服务器目录。可运行 `ruby examples/review_tftp.rb <批次目录>`，根据会话日志复核剩余失败，而不改写原始结果。日志、`events.jsonl` 和逐台结果均以私有权限保存。
+全量 TFTP 计划保存为 `plan.json`。目标文件名通常为 `<设备名>-<IP>.cfg`，Radware 用 `.tgz`，山石用 `.dat`。可访问本机 TFTP 服务器目录时，批量示例直接使用 `<设备名>-<IP>.<扩展名>` 上传，并在服务器的 `archive/<批次>/` 与本地 `<批次目录>/tftp/` 各保留一份；上传前已有的同名文件先保存到新归档目录的 `previous/`。无法访问服务器目录时，远端文件名增加东八区批次标识及同秒序号，避免覆盖旧文件；实际文件名见 `summary.json` 的 `remote_path`。计划仍检查同批目标名冲突。PAN-OS 固定使用 `running-config.xml`，还要求 `Sent ... bytes` 完成行；为避免下次上传覆盖它，运行批量示例时必须能访问本机 TFTP 服务器目录，否则该设备会明确失败且不会发起上传。H3C 从 `display startup` 发现源文件，可用 YAML `tftp.h3c_source_file` 覆盖；华为默认 `flash:/startup.cfg`。Nexus 9000 默认 VRF 为 `management`，山石为 `mgt-vr`；YAML `tftp.vrfs` 接受按厂商键配置的映射。山石命令在 `vrouter` 参数后追加唯一的 `.dat` 文件名；直接调用山石连接器且不指定 `path:` 时，由设备生成文件名并在结果中返回。通过 `--tftp-root DIR` 或 YAML `tftp.verification_root` 指定本机或已挂载的服务器目录时，批量示例在每台设备完成后核验实际回执路径、非空文件、修改时间和 SHA-256，并立即保存两份历史文件；报告的 `local_file` 和 `server_archive_file` 分别指向本地批次副本和服务器归档副本。核验或归档失败不会报告成功。未提供本机目录时，可命名设备仍使用不覆盖旧文件的远端文件名，回执保留为 `device_reported`，本地批次不包含配置副本。默认示例使用 `selected` 策略；要求服务器文件核验时使用 `--success-policy verified`，并提供本机服务器目录。日志、`events.jsonl` 和逐台结果均以私有权限保存。
 
 批量 TFTP 源文件通过 YAML `tftp.h3c_source_file`、`tftp.h3c_wireless_source_file`、`tftp.huawei_source_file` 设置。源文件是设备上的路径，需符合连接器校验规则。
 
@@ -243,9 +243,9 @@ directory = Net::Connector::Storage::BatchDirectory.create("./backups")
 
 批量示例由 `Netdisco::CLI::Backup` 统一编排，`CLI::Options.settings` 为示例和正式 CLI 共用配置覆盖入口。
 
-终端入口按职责放在 `cli/`：`CLI::Backup` 编排批量备份，`CLI::Credentials.resolve` 解析凭据来源，`CLI::Options` 解析参数和配置覆盖。
+终端入口按职责放在 `cli/`：`CLI::Backup` 编排批量备份，`CLI::Topology` 编排发现、规划与显式应用，`CLI::Credentials.resolve` 解析凭据来源，`CLI::Options` 解析参数和配置覆盖。示例显式传入 `environment_defaults: true`，将公开环境变量作为 YAML 和 CLI 之下的默认值；正式 CLI 保留既有的环境覆盖规则。
 示例默认 `selected`，正式 CLI 保留 `strict` 默认；两者均支持显式 `--success-policy`，退出码与报告的 `policy_success` 一致。
-新示例 `summary.json` 使用标准 schema 2 的 `devices`，不再另造 `outcomes`；旧报告可继续用 `review_tftp.rb` 读取。
+示例 `summary.json` 使用标准 schema 2 的 `devices`，逐台结果与诊断统一保存在批次报告中。
 TFTP 的 `verification` 汇总与设备条目的 `server_file_verified` 区分上传回执和服务器文件核验，核验成功还包含 `local_file`、`server_archive_file`、`bytes`、`sha256`。
 报告通过私有原子写入保存；报告保存失败会阻止成功退出，终端最终结果在报告保存之后输出。
 

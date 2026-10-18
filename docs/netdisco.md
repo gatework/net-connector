@@ -76,7 +76,7 @@ The installed command is `net-backup`; source checkouts use `bundle exec bin/net
 
 Here `vendor` is the connector platform key, such as `cisco_ios` or `cisco_nxos`, rather than the manufacturer. Filtering and sampling use that key: a limit of five can select five IOS devices and five NX-OS devices. `source_vendor` retains the original inventory vendor label.
 
-Interactive batch examples use `CLI::Backup`; `CLI::Credentials.resolve` supplies the inventory source and per-device credential resolver, while `CLI::Options` parses arguments and configuration overrides. These components live under `netdisco/cli/`.
+Interactive batch examples use `CLI::Backup` and `CLI::Topology`; `CLI::Credentials.resolve` supplies the inventory source and per-device credential resolver, while `CLI::Options` parses arguments and configuration overrides. These components live under `netdisco/cli/`. The examples explicitly pass `environment_defaults: true` to make public environment values defaults below YAML and CLI options. The formal CLI retains its existing environment precedence.
 
 `--export IP` reads an existing canonical `<IP>.txt` file offline. It writes original bytes to stdout, or atomically writes a private file with `--output`. It does not require inventory or device credentials. Hostname-prefixed batch-example files are not searched by this command.
 
@@ -146,7 +146,7 @@ For other independent tasks, load `net/connector/concurrency/pool` and use `Net:
 
 ## PostgreSQL inventory
 
-Set `netdisco.source: postgres` and provide your own SELECT query. Table names and business filters are not built into the library. See [inventory_sql.yml](../examples/inventory_sql.yml):
+Set `netdisco.source: postgres` and provide your own SELECT query. Table names and business filters are not built into the library. See [inventory.yml](../examples/inventory.yml):
 
 ```yaml
 netdisco:
@@ -170,7 +170,7 @@ export ND_DB_HOST=database.example
 export ND_DB_NAME=netdisco
 export ND_DB_USER=inventory-reader
 export ND_DB_PASS='replace-me'
-net-backup --config examples/inventory_sql.yml --plan
+net-backup --config examples/inventory.yml --plan
 ```
 
 Host, database, user, and password are required. Source, query, and parameters may be overridden by `--source`, `--query`, and `--query-params`. They are public configuration and may appear in `--show-config`; passwords belong only in connection variables. HTTP credentials and device credentials are not prerequisites for a database-only plan.

@@ -14,6 +14,7 @@ require_relative "planner"
 require_relative "report"
 require_relative "tftp/verifier"
 require_relative "tftp/archive"
+require_relative "batch_options"
 
 module Net
   module Connector
@@ -58,69 +59,60 @@ module Net
         def backup_all(directory: DEFAULT_SETTING, concurrency: DEFAULT_SETTING,
                        limit_per_vendor: nil, plan: nil, on_start: nil, on_result: nil, on_change: nil,
                        success_policy: :strict, filename_style: :ip)
-          raise ArgumentError, "filename style must be ip or hostname_ip" unless %i[ip hostname_ip].include?(filename_style)
-
-          Report.validate_policy!(success_policy)
-          raise ArgumentError, "verified policy requires TFTP mode" if success_policy == :verified
           settings_snapshot = @settings.snapshot(mode: :backup)
           directory = settings_snapshot.backup_directory if directory.equal?(DEFAULT_SETTING)
           concurrency = settings_snapshot.concurrency if concurrency.equal?(DEFAULT_SETTING)
-          raise ArgumentError, "directory must be a nonempty String" unless directory.is_a?(String) && !directory.empty?
-          Worker.validate_concurrency!(concurrency)
-          Planner.validate_limit!(limit_per_vendor)
-          validate_callback!(on_result, :on_result)
-          validate_callback!(on_start, :on_start)
-          validate_callback!(on_change, :on_change)
+          options = BackupOptions.new(directory: directory, concurrency: concurrency, limit_per_vendor: limit_per_vendor,
+                                      success_policy: success_policy, filename_style: filename_style,
+                                      on_start: on_start, on_result: on_result, on_change: on_change)
 
           plan ||= build_plan(:backup, limit_per_vendor, settings_snapshot)
           validate_plan!(plan, :backup)
-          callbacks = [on_result]
-          callbacks << ->(outcome) { on_change.call(outcome) if outcome.backup.is_a?(Backup) && outcome.backup.changed? } if on_change
-          target_directory = File.expand_path(directory)
-          run_batch(:backup, plan, concurrency: concurrency, report_directory: directory,
-                    output_directory: target_directory, settings_snapshot: settings_snapshot, success_policy: success_policy,
-                    on_start: on_start, on_result: callbacks.compact) do |device, log_directory|
-            backup_device(device, target_directory, log_directory, settings_snapshot, filename_style: filename_style)
+          target_directory = File.expand_path(options.directory)
+          run_batch(:backup, plan, options: options, output_directory: target_directory, settings_snapshot: settings_snapshot) do |device, log_directory|
+            backup_device(device, target_directory, log_directory, settings_snapshot, filename_style: options.filename_style)
           end
         end
 
         # 让设备主动导出配置，在执行前检查同批目标文件名冲突。
-        def tftp_backup_all(server:, source_files: {}, concurrency: DEFAULT_SETTING,
-                            limit_per_vendor: 5, vrfs: {}, on_start: nil, on_result: nil, plan: nil,
-                            report_directory: DEFAULT_SETTING, success_policy: :strict, verification_root: nil,
+        def tftp_backup_all(server: DEFAULT_SETTING, source_files: DEFAULT_SETTING, concurrency: DEFAULT_SETTING,
+                            limit_per_vendor: 5, vrfs: DEFAULT_SETTING, source_interfaces: DEFAULT_SETTING, servers: DEFAULT_SETTING, verification_roots: DEFAULT_SETTING, on_start: nil, on_result: nil, plan: nil,
+                            report_directory: DEFAULT_SETTING, success_policy: :strict, verification_root: DEFAULT_SETTING,
                             preserve_history: false)
-          Report.validate_policy!(success_policy)
-          raise ArgumentError, "verified policy requires a local TFTP directory" if success_policy == :verified && !verification_root
-          verification = Tftp::Verifier.new(root: verification_root)
           settings_snapshot = @settings.snapshot(mode: :tftp)
+          transfer_options = tftp_transfer_options(settings_snapshot, server: server, source_files: source_files, vrfs: vrfs,
+                                                    source_interfaces: source_interfaces, servers: servers,
+                                                    verification_roots: verification_roots, verification_root: verification_root)
+          policy = Tftp::Policy.new(**transfer_options)
+          server, source_files, vrfs = transfer_options.values_at(:server, :source_files, :vrfs)
+          verification_root, verification_roots = transfer_options.values_at(:verification_root, :verification_roots)
           concurrency = settings_snapshot.concurrency if concurrency.equal?(DEFAULT_SETTING)
           report_directory = settings_snapshot.backup_directory if report_directory.equal?(DEFAULT_SETTING)
-          Worker.validate_concurrency!(concurrency)
-          server = TftpTarget.new(host: server, path: "preflight.cfg").host
-          raise ArgumentError, "source_files must be a Hash" unless source_files.is_a?(Hash)
-          source_files.each_value { |source_file| TftpTarget.validate_source_file!(source_file) }
-          source_files = source_files.transform_values { |value| value.dup.freeze }.freeze
-          vrfs = Settings.validate_vrfs!(vrfs).transform_values { |value| value.dup.freeze }.freeze
-          Planner.validate_limit!(limit_per_vendor)
-          validate_callback!(on_result, :on_result)
-          validate_callback!(on_start, :on_start)
-
-          plan ||= build_plan(:tftp, limit_per_vendor, settings_snapshot,
-                              allow_fixed_name_reuse: preserve_history && !verification_root.nil?)
-          validate_plan!(plan, :tftp)
-          if plan.allow_fixed_name_reuse && (!preserve_history || !verification_root)
-            raise ArgumentError, "fixed-name TFTP uploads require local history archival"
+          options = TftpOptions.new(server: server, source_files: source_files, vrfs: vrfs, concurrency: concurrency,
+                                    limit_per_vendor: limit_per_vendor, report_directory: report_directory,
+                                    success_policy: success_policy, verification_root: verification_root,
+                                    preserve_history: preserve_history, on_start: on_start, on_result: on_result,
+                                    servers: transfer_options.fetch(:servers), verification_roots: verification_roots)
+          report_directory = options.report_directory
+          unless plan
+            devices = inventory(settings_snapshot)
+            plan = Planner.new(devices).call(mode: :tftp, limit_per_vendor: limit_per_vendor, tftp_policy: policy,
+                                             allow_fixed_name_reuse: preserve_history && (!verification_root.nil? || !verification_roots.empty?))
           end
-          archive = Tftp::Archive.new(directory: report_directory, root: verification_root) if preserve_history
-          run_batch(:tftp, plan, concurrency: concurrency, report_directory: report_directory,
-                    settings_snapshot: settings_snapshot, success_policy: success_policy, on_start: on_start, on_result: on_result) do |device, log_directory|
+          validate_plan!(plan, :tftp)
+          effective = tftp_effective_options(plan, policy, success_policy: success_policy, preserve_history: preserve_history)
+          contexts = tftp_contexts(plan, effective, report_directory: report_directory, preserve_history: preserve_history)
+          validate_tftp_targets!(plan, effective, contexts)
+          run_batch(:tftp, plan, options: options, settings_snapshot: settings_snapshot) do |device, log_directory|
+            transfer = effective.fetch(device.host)
+            archive, verification = contexts.fetch(transfer.server)
             if archive
               archive.upload_and_archive(device, started_at: Time.now.utc) do |remote_filename|
-                tftp_backup_device(device, server, source_files, log_directory, vrfs, settings_snapshot, path: remote_filename)
+                tftp_backup_device(device, transfer, log_directory, settings_snapshot, path: remote_filename)
               end
             else
               verification.upload_and_verify(device) do |remote_filename|
-                tftp_backup_device(device, server, source_files, log_directory, vrfs, settings_snapshot, path: remote_filename)
+                tftp_backup_device(device, transfer, log_directory, settings_snapshot, path: remote_filename)
               end
             end
           end
@@ -159,7 +151,16 @@ module Net
           raise ArgumentError, "force_refresh must be true or false" unless [true, false].include?(force_refresh)
 
           inventory = @inventory || @settings.inventory(policy: settings_snapshot)
-          rows = inventory.is_a?(Inventory::Cache) ? inventory.devices(force_refresh: force_refresh) : inventory.devices
+          cache_mode = settings_snapshot.inventory_cache_mode
+          raise ArgumentError, "cache-only cannot force refresh" if cache_mode == :only && force_refresh
+          if cache_mode == :only && !inventory.is_a?(Inventory::Cache)
+            raise Inventory::Error.new("validated inventory cache is unavailable", code: :cache_unavailable), cause: nil
+          end
+          rows = if inventory.is_a?(Inventory::Cache)
+                   inventory.devices(force_refresh: force_refresh, cache_mode: cache_mode)
+                 else
+                   inventory.devices
+                 end
           @inventory_status = if inventory.is_a?(Inventory::Cache)
                                 { source: inventory.status, fetched_at: inventory.fetched_at,
                                   refresh_error_code: inventory.refresh_error_code, write_error_type: inventory.write_error_type }.freeze
@@ -177,35 +178,31 @@ module Net
         def build_plan(mode, limit, settings_snapshot, allow_fixed_name_reuse: false, force_refresh: false)
           Planner.validate_limit!(limit)
           Planner.new(inventory(settings_snapshot, force_refresh: force_refresh)).call(mode: mode, limit_per_vendor: limit,
-                                               allow_fixed_name_reuse: allow_fixed_name_reuse)
+                                               allow_fixed_name_reuse: allow_fixed_name_reuse,
+                                               tftp_policy: mode == :tftp ? settings_snapshot.tftp_policy : nil)
         end
 
         # 统一组织设备任务、日志目录与报告；Worker 保证单台设备失败不影响其他设备。
-        def run_batch(mode, plan, concurrency:, report_directory:, settings_snapshot:, success_policy:, on_start:, on_result:, output_directory: nil)
-          worker = Worker.new(concurrency: concurrency)
+        def run_batch(mode, plan, options:, settings_snapshot:, output_directory: nil)
+          worker = Worker.new(concurrency: options.concurrency)
           started_at = Time.now.utc
           started = monotonic
           outcomes = plan.outcomes.dup
           FileUtils.mkdir_p(output_directory, mode: 0o700) if output_directory && !plan.ready.empty?
           log_directory = settings_snapshot.log_directory
           FileUtils.mkdir_p(log_directory, mode: 0o700) if log_directory && !plan.ready.empty?
-          callback_errors = worker.run(plan.ready, outcomes: outcomes, on_start: on_start, on_result: on_result,
+          callback_errors = worker.run(plan.ready, outcomes: outcomes, on_start: options.on_start, on_result: options.callbacks,
                                        on_error: ->(device, error) { build_outcome(device, :failed, error: error) }) do |device|
             yield device, log_directory
           end
           batch = Batch.new(mode: mode, outcomes: outcomes.freeze, started_at: started_at,
                             finished_at: Time.now.utc, callback_errors: callback_errors,
                             report_location: nil, report_error: nil)
-          report = Report.new(batch, policy: success_policy, duration_ms: ((monotonic - started) * 1000).round, log_directory: log_directory)
-          save_report(report, directory: report_directory)
+          report = Report.new(batch, policy: options.success_policy, duration_ms: ((monotonic - started) * 1000).round, log_directory: log_directory)
+          save_report(report, directory: options.report_directory)
         end
 
         def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-
-        # 校验批量任务回调接口。
-        def validate_callback!(callback, name)
-          raise ArgumentError, "#{name} must respond to call" if callback && !callback.respond_to?(:call)
-        end
 
         # 保存批量报告，记录写入失败而不覆盖设备结果。
         def save_report(report, directory:)
@@ -234,13 +231,71 @@ module Net
                       error_type: error&.class&.name, diagnostic: Diagnostic.from(error, backup: backup))
         end
 
+        def tftp_transfer_options(snapshot, **values)
+          defaults = { server: :tftp_server, source_files: :tftp_source_files, vrfs: :tftp_vrfs,
+                       source_interfaces: :tftp_source_interfaces, servers: :tftp_servers, verification_roots: :tftp_verification_roots }
+          defaults.each { |name, method| values[name] = snapshot.public_send(method) if values[name].equal?(DEFAULT_SETTING) }
+          if values[:verification_root].equal?(DEFAULT_SETTING)
+            same_server = values[:server] && snapshot.tftp_server && values[:server].casecmp?(snapshot.tftp_server)
+            values[:verification_root] = same_server ? snapshot.tftp_root : nil
+          end
+          values
+        end
+
+        def tftp_effective_options(plan, policy, success_policy:, preserve_history:)
+          effective = plan.inventory.select { |device| device.ready? && device.supports_backup?(mode: :tftp) }.to_h do |device|
+            [device.host, policy.for(host: device.host, vendor: device.vendor)]
+          end
+          # 旧调用允许先选设备、执行时再指定服务器；已有服务器和其余策略仍须一致。
+          matching = plan.transfers.keys == effective.keys && plan.transfers.all? do |host, planned|
+            actual = effective.fetch(host)
+            expected = planned.server ? planned : planned.with(server: actual.server)
+            expected == actual
+          end
+          unless matching
+            raise ArgumentError, "TFTP plan options differ from execution; regenerate the plan"
+          end
+          plan.selected.each do |device|
+            transfer = effective.fetch(device.host)
+            raise ArgumentError, "selected device requires a TFTP server" unless transfer.server
+            if plan.allow_fixed_name_reuse && device.vendor == :palo_alto && !transfer.verification_root
+              raise ArgumentError, "fixed-name TFTP uploads require a matching server archive directory"
+            end
+            if success_policy == :verified && !transfer.verification_root
+              raise ArgumentError, "verified policy requires a matching TFTP server directory for every selected device"
+            end
+          end
+          if plan.allow_fixed_name_reuse && !preserve_history
+            raise ArgumentError, "fixed-name TFTP uploads require local history archival"
+          end
+          effective
+        end
+
+        def tftp_contexts(plan, effective, report_directory:, preserve_history:)
+          # 每个服务器持有自己的核验/归档上下文，跨服务器设备不能复用全局目录证据。
+          plan.selected.map { |device| effective.fetch(device.host) }.uniq { |transfer| transfer.server }.to_h do |transfer|
+            archive = Tftp::Archive.new(directory: report_directory, root: transfer.verification_root) if preserve_history
+            [transfer.server, [archive, Tftp::Verifier.new(root: transfer.verification_root)]]
+          end
+        end
+
+        # 归档批次可能改变远端名；使用最终目标预检协议限制，不能等到读取凭据或发命令后。
+        def validate_tftp_targets!(plan, effective, contexts)
+          plan.selected.each do |device|
+            transfer = effective.fetch(device.host)
+            archive, = contexts.fetch(transfer.server)
+            filename = archive ? archive.upload_filename(device) : device.tftp_filename
+            Tftp::Policy.validate_effective!(transfer, host: device.host, vendor: device.vendor, path: filename)
+          end
+        end
+
         # 执行单台设备的 TFTP 导出。
-        def tftp_backup_device(device, server, source_files, log_directory, vrfs, settings_snapshot, path: device.tftp_filename)
+        def tftp_backup_device(device, transfer, log_directory, settings_snapshot, path: device.tftp_filename)
           run_device(device, log_directory, settings_snapshot, success_status: :reported_uploaded,
                      partial_status: :reported_with_error, backup_class: TftpReceipt) do |connector|
-            source_file = source_files.fetch(device.vendor, nil)
-            transfer_settings = { host: server, path: path, source_file: source_file }
-            transfer_settings[:vrf] = vrfs.fetch(device.vendor) if vrfs.key?(device.vendor)
+            transfer_settings = { host: transfer.server, path: path, source_file: transfer.source_file }
+            transfer_settings[:vrf] = transfer.vrf unless transfer.vrf.nil?
+            transfer_settings[:source_interface] = transfer.source_interface unless transfer.source_interface.nil?
             connector.tftp_backup(**transfer_settings)
           end
         end

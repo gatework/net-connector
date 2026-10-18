@@ -2,6 +2,7 @@
 
 require "ipaddr"
 require_relative "../../connector"
+require_relative "address_filter"
 
 module Net
   module Connector
@@ -10,10 +11,18 @@ module Net
       class Rules
         # 校验并保存清单过滤和厂商映射规则。
         def initialize(include_hosts: [], exclude_hosts: [], include_vendors: [], vendor_overrides: {},
-                       host_overrides: {}, mappings: [])
-          @include_hosts = host_index(include_hosts)
-          @exclude_hosts = host_index(exclude_hosts)
+                       host_overrides: {}, mappings: [], include_names: [], exclude_names: [],
+                       name_match: :contains, exclude_vendors: [])
+          @include_hosts = AddressFilter.new(include_hosts)
+          @exclude_hosts = AddressFilter.new(exclude_hosts)
           @include_vendors = vendor_list(include_vendors)
+          @exclude_vendors = vendor_list(exclude_vendors)
+          @include_names = name_list(include_names)
+          @exclude_names = name_list(exclude_names)
+          unless (name_match.is_a?(String) || name_match.is_a?(Symbol)) && %w[contains prefix glob].include?(name_match.to_s)
+            raise ArgumentError, "name_match must be contains, prefix or glob"
+          end
+          @name_match = name_match.to_sym
           @vendor_overrides = vendor_mapping(vendor_overrides)
           @host_overrides = host_mapping(host_overrides)
           @mappings = device_mappings(mappings)
@@ -143,10 +152,17 @@ module Net
         end
 
         # 判断设备是否通过地址和厂商过滤。
-        def selected?(host, vendor)
-          return false if @exclude_hosts.key?(host)
-          return false if !@include_hosts.empty? && !@include_hosts.key?(host)
+        def selected?(host, vendor, name: nil)
+          return false if @exclude_hosts.include?(host)
+          return false if !@include_hosts.empty? && !@include_hosts.include?(host)
+          return false if @exclude_vendors.include?(vendor)
           return false if !@include_vendors.empty? && !@include_vendors.include?(vendor)
+
+          return true if @include_names.empty? && @exclude_names.empty?
+
+          value = name.to_s.encode("UTF-8", invalid: :replace, undef: :replace, replace: "").downcase
+          return false if @exclude_names.any? { |pattern| name_matches?(pattern, value) }
+          return false if !@include_names.empty? && @include_names.none? { |pattern| name_matches?(pattern, value) }
 
           true
         end
@@ -158,18 +174,19 @@ module Net
           wireless ? :h3c_wireless : :h3c
         end
 
-        # 外部仍接受地址数组；内部仅做成员匹配，建索引避免逐台扫描整个清单。
-        def host_index(values)
-          raise ArgumentError, "host lists must be Arrays" unless values.is_a?(Array)
+        def name_list(values)
+          unless values.is_a?(Array) && values.all? { |value| value.is_a?(String) && !value.strip.empty? && value.valid_encoding? }
+            raise ArgumentError, "name filters must be arrays of nonempty strings"
+          end
+          values.map { |value| value.downcase.freeze }.uniq.freeze
+        end
 
-          values.to_h do |value|
-            raise ArgumentError, "host list entries must be Strings" unless value.is_a?(String) && !value.empty?
-            raise ArgumentError, "host list entries must be IP addresses" if value.include?("/")
-
-            [IPAddr.new(value).to_s.freeze, true]
-          rescue IPAddr::Error
-            raise ArgumentError, "host list entries must be IP addresses", cause: nil
-          end.freeze
+        def name_matches?(pattern, value)
+          case @name_match
+          when :contains then value.include?(pattern)
+          when :prefix then value.start_with?(pattern)
+          when :glob then File.fnmatch?(pattern, value)
+          end
         end
 
         # 将设备标签转为便于匹配的小写词串。

@@ -326,7 +326,7 @@ TFTP 策略必须实现 `validate_options!(target, source_file:, vrf:)`、`recei
 
 `engine/interaction`、`engine/dialogue`、`engine/response` 分别定义交互规则、对话语法与响应值；读取循环位于 `engine/response_reader`。`engine/errors` 不加载脱敏运行时，`engine/redactor` 负责秘密作用域。Session 明确加载并持有读取器与脱敏器。
 
-Netdisco 的 Settings、Planner、Fleet、CLI 等文件各自声明实际依赖，单独 require 后即可调用，不依赖 `netdisco.rb` 的预设加载顺序。总入口只组合 CLI 和 CLI::Backup；Batch 通过 autoload 创建 Report，避免两者循环加载。内部清单预算 `Inventory::Budget` 由 Inventory 清单适配器加载。Progress 的终端显示、Fleet 的设备执行、Report 的结果解释和 Storage 的文件持久化保持独立职责。
+Netdisco 的 Settings、Planner、Fleet、CLI 等文件各自声明实际依赖，单独 require 后即可调用，不依赖 `netdisco.rb` 的预设加载顺序。总入口组合 CLI、CLI::Backup 和 CLI::Topology；Batch 通过 autoload 创建 Report，避免两者循环加载。内部清单预算 `Inventory::Budget` 由 Inventory 清单适配器加载。Progress 的终端显示、Fleet 的设备执行、Report 的结果解释和 Storage 的文件持久化保持独立职责。
 
 公共策略位于 `RunningConfig::Strategy` / `Rendered`、`Tftp::Strategy` / `FileUpload`、`Topology::Strategy` / `ImmediateStrategy`。厂商文件直接依赖公共策略，由 Profile 绑定；没有反向加载和厂商转发别名。
 
@@ -362,7 +362,7 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 | 服务器上传证据 | `Netdisco::Tftp::Verifier/Archive`，位于 `netdisco/tftp/` |
 | 厂商平台 | `Vendor::CiscoIos` 等平台类直接继承 Base 或协议家族类；策略位于平台类下 |
 | 文件边界 | `Storage::FileReader` 与 `Storage::AtomicFile`，分别负责受控读取与原子替换 |
-| 终端应用 | `Netdisco::CLI::Backup/Credentials/Options`，位于 `netdisco/cli/` |
+| 终端应用 | `Netdisco::CLI::Backup/Topology/Credentials/Options`，位于 `netdisco/cli/` |
 
 工厂方法用 `build_*` 表明返回新对象；抛错校验使用 `validate_*!`；块作用域使用明确的 `with_*`。单命令、脚本、命令文本构造和完成证据判断分别命名，避免从通用的 execute/check/complete 猜测行为。`legacy_ssh` 表示设备 SSH 协议协商选项，Netdisco QueryRequired 则是服务端 API 行为，两者均独立于本库旧版本接口。
 

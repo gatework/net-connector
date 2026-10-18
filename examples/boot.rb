@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
-# 示例沿用 RubyGems / 调用方 Bundler 的加载环境，不自动切换到源码。
+# 示例沿用 RubyGems / 调用方 Bundler 的加载环境，不自动切换到其他源码。
 project_root = File.expand_path("..", __dir__)
+require "bundler/setup" if ENV["BUNDLE_GEMFILE"] && !ENV["BUNDLE_GEMFILE"].empty?
+require "net/connector/netdisco"
 # 进程中显式指定的配置文件相对启动目录解析。
 ENV["NC_CONFIG"] = File.expand_path(ENV["NC_CONFIG"]) if ENV["NC_CONFIG"] && !ENV["NC_CONFIG"].empty?
 

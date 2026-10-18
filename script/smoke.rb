@@ -177,7 +177,7 @@ raise "Installed script budget setting missing" unless JSON.parse(output.string)
 
 # 安装包独立提供数据库驱动与配置示例；这里只做离线校验，真实查询由 test:postgres 验证。
 require "pg"
-database_example = File.join(spec.full_gem_path, "examples/inventory_sql.yml")
+database_example = File.join(spec.full_gem_path, "examples/inventory.yml")
 database_settings = Net::Connector::Netdisco::Settings.from_file(database_example, env: {})
 raise "Installed PostgreSQL settings missing" unless database_settings.inventory_source == :postgres
 raise "Installed PostgreSQL query missing" unless database_settings.inventory_options.fetch(:query).include?("$1")
@@ -230,8 +230,11 @@ Dir.mktmpdir do |root|
   raise "Installed batch files missing" unless File.basename(directory) == "2026-01-01_08-00-00"
 end
 help = StringIO.new
-raise "Installed batch runner missing" unless Net::Connector::Netdisco::CLI::Backup.new(argv: ["--help"], output: help).run.zero?
+raise "Installed batch runner missing" unless Net::Connector::Netdisco::CLI::Backup.new(mode: :tftp, argv: ["--help-all"], output: help).run.zero?
 raise "Installed verification option missing" unless help.string.include?("verified")
+topology_help = StringIO.new
+raise "Installed topology entry missing" unless Net::Connector::Netdisco::CLI::Topology.new(argv: ["--help"], output: topology_help).run.zero?
+raise "Installed topology apply option missing" unless topology_help.string.include?("--apply")
 raise "Installed report writer missing" unless Net::Connector::Netdisco::Report::Files.respond_to?(:write)
 raise "Installed backup connection missing" unless Net::Connector::Netdisco::CLI::Credentials.respond_to?(:resolve)
 puts "Installed #{spec.full_name}: #{ARGV.fetch(0)}, PTY, vendor profiles, templates and CLI passed"

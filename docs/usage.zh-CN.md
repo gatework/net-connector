@@ -72,7 +72,7 @@ end
 
 策略先校验参数组合，再在同一次会话租约中完成源探测、上传、证据检查和收尾。上传已确认但日志或清理失败时抛出 `TftpCompletionError`，通过 `error.receipt` 保留完成事实。显式请求与实际路径不同返回 `:transfer_path_mismatch`；实际路径无法安全确认返回 `:transfer_path_unconfirmed`，此时回执的 `path` 为 `nil`。这些错误不会自动重传；Fleet 保留上传事实并标为 `reported_with_error`。
 
-可运行[单设备示例](../examples/device_tftp.rb)：`ruby examples/device_tftp.rb --vendor huawei --host 192.0.2.20 --server 192.0.2.30 --source-file flash:/startup.cfg --path site/router.cfg`。凭据使用 `NC_DEVICE_USERNAME`、`NC_DEVICE_PASSWORD`；`--source-file`、`--path`、`--vrf` 指定传输选项。
+清单内的单台设备使用统一[批量入口](../examples/backup_tftp.rb)：`bundle exec ruby examples/backup_tftp.rb --host 192.0.2.20`。服务器、源文件和 VRF 在 [backup.yml](../examples/backup.yml) 中配置；凭据使用 `NC_DEVICE_USERNAME`、`NC_DEVICE_PASSWORD`。需要指定自定义远端路径时，使用上面的 `device.tftp_backup` API。
 
 只需在内存中采集配置时，调用 `device.running_config`；它返回 `Result`，`result.value!` 返回清理后的文本，失败时抛出对应错误。
 

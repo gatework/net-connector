@@ -1,0 +1,30 @@
+# 只保存公开策略，凭据仍来自调用方环境或注入来源。
+netdisco:
+  source: http
+  cache_enabled: true
+  cache_ttl: 259200
+  cache_directory: ./.cache/net-connector/inventory
+inventory:
+  include_hosts: []
+  exclude_hosts: []
+  include_names: []
+  exclude_names: []
+  name_match: contains
+  include_vendors: []
+  exclude_vendors: []
+  vendor_overrides: {}
+  host_overrides: {}
+  device_rules: []
+ssh:
+  protocol: ssh
+  host_key_policy: accept_new
+  log_level: info
+topology:
+  mode: plan # 写入必须显式传 --apply，YAML apply 本身不会授权。
+  cache_mode: prefer # only 仅使用已验证缓存；refresh 强制刷新。
+  concurrency: 4
+  # limit: 5 # 只限制可发现设备，不影响清单缓存完整性。
+  directory: ./examples/topology_reports
+  description_format: To_%{neighbor}_%{port}
+  abbreviate_ports: true
+  lowercase_ports: false

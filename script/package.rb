@@ -21,7 +21,7 @@ module PackageCheck
     path.match?(%r{\Alib/.+\.rb\z}) ||
       path.match?(%r{\Alib/net/connector/templates/(?:(?:[a-z0-9_]+/)*[a-z0-9_]+\.textfsm|index)\z}) ||
       path.match?(%r{\Adocs/[^/]+\.md\z}) ||
-      %w[bin/net-backup examples/backup.yml examples/inventory_sql.yml README.md README.zh-CN.md
+      %w[bin/net-backup examples/backup.yml examples/inventory.yml README.md README.zh-CN.md
          LICENSE CHANGELOG.md SECURITY.md CONTRIBUTING.md].include?(path)
   end
 

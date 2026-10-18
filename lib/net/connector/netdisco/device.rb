@@ -17,7 +17,6 @@ module Net
           super(*frozen_values, **frozen_attributes)
         end
 
-        # Ruby 3.2 的 Data#with 不调用初始化；更新也须复制并冻结外部字符串。
         def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
 
         # 将 Netdisco 清单记录转换为可规划的设备对象。
@@ -37,9 +36,9 @@ module Net
             issue = :invalid_address
           end
           vendor = rules.resolve(row)
-          issue ||= :unsupported_vendor unless vendor
-          issue ||= :filtered unless rules.selected?(host, vendor)
           name = [row["name"], row["dns"]].find { |value| value && !value.strip.empty? }
+          issue ||= :filtered unless rules.selected?(host, vendor, name: name&.strip)
+          issue ||= :unsupported_vendor unless vendor
           new(host: host, source_ip: source_ip, name: name&.strip, vendor: vendor,
               source_vendor: row["vendor"], model: row["model"], os: row["os"],
               os_version: row["os_ver"], serial: row["serial"], issue: issue)
@@ -47,6 +46,18 @@ module Net
 
         # 判断设备是否满足备份选择条件。
         def ready? = issue.nil?
+
+        # 清单就绪与操作能力分别判断；不构造连接器或策略，也不把缺能力的平台标成未知厂商。
+        def supports_backup?(mode:)
+          profile = Net::Connector.vendor_class(vendor).profile if vendor
+          return false unless profile
+
+          case mode
+          when :backup then !profile.config_commands.nil? && !profile.config_commands.empty?
+          when :tftp then !profile.tftp_strategy.nil?
+          else false
+          end
+        end
 
         # 生成不随名称或厂商信息改变的本地文本文件名。
         def backup_filename(style: :ip)

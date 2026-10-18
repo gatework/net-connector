@@ -12,6 +12,7 @@ module Net
           "netdisco" => { "cache_directory" => ["ND_CACHE_DIRECTORY", :string],
                           "cache_ttl" => ["ND_CACHE_TTL", :number],
                           "cache_enabled" => ["ND_CACHE_ENABLED", :boolean],
+                          "cache_mode" => ["ND_CACHE_MODE", :string],
                           "source" => ["ND_SOURCE", :string],
                           "query" => ["ND_QUERY", :string],
                           "query_params" => ["ND_QUERY_PARAMS", :json_array],
@@ -27,11 +28,23 @@ module Net
                           "db_sslmode" => ["ND_DB_SSLMODE", :string],
                           "db_sslrootcert" => ["ND_DB_SSLROOTCERT", :string],
                           "db_connect_timeout" => ["ND_DB_CONNECT_TIMEOUT", :integer] },
+          "topology" => { "mode" => ["NC_TOPOLOGY_MODE", :string],
+                          "cache_mode" => ["NC_TOPOLOGY_CACHE_MODE", :string],
+                          "concurrency" => ["NC_TOPOLOGY_CONCURRENCY", :integer],
+                          "directory" => ["NC_TOPOLOGY_DIRECTORY", :string],
+                          "limit" => ["NC_TOPOLOGY_LIMIT", :optional_integer],
+                          "description_format" => ["NC_TOPOLOGY_DESCRIPTION_FORMAT", :string],
+                          "abbreviate_ports" => ["NC_TOPOLOGY_ABBREVIATE", :boolean],
+                          "lowercase_ports" => ["NC_TOPOLOGY_LOWERCASE", :boolean] },
           "backup" => { "directory" => ["NC_BACKUP_DIRECTORY", :string],
                         "concurrency" => ["NC_CONCURRENCY", :integer],
                         "limit_per_vendor" => ["NC_SAMPLE_PER_VENDOR", :integer] },
           "inventory" => { "include_hosts" => ["NC_INCLUDE_HOSTS", :list],
                            "exclude_hosts" => ["NC_EXCLUDE_HOSTS", :list],
+                           "include_names" => ["NC_INCLUDE_NAMES", :list],
+                           "exclude_names" => ["NC_EXCLUDE_NAMES", :list],
+                           "name_match" => ["NC_NAME_MATCH", :string],
+                           "exclude_vendors" => ["NC_EXCLUDE_VENDORS", :list],
                            "include_vendors" => ["NC_INCLUDE_VENDORS", :list],
                            "vendor_overrides" => ["NC_VENDOR_OVERRIDES", :json],
                            "host_overrides" => ["NC_HOST_OVERRIDES", :json],
@@ -46,6 +59,10 @@ module Net
           "tftp" => { "server" => ["NC_TFTP_HOST", :string],
                       "verification_root" => ["NC_TFTP_ROOT", :string],
                       "vrfs" => ["NC_TFTP_VRFS", :json],
+                      "servers" => ["NC_TFTP_SERVERS", :json],
+                      "verification_roots" => ["NC_TFTP_ROOTS", :json],
+                      "source_interfaces" => ["NC_TFTP_SOURCE_INTERFACES", :json],
+                      "source_files" => ["NC_TFTP_SOURCE_FILES", :json],
                       "h3c_source_file" => ["NC_H3C_TFTP_SOURCE_FILE", :string],
                       "h3c_wireless_source_file" => ["NC_H3C_WIRELESS_TFTP_SOURCE_FILE", :string],
                       "huawei_source_file" => ["NC_HUAWEI_TFTP_SOURCE_FILE", :string] }
@@ -56,6 +73,13 @@ module Net
           raise ArgumentError, "config path must be a nonempty String" unless path.is_a?(String) && !path.empty?
 
           document = YAML.safe_load(File.read(path), permitted_classes: [], permitted_symbols: [], aliases: false)
+          parse(document)
+        rescue Psych::Exception => error
+          raise ArgumentError, "invalid YAML config (#{error.class})", cause: nil
+        end
+
+        # 文件读取与纯配置校验共用入口，初始化无需借临时文件验证。
+        def self.parse(document)
           raise ArgumentError, "config must be a YAML mapping" unless document.is_a?(Hash)
 
           unknown_sections = document.keys - FIELDS.keys
@@ -73,8 +97,6 @@ module Net
               result[key] = encode(section, name, type, value)
             end
           end
-        rescue Psych::Exception => error
-          raise ArgumentError, "invalid YAML config (#{error.class})", cause: nil
         end
 
         # 按字段类型校验并编码单项配置。

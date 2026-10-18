@@ -1,5 +1,14 @@
 # 更新记录
 
+## 0.14.0 - 2026-10-18
+
+- 示例入口统一为 `backup.rb`、`backup_tftp.rb` 和 `topology.rb`，单台 TFTP 使用 `backup_tftp.rb --host IP`，数据库示例配置改为 `inventory.yml`，原 `device_tftp.rb`、`review_tftp.rb` 和 `inventory_sql.yml` 已移除。
+- 备份示例支持默认配置、首次运行初始化、常用与完整帮助及清单预览，直接使用当前安装或 Bundler 选定的库。
+- 新增拓扑发现、描述审计和只读规划入口，只有显式 `--apply` 才下发，应用前重验邻居及原描述，修改后回读并保存，部分失败和中断保留已完成结果。
+- 清单支持 CIDR、地址范围、名称与厂商筛选、排除和重复参数，新增只读缓存模式，离线预览不连接设备或创建批次目录。
+- TFTP 支持逐设备服务器、源接口、源文件与 VRF 设置，核验目录按服务器绑定，修复仅配置服务器目录映射时将同服务器 PAN-OS 设备误判为文件名冲突的问题。
+- 示例的公开配置按 CLI、YAML、环境默认值依次取值，宿主可通过 `environment_defaults: true` 启用相同规则，正式 CLI 保留原有优先级。
+
 ## 0.13.0 - 2026-10-18
 
 - 不兼容调整：H3C 的 LLDP 列序变体合并为 `h3c/display_lldp_neighbor_information_list.textfsm`，显式引用旧模板路径的调用方需要更新。

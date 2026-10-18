@@ -28,9 +28,10 @@ module Net
         def remote_path(target, _result) = target.path
 
         # 单次上传共用预检、命令预算和应答封装；厂商只提供协议命令与交互差异。
-        def script(target, source_file:, vrf: nil)
+        def script(target, source_file:, vrf: nil, source_interface: nil)
+          validate_source_interface!(target, source_interface: source_interface)
           validate_options!(target, source_file: source_file, vrf: vrf)
-          command = transfer_command(target, source_file: source_file, vrf: vrf)
+          command = transfer_command(target, source_file: source_file, vrf: vrf, source_interface: source_interface)
           interactions = transfer_interactions(target, source_file: source_file, vrf: vrf)
           Script.new([Command.new(command, timeout: 180, interactions: interactions)])
         end
@@ -44,6 +45,10 @@ module Net
             yield evidence_lines(step, Terminal::Renderer.render(step.output.gsub(/\r(?!\n)/, "\n"))).join("\n")
             yield evidence_lines(step, Terminal::Renderer.render(step.output)).join("\n")
           end
+        end
+
+        def validate_source_interface!(_target, source_interface:)
+          raise ArgumentError, "source_interface is not supported by this TFTP strategy" unless source_interface.nil?
         end
 
         private

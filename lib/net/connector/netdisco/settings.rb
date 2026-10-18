@@ -8,6 +8,9 @@ require_relative "inventory/http"
 require_relative "inventory/postgres"
 require_relative "inventory/cache"
 require_relative "config_file"
+require_relative "vendor_device_policy"
+require_relative "tftp/policy"
+require_relative "topology_options"
 require_relative "rules"
 require_relative "planner"
 
@@ -78,14 +81,16 @@ module Net
 
         # 按业务模式预检所有策略；离线导出仅验证目录，不读取清单或设备凭据。
         def validate!(mode:)
-          unless %i[backup tftp inventory show_config export].include?(mode)
+          unless %i[backup tftp topology inventory show_config export].include?(mode)
             raise ArgumentError, "unknown settings validation mode"
           end
           backup_directory
+          topology_options
           return self if mode == :export
 
           inventory_options
           inventory_cache_options
+          inventory_cache_mode
           rules
           concurrency
           limit_per_vendor
@@ -94,7 +99,7 @@ module Net
           connection_options
           database_options
           Net::Connector.vendors.each { |vendor| connection_options(vendor) }
-          tftp_source_files.each_value { |source| TftpTarget.validate_source_file!(source) }
+          tftp_policy
           tftp_vrfs
           TftpTarget.new(host: tftp_server, path: "preflight.cfg") if tftp_server
           self
@@ -113,7 +118,7 @@ module Net
               values[key] = item if item
             end
             connection.merge!(user: credentials[:username], password: credentials[:password]) if credentials
-            inventory = Inventory::Postgres.new(connection_options: connection, **options)
+            inventory = Inventory::Postgres.new(connection_options: connection, **options) unless policy.inventory_cache_mode == :only
             identity = [:postgres, connection.except(:password), options.slice(:query, :query_params)]
             return cached_inventory(inventory, policy, identity)
           end
@@ -124,9 +129,10 @@ module Net
                            elsif (token = secret_value("ND_API_KEY"))
                              { api_key: token }
                            else
-                             { username: required_secret("ND_USERNAME"), password: required_secret("ND_PASSWORD") }
+                             password = policy.inventory_cache_mode == :only ? nil : required_secret("ND_PASSWORD")
+                             { username: required_secret("ND_USERNAME"), password: password }
                            end
-          inventory = Inventory::HTTP.new(**options, **authentication)
+          inventory = Inventory::HTTP.new(**options, **authentication) unless policy.inventory_cache_mode == :only
           identity = [:http, Inventory::HTTP.validate_url!(options.fetch(:url)).normalize.to_s, authentication.except(:password)]
           cached_inventory(inventory, policy, identity)
         end
@@ -156,11 +162,31 @@ module Net
             enabled: boolean("ND_CACHE_ENABLED", true) }.freeze
         end
 
+        def topology_options
+          directory = value("NC_TOPOLOGY_DIRECTORY")
+          TopologyOptions.new(mode: raw("NC_TOPOLOGY_MODE", "plan"), cache_mode: raw("NC_TOPOLOGY_CACHE_MODE", raw("ND_CACHE_MODE", "prefer")),
+                              concurrency: integer("NC_TOPOLOGY_CONCURRENCY", concurrency), directory: directory && absolute_path(directory),
+                              description_format: raw("NC_TOPOLOGY_DESCRIPTION_FORMAT", "To_%{neighbor}_%{port}"),
+                              abbreviate_ports: boolean("NC_TOPOLOGY_ABBREVIATE", true), lowercase_ports: boolean("NC_TOPOLOGY_LOWERCASE", false),
+                              limit: optional_integer("NC_TOPOLOGY_LIMIT"))
+        end
+
+        def inventory_cache_mode
+          mode = raw("ND_CACHE_MODE", "prefer")
+          unless (mode.is_a?(String) || mode.is_a?(Symbol)) && %w[prefer only refresh].include?(mode.to_s)
+            raise ArgumentError, "netdisco.cache_mode must be prefer, only or refresh"
+          end
+          mode.to_sym
+        end
+
         # 将筛选和映射策略交给 Rules 校验，未识别设备由清单结果单独标记。
         def rules
           Rules.new(include_hosts: list("NC_INCLUDE_HOSTS"),
                     exclude_hosts: list("NC_EXCLUDE_HOSTS"),
                     include_vendors: list("NC_INCLUDE_VENDORS"),
+                    exclude_vendors: list("NC_EXCLUDE_VENDORS"),
+                    include_names: list("NC_INCLUDE_NAMES"), exclude_names: list("NC_EXCLUDE_NAMES"),
+                    name_match: raw("NC_NAME_MATCH", "contains"),
                     vendor_overrides: json("NC_VENDOR_OVERRIDES", {}),
                     host_overrides: json("NC_HOST_OVERRIDES", {}),
                     mappings: json("NC_DEVICE_RULES", []))
@@ -200,7 +226,26 @@ module Net
             key = "NC_#{vendor.to_s.upcase}_TFTP_SOURCE_FILE"
             files[vendor] = raw(key) if configured?(key)
           end
-          files
+          declared = json("NC_TFTP_SOURCE_FILES", {})
+          raise ArgumentError, "tftp.source_files must be a mapping" unless declared.is_a?(Hash)
+
+          files.merge(declared.transform_keys(&:to_sym))
+        end
+
+        def tftp_source_interfaces = json("NC_TFTP_SOURCE_INTERFACES", {})
+        def tftp_servers = json("NC_TFTP_SERVERS", {})
+
+        def tftp_verification_roots
+          mapping = json("NC_TFTP_ROOTS", {})
+          raise ArgumentError, "tftp.verification_roots must be a mapping" unless mapping.is_a?(Hash)
+
+          mapping.transform_values { |path| absolute_path(path) }
+        end
+
+        def tftp_policy
+          Tftp::Policy.new(server: tftp_server, servers: tftp_servers, verification_root: tftp_root,
+                           verification_roots: tftp_verification_roots, source_files: tftp_source_files,
+                           source_interfaces: tftp_source_interfaces, vrfs: tftp_vrfs)
         end
 
         # 按厂商读取 VRF 映射，不能把不支持 VRF 的厂商静默忽略。
@@ -211,15 +256,24 @@ module Net
           self.class.validate_vrfs!(mapping.transform_keys(&:to_sym))
         end
 
-        # 只允许 NX-OS、山石的安全单一 VRF 名称，禁止命令拼接字符。
-        def self.validate_vrfs!(vrfs)
-          unless vrfs.is_a?(Hash) && vrfs.all? { |vendor, name|
-            %i[cisco_nxos hillstone].include?(vendor) && name.is_a?(String) &&
-              name.match?(/\A[A-Za-z0-9_][A-Za-z0-9_.-]*\z/)
-          }
-            raise ArgumentError, "vrfs must map supported vendor names to safe VRF names"
+        # 解析参考配置中的厂商默认与精确设备覆盖；批次执行复用这个不可变选择器。
+        def tftp_vrf_policy = self.class.vrf_policy(tftp_vrfs)
+
+        def self.vrf_policy(vrfs)
+          VendorDevicePolicy.new(vrfs, vendors: %i[cisco_nxos hillstone]) do |name|
+            unless name.nil? || (name.is_a?(String) && name.match?(/\A[A-Za-z0-9_][A-Za-z0-9_.-]*\z/))
+              raise ArgumentError, "vrfs must contain safe VRF names or explicit null"
+            end
           end
-          vrfs
+        end
+
+        # 标量用于统一厂商策略，结构用于设备覆盖；规范化容器始终由本设置拥有。
+        def self.validate_vrfs!(vrfs)
+          policy = vrf_policy(vrfs)
+          vrfs.to_h do |vendor, value|
+            entry = policy.to_h.fetch(vendor.to_sym)
+            [vendor.to_sym, value.is_a?(Hash) ? entry : entry[:default]]
+          end.freeze
         end
 
         # 服务器地址只来自 YAML/CLI 的公开策略，不从 NC_TFTP_HOST 环境变量读取。
@@ -306,11 +360,15 @@ module Net
         # 只输出公开策略；数据库身份和设备凭据不得通过配置摘要进入报告。
         def config_hash
           {
-            netdisco: inventory_options.merge(source: inventory_source, database: database_options, cache: inventory_cache_options),
+            netdisco: inventory_options.merge(source: inventory_source, database: database_options, cache: inventory_cache_options, cache_mode: inventory_cache_mode),
+            topology: topology_options.to_h,
             backup: { directory: backup_directory, concurrency: concurrency, limit_per_vendor: limit_per_vendor },
             inventory: { include_hosts: list("NC_INCLUDE_HOSTS"),
                          exclude_hosts: list("NC_EXCLUDE_HOSTS"),
                          include_vendors: list("NC_INCLUDE_VENDORS"),
+                         exclude_vendors: list("NC_EXCLUDE_VENDORS"),
+                         include_names: list("NC_INCLUDE_NAMES"), exclude_names: list("NC_EXCLUDE_NAMES"),
+                         name_match: raw("NC_NAME_MATCH", "contains"),
                          vendor_overrides: json("NC_VENDOR_OVERRIDES", {}),
                          host_overrides: json("NC_HOST_OVERRIDES", {}),
                          device_rules: json("NC_DEVICE_RULES", []) },
@@ -318,7 +376,8 @@ module Net
               log_directory: log_directory,
               vendor_protocols: vendor_protocols
             ),
-            tftp: { server: tftp_server, verification_root: tftp_root, vrfs: tftp_vrfs.transform_keys(&:to_s), source_files: tftp_source_files }
+            tftp: { server: tftp_server, verification_root: tftp_root, vrfs: tftp_vrfs.transform_keys(&:to_s), source_files: tftp_source_files,
+                    source_interfaces: tftp_source_interfaces, servers: tftp_servers, verification_roots: tftp_verification_roots }
           }
         end
 
@@ -355,13 +414,19 @@ module Net
         # 身份指纹只用于隔离缓存；凭据、SQL 和参数均不写入缓存文件或摘要。
         def cached_inventory(inventory, policy, identity)
           cache = policy.inventory_cache_options
+          if !cache.fetch(:enabled) && policy.inventory_cache_mode == :only
+            raise Inventory::Error.new("validated inventory cache is unavailable", code: :cache_unavailable), cause: nil
+          end
           return inventory unless cache.fetch(:enabled)
 
           options = policy.inventory_options
-          Inventory::Cache.new(inventory: inventory, **cache.except(:enabled),
-                             identity: Digest::SHA256.hexdigest(JSON.generate(identity)),
-                             **options.slice(:max_inventory_bytes, :max_devices),
-                             lock_timeout: [5, options.fetch(:inventory_timeout)].min)
+          cache_options = { **cache.except(:enabled), identity: Digest::SHA256.hexdigest(JSON.generate(identity)),
+                            **options.slice(:max_inventory_bytes, :max_devices), lock_timeout: [5, options.fetch(:inventory_timeout)].min }
+          if policy.inventory_cache_mode == :only
+            Inventory::Cache.offline(**cache_options)
+          else
+            Inventory::Cache.new(inventory: inventory, cache_mode: policy.inventory_cache_mode, **cache_options)
+          end
         end
 
         def inventory_policy(defaults)

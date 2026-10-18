@@ -5,6 +5,7 @@ require "socket"
 require_relative "options"
 require_relative "credentials"
 require_relative "../fleet"
+require_relative "../config_initializer"
 require_relative "../progress"
 require_relative "../report/files"
 require_relative "../../storage/batch_directory"
@@ -16,42 +17,41 @@ module Net
         # 终端备份入口：固定配置、预览、执行、保存报告，最后决定输出与退出码。
         class Backup
           # 保存批次模式与调用方 IO，构造阶段不读取清单、不创建目录。
-          def initialize(mode: :backup, argv: ARGV, env: ENV, input: $stdin, output: $stdout, error: $stderr)
+          def initialize(mode: :backup, argv: ARGV, env: ENV, input: $stdin, output: $stdout, error: $stderr,
+                         default_config: nil, default_directory: nil, environment_defaults: false)
             raise ArgumentError, "mode must be backup or tftp" unless %i[backup tftp].include?(mode)
 
             @mode, @argv, @env, @input, @output, @error = mode, argv, env, input, output, error
+            @default_config, @default_directory = default_config, default_directory
+            @environment_defaults = environment_defaults
           end
 
           # 先固定并校验策略，再预览、执行和保存报告；成功判定使用最终报告。
           def run
-            options = CLI::Options.parse(argv: @argv, input: @input, output: @output, error: @error)
+            options = CLI::Options.parse(argv: @argv, input: @input, output: @output, error: @error, mode: @mode)
             return 0 if options[:help]
+            apply_defaults(options)
+            return 0 if initialize_config?(options)
 
             settings, success_policy, server_root, batch_directory = prepare(options)
             inventory, credentials = Credentials.resolve(settings, stdin_credentials: options[:stdin_credentials], input: @input)
             progress = Progress.new(io: @error, enabled: !options[:no_progress], verbose: options[:verbose])
             resolver = ->(device) { credentials.call(device)&.merge(on_event: progress.method(:event)) }
             fleet = Fleet.new(inventory: inventory, settings: settings, credentials: resolver, report_store: nil)
-            progress.reading_inventory
-            limit = settings.limit_per_vendor
-            refresh = options[:force_refresh] ? { force_refresh: true } : {}
-            plan = if @mode == :backup
-                     fleet.plan_backup(limit_per_vendor: limit, **refresh)
-                   else
-                     fleet.plan_tftp_backup(limit_per_vendor: limit, allow_fixed_name_reuse: !server_root.nil?, **refresh)
-                   end
-            inventory_warning(fleet)
-            progress.plan(plan, concurrency: settings.concurrency, limit_per_vendor: limit)
-            preview = plan_summary(plan)
-            @output.puts JSON.generate(plan: preview) if options[:json]
-            @output.flush
+            plan = read_plan(fleet, settings, options, progress, server_root)
+            return preview_status(plan, options) if options[:plan] || options[:inventory_only]
             return 1 if options[:stdin_credentials] && @input.gets("\n")&.strip != "RUN"
 
-            Storage::AtomicFile.write(File.join(batch_directory, "plan.json"), JSON.pretty_generate(preview))
+            Storage::AtomicFile.write(File.join(batch_directory, "plan.json"), JSON.pretty_generate(plan_summary(plan)))
             report = execute(fleet, settings, plan, batch_directory, progress, success_policy, server_root)
             report = record_progress_error(report, progress)
             report = Report::Files.write(report, directory: batch_directory, plan: plan, concurrency: settings.concurrency)
             finish(report, progress, options, batch_directory, plan, settings.concurrency)
+          rescue Interrupt
+            130
+          rescue EOFError
+            @error.puts "配置输入未完成，未创建文件。"
+            2
           rescue ArgumentError, Inventory::Error => exception
             @error.puts "备份参数或清单错误：#{exception.message}"
             2
@@ -61,6 +61,53 @@ module Net
           end
 
           private
+
+          def read_plan(fleet, settings, options, progress, server_root)
+            progress.reading_inventory
+            limit = settings.limit_per_vendor
+            refresh = options[:force_refresh] ? { force_refresh: true } : {}
+            plan = if @mode == :backup || options[:inventory_only]
+                     fleet.plan_backup(limit_per_vendor: limit, **refresh)
+                   else
+                     fleet.plan_tftp_backup(limit_per_vendor: limit,
+                                            allow_fixed_name_reuse: !server_root.nil? || !settings.tftp_verification_roots.empty?, **refresh)
+                   end
+            inventory_warning(fleet)
+            progress.plan(plan, concurrency: settings.concurrency, limit_per_vendor: limit)
+            preview = plan_summary(plan)
+            @output.puts JSON.generate(plan: preview) if options[:json]
+            @output.flush
+            plan
+          end
+
+          def preview_status(plan, options)
+            @output.puts(plan.selected.map { |device| "#{device.host}\t#{device.name}\t#{device.vendor}" }) unless options[:json]
+            plan.selected.empty? || plan.outcomes.compact.any? { |item| !%i[filtered sample_limit].include?(item.status) } ? 1 : 0
+          end
+
+          def apply_defaults(options)
+            values = options.fetch(:environment)
+            values["NC_CONFIG"] = @default_config if @default_config && !values.key?("NC_CONFIG") && !@env.key?("NC_CONFIG")
+            return unless @default_directory && !values.key?("NC_BACKUP_DIRECTORY")
+
+            path = values["NC_CONFIG"] || @env["NC_CONFIG"]
+            document = path && File.file?(path) ? ConfigFile.load(path) : {}
+            values["NC_BACKUP_DIRECTORY"] = @default_directory unless document.key?("NC_BACKUP_DIRECTORY")
+          end
+
+          def initialize_config?(options)
+            path = options.fetch(:environment)["NC_CONFIG"] || @env["NC_CONFIG"]
+            return false unless path && !File.exist?(path) && !File.symlink?(path)
+
+            document = { "backup" => { "directory" => @default_directory || "./backups", "concurrency" => 4 },
+                         "netdisco" => { "source" => "http", "cache_mode" => "prefer" },
+                         "inventory" => { "include_hosts" => [], "exclude_hosts" => [], "include_names" => [],
+                                          "exclude_names" => [], "include_vendors" => [], "exclude_vendors" => [], "name_match" => "contains" },
+                         "ssh" => { "protocol" => "ssh", "host_key_policy" => "accept_new" } }
+            ConfigInitializer.new(input: @input, output: @error).create(path: path, document: document, interactive: options[:interactive])
+            @error.puts "已初始化配置：#{path}；检查配置后再次运行。"
+            true
+          end
 
           # 清单离线回退和本地保存故障单独提示，不覆盖设备操作结果。
           def inventory_warning(fleet)
@@ -74,15 +121,18 @@ module Net
 
           # 预检完成后才创建批次目录；补充日志路径时保持原策略快照与动态凭据来源。
           def prepare(options)
-            settings = CLI::Options.settings(options, env: @env).for_run(mode: @mode)
+            settings = CLI::Options.settings(options, env: @env, environment_defaults: @environment_defaults).for_run(mode: @mode)
             success_policy = options.fetch(:success_policy, :selected)
             raise ArgumentError, "verified policy requires TFTP mode" if success_policy == :verified && @mode != :tftp
             raise ArgumentError, "--tftp-root requires TFTP mode" if options[:tftp_root] && @mode != :tftp
-            server_root = tftp_root(settings, options) if @mode == :tftp
-            raise ArgumentError, "verified policy requires a local TFTP directory" if success_policy == :verified && !server_root
+            server_root = tftp_root(settings, options) if @mode == :tftp && !options[:inventory_only]
+            if success_policy == :verified && !server_root && settings.tftp_verification_roots.empty?
+              raise ArgumentError, "verified policy requires a local TFTP directory"
+            end
             Tftp::Verifier.new(root: server_root) if server_root
-            batch_directory = Storage::BatchDirectory.create(settings.backup_directory)
-            if @mode == :tftp && !settings.log_directory
+            settings = settings.with_overrides("NC_TFTP_ROOT" => server_root) if server_root
+            batch_directory = Storage::BatchDirectory.create(settings.backup_directory) unless options[:plan] || options[:inventory_only]
+            if batch_directory && @mode == :tftp && !settings.log_directory
               settings = settings.with_overrides("NC_LOG_DIRECTORY" => File.join(batch_directory, "logs"))
             end
             [settings, success_policy, server_root, batch_directory]
@@ -148,9 +198,12 @@ module Net
 
           # 优先使用显式核验根目录；仅服务器是本机地址时探测本机惯用 TFTP 目录。
           def tftp_root(settings, options)
-            server = settings.tftp_server || (raise ArgumentError, "YAML tftp.server is required")
+            server = settings.tftp_server
+            if !server && settings.tftp_servers.empty?
+              raise ArgumentError, "YAML tftp.server or tftp.servers is required"
+            end
             return options[:tftp_root] || settings.tftp_root if options[:tftp_root] || settings.tftp_root
-            return unless Socket.ip_address_list.any? { |address| address.ip_address == server }
+            return unless server && Socket.ip_address_list.any? { |address| address.ip_address == server }
 
             candidate = File.join(Dir.home, "Documents", "TFTP")
             candidate if File.directory?(candidate)
@@ -162,8 +215,10 @@ module Net
               vendors: plan.inventory.group_by { |device| device.vendor || :unmapped }.transform_values(&:size),
               issues: plan.inventory.reject(&:ready?).group_by(&:issue).transform_values(&:size),
               selected: plan.selected.map do |device|
-                filename = @mode == :backup ? device.backup_filename(style: :hostname_ip) : device.tftp_filename
-                { host: device.host, name: device.name, vendor: device.vendor, backup_filename: filename }
+                filename = plan.mode == :backup ? device.backup_filename(style: :hostname_ip) : device.tftp_filename
+                entry = { host: device.host, name: device.name, vendor: device.vendor, backup_filename: filename }
+                entry[:transfer] = plan.transfers.fetch(device.host).to_h if plan.mode == :tftp && plan.transfers.key?(device.host)
+                entry
               end }
           end
         end

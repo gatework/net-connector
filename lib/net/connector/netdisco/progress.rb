@@ -41,13 +41,56 @@ module Net
         end
 
         # 任务开始时记录单调时钟与登录阶段，不把开始通知当作连接成功。
-        def start(device)
+        def start(device, label: "备份")
           @mutex.synchronize do
             @active += 1
             @stages[device.host] = "登录"
             @task_started[device.host] = monotonic
-            @verbose ? emit(device.host, "开始备份（#{device.vendor}）") : refresh
+            @verbose ? emit(device.host, "开始#{label}（#{device.vendor}）") : refresh
           end
+        end
+
+        def operation_plan(devices, concurrency:, label:)
+          @mutex.synchronize do
+            @operation_neighbors = @operation_changes = @operation_skipped = 0
+            @total = devices.size
+            @completed = @active = @succeeded = @failed = 0
+            @stages.clear
+            @task_started.clear
+            @run_started = monotonic
+            emit(nil, "#{label} | 本次 #{@total} 台；并发 #{concurrency}")
+          end
+        end
+
+        def operation_result(device:, status:, duration_ms:, error_code: nil, neighbors: 0, changes: 0)
+          @mutex.synchronize do
+            @completed += 1
+            @active -= 1
+            @stages.delete(device.host)
+            @task_started.delete(device.host)
+            succeeded = %i[planned discovered applied].include?(status)
+            skipped = status == :unsupported_operation
+            @operation_neighbors += neighbors
+            @operation_changes += changes
+            if skipped
+              @operation_skipped += 1
+            elsif succeeded
+              @succeeded += 1
+            else
+              @failed += 1
+            end
+            @failures[error_code || status] += 1 unless succeeded || skipped
+            if @verbose || !succeeded
+              emit(device.host, "#{status}；耗时 #{duration_ms} ms#{error_code ? "（#{error_code}）" : ""}")
+            elsif !@tty && ((@completed % 25).zero? || @completed == @total)
+              emit(nil, status_line)
+            end
+            refresh
+          end
+        end
+
+        def finish_operations(success:, counts:)
+          write(nil, "拓扑批次结束：#{counts.map { |status, count| "#{status}=#{count}" }.join("，")}；结果 #{success ? "完成" : "未完成"}")
         end
 
         # 只显示已脱敏事件中的阶段和安全命令，不显示设备回显或异常原文。

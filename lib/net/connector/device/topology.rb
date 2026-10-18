@@ -3,6 +3,7 @@
 require_relative "topology/strategy"
 require_relative "topology/stages"
 require_relative "topology/plan"
+require_relative "topology/audit"
 
 module Net
   module Connector
@@ -24,6 +25,11 @@ module Net
         # 以邻居和现有配置为证据，生成待确认的接口描述变更计划。
         def plan_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
           Topology.new(self).plan_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, &formatter)
+        end
+
+        # 核实各接口，保留缺失/冲突证据并为可确认的接口构造独立计划。
+        def audit_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
+          Topology.new(self).audit_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, &formatter)
         end
 
         # 明确确认且现场证据未变化时执行接口描述计划。
@@ -151,6 +157,17 @@ module Net
         end
       end
 
+      def audit_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
+        unless [abbreviate, lowercase].all? { |value| value == true || value == false }
+          raise ArgumentError, "description formatting options must be boolean"
+        end
+        formatter ||= ->(peer) { InterfaceDescription.format(peer, abbreviate: abbreviate, lowercase: lowercase) }
+        @device.with_operation(:plan) do
+          AuditBuilder.new(host: @device.host, vendor: @device.vendor, strategy: @strategy,
+                           neighbors: neighbors, descriptions: interface_descriptions, formatter: formatter).call
+        end
+      end
+
       # 比对邻居和现有描述，生成包含确切命令的只读变更计划。
       def plan_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
         validate_change_support!(:plan) if @strategy.supports?(:neighbors)
@@ -246,7 +263,12 @@ module Net
       # 重验失败仍在写入前直接抛异常，保持 stale_plan 的既有契约。
       def revalidate_plan!(plan)
         discovered = neighbors
-        evidence = evidence_for(discovered, interface_descriptions)
+        current = interface_descriptions
+        if plan.scope == :interfaces
+          discovered = discovered.select { |neighbor| plan.evidence.key?(@strategy.interface_key(neighbor.local_interface)) }
+          current = current.slice(*plan.evidence.keys)
+        end
+        evidence = evidence_for(discovered, current)
         current_neighbors = discovered.to_h { |neighbor| [@strategy.interface_key(neighbor.local_interface), neighbor] }
         same_neighbors = plan.changes.all? do |change|
           current_neighbors[@strategy.interface_key(change.interface)] == change.neighbor

@@ -18,6 +18,12 @@ module Net
             raise ArgumentError, "Radware TFTP backup does not use vrf" unless vrf.nil?
           end
 
+          def validate_source_interface!(_target, source_interface:)
+            return if source_interface.nil? || %w[management data].include?(source_interface)
+
+            raise ArgumentError, "Radware source_interface must be management or data"
+          end
+
           # 声明本厂商实际导出的配置种类与格式，不推断服务器文件已核验。
           def receipt_metadata(_target, **) = { configuration_kind: :native_archive, format: :tgz }
 
@@ -34,7 +40,10 @@ module Net
 
           private
 
-          def transfer_command(target, **) = "/cfg/ptcfg #{target.host} -tftp"
+          def transfer_command(target, source_interface: nil, **)
+            flag = { "management" => " -mgmt", "data" => " -data" }.fetch(source_interface, "")
+            "/cfg/ptcfg #{target.host} -tftp#{flag}"
+          end
 
           def transfer_interactions(target, **)
             [interaction(/Enter\s+(?:hostname|IP address)[^\r\n]*:\s*\z/i, "#{target.host}\n"),

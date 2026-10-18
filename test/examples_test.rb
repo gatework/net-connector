@@ -264,9 +264,7 @@ class ConnectorExamplesTest < Minitest::Test
         document = JSON.parse(File.read(summary_path))
         assert_equal File.join(logs, "192.0.2.1.log"), document.fetch("devices").first.fetch("session_log")
         assert File.file?(File.join(logs, "192.0.2.1.log"))
-        out, err, process = Open3.capture3(RbConfig.ruby, File.join(ROOT, "examples/review_tftp.rb"), File.dirname(summary_path))
-        assert process.success?, err
-        assert_equal 1, JSON.parse(out).fetch("device_confirmed_uploads")
+        assert_equal 1, document.fetch("counts").fetch("reported_uploaded")
       end
     end
   end

@@ -14,10 +14,19 @@ module Net
         end
 
         # 生成本地或 TFTP 备份计划，明确记录每台未执行设备的原因。
-        def call(mode:, limit_per_vendor:, allow_fixed_name_reuse: false)
+        def call(mode:, limit_per_vendor:, allow_fixed_name_reuse: false, tftp_policy: nil)
+          raise ArgumentError, "plan mode must be backup or tftp" unless %i[backup tftp].include?(mode)
           self.class.validate_limit!(limit_per_vendor)
           # 默认全量不构造采样任务副本或逐设备选择索引；只保留最终计划需要的槽位。
-          selected_tasks = sample_tasks(limit_per_vendor)
+          tftp_policy ||= Tftp::Policy.new
+          @transfers = if mode == :tftp
+                         @inventory.select { |device| device.ready? && device.supports_backup?(mode: :tftp) }.to_h do |device|
+                           [device.host, tftp_policy.for(host: device.host, vendor: device.vendor)]
+                         end.freeze
+                       else
+                         {}.freeze
+                       end
+          selected_tasks = sample_tasks(limit_per_vendor, mode)
           selected_indices = selected_tasks&.to_h { |index, _device| [index, true] }
           first_index_by_filename = mode == :tftp ? tftp_target_indices(selected_tasks) : {}
           outcomes = Array.new(@inventory.size)
@@ -25,10 +34,13 @@ module Net
             if !device.ready?
               outcomes[index] = skipped(device, device.issue)
               nil
+            elsif !device.supports_backup?(mode: mode)
+              outcomes[index] = skipped(device, :unsupported_operation)
+              nil
             elsif selected_indices && !selected_indices.key?(index)
               outcomes[index] = skipped(device, :sample_limit)
               nil
-            elsif mode == :tftp && first_index_by_filename.fetch(device.tftp_filename) != index &&
+            elsif mode == :tftp && first_index_by_filename.fetch(target_key(device)) != index &&
                   !(allow_fixed_name_reuse && device.vendor == :palo_alto)
               outcomes[index] = skipped(device, :remote_filename_collision)
               nil
@@ -37,7 +49,7 @@ module Net
             end
           end
           Plan.new(mode: mode, inventory: @inventory, ready: ready.freeze, outcomes: outcomes.freeze,
-                   allow_fixed_name_reuse: allow_fixed_name_reuse)
+                   allow_fixed_name_reuse: allow_fixed_name_reuse, transfers: @transfers)
         end
 
         # 限制单厂商采样数，空值表示选择所有就绪设备。
@@ -50,22 +62,24 @@ module Net
         private
 
         # 只有显式采样才分组；厂商组内仍按管理地址选择，与全量输出顺序分开。
-        def sample_tasks(limit)
+        def sample_tasks(limit, mode)
           return unless limit
 
-          tasks = @inventory.each_with_index.filter_map { |device, index| [index, device] if device.ready? }
+          tasks = @inventory.each_with_index.filter_map { |device, index| [index, device] if device.ready? && device.supports_backup?(mode: mode) }
           tasks.group_by { |_index, device| device.vendor }.values.flat_map do |group|
             group.min_by(limit) { |_index, device| device.host }
           end
         end
 
+        def target_key(device) = [@transfers[device.host]&.server, device.tftp_filename]
+
         # 采样模式按采样顺序仲裁目标，全量模式直接扫描清单；输出仍保留清单顺序。
         def tftp_target_indices(selected_tasks)
           found = {}
           if selected_tasks
-            selected_tasks.each { |index, device| found[device.tftp_filename] ||= index }
+            selected_tasks.each { |index, device| found[target_key(device)] ||= index }
           else
-            @inventory.each_with_index { |device, index| found[device.tftp_filename] ||= index if device.ready? }
+            @inventory.each_with_index { |device, index| found[target_key(device)] ||= index if device.ready? && device.supports_backup?(mode: :tftp) }
           end
           found
         end

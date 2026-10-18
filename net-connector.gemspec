@@ -16,7 +16,7 @@ Gem::Specification.new do |spec|
   spec.files = Dir["lib/**/*.rb", "lib/net/connector/templates/**/*.textfsm", "lib/net/connector/templates/index",
                    "bin/net-backup", "docs/architecture.md", "docs/RELEASING.md", "docs/VERIFICATION.md",
                    "docs/templates.md", "docs/vendors.md", "docs/usage.md", "docs/usage.zh-CN.md", "docs/netdisco.md", "docs/netdisco.zh-CN.md",
-                   "examples/backup.yml", "examples/inventory_sql.yml",
+                   "examples/backup.yml", "examples/inventory.yml",
                    "README.md", "README.zh-CN.md", "LICENSE", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md"].sort
   spec.require_paths = ["lib"]
   spec.bindir = "bin"

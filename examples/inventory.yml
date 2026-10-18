@@ -1,0 +1,39 @@
+# PostgreSQL 完整批量示例；凭据使用 ND_DB_HOST/NAME/USER/PASS。
+# 只读参数化查询，不把数据库密码写入 YAML。
+netdisco:
+  source: postgres
+  db_port: 5432
+  db_sslmode: verify-full
+  # db_sslrootcert: /etc/net-connector/database-ca.crt
+  # db_connect_timeout: 10
+  query: |
+    SELECT host(ip) AS ip, name, dns, vendor, os, model, os_ver, serial
+    FROM device
+    WHERE vendor = $1
+    ORDER BY ip
+  query_params: [H3C]
+  page_size: 500
+  max_devices: 100000
+  inventory_timeout: 300
+  cache_enabled: true
+  cache_mode: prefer
+  cache_ttl: 259200
+  cache_directory: ./.cache/net-connector/inventory
+inventory:
+  include_hosts: []
+  exclude_hosts: []
+  include_names: []
+  exclude_names: []
+  name_match: contains
+  include_vendors: []
+  exclude_vendors: []
+  vendor_overrides: {}
+  host_overrides: {}
+  device_rules: []
+backup:
+  directory: ./examples/backups
+  concurrency: 4
+ssh:
+  protocol: ssh
+  host_key_policy: accept_new
+  log_level: info

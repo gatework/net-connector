@@ -61,7 +61,7 @@ H3C discovers its saved source with `display startup` when omitted; Huawei requi
 
 The immutable `TftpReceipt` records `server`, actual `path`, `completed_at`, `configuration_kind`, `source_file`, `format`, `requested_path`, and verification fields. Direct calls return `:device_reported` with no server digest: they confirm device output, not the server file. Explicit source files are not assumed to contain running configuration. TFTP carries configuration without encryption; restrict its network access appropriately.
 
-Explicit failure raises `:transfer_failed`; missing completion evidence raises `:transfer_unconfirmed`. A failure after confirmed upload raises `TftpCompletionError` with `error.receipt`. A mismatched explicit path is `:transfer_path_mismatch`; an unconfirmed actual path is `:transfer_path_unconfirmed` with receipt path `nil`. No automatic retransmission occurs. See the [single-device example](../examples/device_tftp.rb) and [server verification](netdisco.md#tftp-history-and-verification).
+Explicit failure raises `:transfer_failed`; missing completion evidence raises `:transfer_unconfirmed`. A failure after confirmed upload raises `TftpCompletionError` with `error.receipt`. A mismatched explicit path is `:transfer_path_mismatch`; an unconfirmed actual path is `:transfer_path_unconfirmed` with receipt path `nil`. No automatic retransmission occurs. For a single inventory device, run `bundle exec ruby examples/backup_tftp.rb --host 192.0.2.20` with the server and transfer options in [backup.yml](../examples/backup.yml). See [server verification](netdisco.md#tftp-history-and-verification).
 
 ## TextFSM parsing
 

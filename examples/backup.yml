@@ -1,11 +1,15 @@
 # 仅保存非敏感策略，凭据使用环境变量。
-# ND_URL、ND_CACHE_TTL、NC_CONCURRENCY 可覆盖对应策略；其余由 YAML 或 CLI 设置。
+# 示例层优先级：CLI > YAML > 环境默认值；进程环境优先于 .env。
 backup:
   directory: ./examples/backups
   concurrency: 4
   # limit_per_vendor: 3 # 省略时使用全量清单。
 netdisco:
   source: http
+  cache_enabled: true
+  cache_mode: prefer # prefer / only / refresh；CLI 可覆盖。
+  cache_ttl: 259200
+  cache_directory: ./.cache/net-connector/inventory
   page_size: 500
   max_pages: 10000
   max_response_bytes: 16777216
@@ -16,6 +20,10 @@ netdisco:
 inventory:
   include_hosts: []
   exclude_hosts: []
+  include_names: []
+  exclude_names: []
+  name_match: contains # contains / prefix / glob；不区分大小写，排除优先。
+  exclude_vendors: []
   include_vendors: []
   vendor_overrides: {}
   host_overrides: {}
@@ -32,10 +40,41 @@ ssh:
   max_script_output_bytes: null
 tftp:
   vrfs:
-    cisco_nxos: management
-    hillstone: mgt-vr
-  # verification_root: /srv/tftp
-  # server: 192.0.2.10
-  # h3c_source_file: flash:/startup.cfg
-  # h3c_wireless_source_file: flash:/startup.cfg
-  # huawei_source_file: flash:/startup.cfg
+    cisco_nxos:
+      default: management
+      hosts:
+        "192.0.2.21": production # 设备值覆盖 default；null 回到设备协议缺省。
+    hillstone:
+      default: mgt-vr
+      hosts:
+        "192.0.2.22": trust-vr
+  source_interfaces:
+    h3c:
+      default: management # 单次 source ip，使用本设备连接 IPv4 地址。
+      hosts:
+        "192.0.2.23": Vlan-interface10
+        "192.0.2.24": null # 清除 management，让设备使用协议缺省源。
+    radware:
+      default: management # 单次 -mgmt；data 对应 -data。
+      hosts:
+        "192.0.2.25": data
+  # 以下地址均为文档保留地址，运行前替换为设备可达的实际服务器。
+  server: 192.0.2.10
+  servers:
+    "192.0.2.26": "192.0.2.20" # 仅此设备改用另一个服务器。
+  verification_roots: {} # 精确服务器到本机目录；设备切换服务器后不会沿用默认目录。
+  # 启用核验时将上面的 {} 替换为实际可写目录映射，例如：
+  # verification_roots:
+  #   "192.0.2.10": /srv/tftp/main
+  #   "192.0.2.20": /srv/tftp/alternate
+  source_files:
+    h3c:
+      default: null # 未指定时从设备发现；也可配置 flash:/startup.cfg。
+      hosts:
+        "192.0.2.23": flash:/startup.cfg
+    h3c_wireless:
+      default: null
+      hosts: {}
+    huawei:
+      default: flash:/startup.cfg
+      hosts: {}

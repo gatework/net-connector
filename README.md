@@ -41,7 +41,7 @@ net-backup --config config.yml --plan
 net-backup --config config.yml
 ```
 
-Start with [backup.yml](examples/backup.yml) or [inventory_sql.yml](examples/inventory_sql.yml). Configure inventory and device credentials in the environment; YAML contains non-sensitive settings. See the [Netdisco guide](docs/netdisco.md) for HTTP/PostgreSQL inventories, success policies, TFTP verification, and batch examples.
+Start with [backup.yml](examples/backup.yml) or [inventory.yml](examples/inventory.yml). Configure inventory and device credentials in the environment; YAML contains non-sensitive settings. See the [Netdisco guide](docs/netdisco.md) for HTTP/PostgreSQL inventories, success policies, TFTP verification, and batch examples.
 
 ## Documentation
 

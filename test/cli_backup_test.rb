@@ -84,6 +84,25 @@ class CLIBackupTest < Minitest::Test
     end
   end
 
+  def test_server_specific_archive_root_keeps_all_fixed_name_devices_in_the_cli_plan
+    Dir.mktmpdir do |root|
+      path = File.join(root, "config.yml")
+      File.write(path, { "tftp" => { "server" => "192.0.2.10", "verification_roots" => { "192.0.2.10" => root } } }.to_yaml)
+      inventory = Struct.new(:devices).new((1..2).map { |number| { "ip" => "192.0.2.#{number}", "vendor" => "Palo Alto" } })
+      output, error = StringIO.new, StringIO.new
+      Netdisco::CLI::Credentials.stub(:resolve, [inventory, ->(_) { nil }]) do
+        status = Netdisco::CLI::Backup.new(mode: :tftp, argv: ["--config", path, "--directory", root, "--json", "--quiet"],
+                                         env: {}, output: output, error: error).run
+        assert_equal 1, status, error.string
+      end
+      preview, result = output.string.lines.map { |line| JSON.parse(line) }
+      assert_equal(%w[192.0.2.1 192.0.2.2], preview.fetch("plan").fetch("selected").map { |device| device.fetch("host") })
+      summary = JSON.parse(File.read(result.fetch("report_location")))
+      assert_equal 2, summary.fetch("counts").fetch("missing_credentials")
+      refute summary.fetch("counts").key?("remote_filename_collision")
+    end
+  end
+
   def test_progress_failure_does_not_skip_events_reports_or_json_result
     Dir.mktmpdir do |root|
       output, error = StringIO.new, StringIO.new

@@ -11,8 +11,8 @@ module Net
       module Capability
         # 要求设备直接向 TFTP 服务器导出原生配置。
         # 完成仅表示设备报告传输成功，未读取服务器端文件。
-        def tftp_backup(host:, path: nil, source_file: nil, vrf: nil)
-          Tftp.new(self).call(host: host, path: path, source_file: source_file, vrf: vrf)
+        def tftp_backup(host:, path: nil, source_file: nil, vrf: nil, source_interface: nil)
+          Tftp.new(self).call(host: host, path: path, source_file: source_file, vrf: vrf, source_interface: source_interface)
         end
       end
 
@@ -20,7 +20,7 @@ module Net
       def initialize(device) = @device = device
 
       # 参数先纯校验；源探测、上传、证据核对及收尾共用一次会话租约。
-      def call(host:, path: nil, source_file: nil, vrf: nil)
+      def call(host:, path: nil, source_file: nil, vrf: nil, source_interface: nil)
         receipt = nil
         strategy_class = @device.profile.tftp_strategy
         unless strategy_class
@@ -34,12 +34,21 @@ module Net
         source_file = TftpTarget.validate_source_file!(source_file).dup.freeze unless source_file.nil?
         vrf = vrf&.dup&.freeze
         target = TftpTarget.new(host: host, path: path.nil? ? "preflight.cfg" : path, explicit_path: !path.nil?)
+        source_interface = source_interface.dup.freeze if source_interface.is_a?(String)
+        unless source_interface.nil?
+          unless strategy.respond_to?(:validate_source_interface!)
+            raise ArgumentError, "source_interface is not supported by this TFTP strategy"
+          end
+          strategy.validate_source_interface!(target, source_interface: source_interface)
+        end
         strategy.validate_options!(target, source_file: source_file, vrf: vrf)
         @device.with_operation(:tftp_backup) do
           source = strategy.resolve_source_file(source_file)
           source = TftpTarget.validate_source_file!(source).dup.freeze unless source.nil?
           target = TftpTarget.new(host: target.host, path: strategy.default_path(source), explicit_path: false) if path.nil?
-          result = @device.execute_operation(strategy.script(target, source_file: source, vrf: vrf),
+          transfer_options = { source_file: source, vrf: vrf }
+          transfer_options[:source_interface] = source_interface unless source_interface.nil?
+          result = @device.execute_operation(strategy.script(target, **transfer_options),
                                              name: :tftp_backup, privilege: false)
           confirm_transfer!(strategy, target, result)
           # 一旦看到明确完成证据就保存回执；路径解析或用户钩子失败也不能抹去上传事实。

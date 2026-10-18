@@ -122,7 +122,7 @@ class ModuleLoadingTest < Minitest::Test
 
   def test_netdisco_helpers_support_both_load_orders
     paths = %w[net/connector/netdisco/cli/options net/connector/netdisco/cli/credentials net/connector/netdisco/cli/backup
-               net/connector/netdisco/report/text net/connector/netdisco]
+               net/connector/netdisco/cli/topology net/connector/netdisco/report/text net/connector/netdisco]
     [paths, paths.reverse].each do |order|
       result = isolated(<<~RUBY)
         #{order.map { |path| "require #{path.inspect}" }.join("\n")}
@@ -148,6 +148,7 @@ class ModuleLoadingTest < Minitest::Test
       "cli/options" => 'N::CLI::Options.settings(N::CLI::Options.parse(argv: ["--concurrency", "7"]), env: {}).concurrency == 7',
       "cli/credentials" => "N::CLI::Credentials.respond_to?(:resolve)",
       "cli/backup" => 'require "stringio"; output = StringIO.new; N::CLI::Backup.new(argv: ["--help"], output: output).run.zero? && output.string.include?("--concurrency")',
+      "cli/topology" => 'require "stringio"; output = StringIO.new; N::CLI::Topology.new(argv: ["--help"], output: output).run.zero? && output.string.include?("--apply")',
       "inventory/cache" => 'inventory = Struct.new(:devices).new([]); N::Inventory::Cache.new(inventory: inventory, directory: "unused-cache", identity: "test").status.nil?',
       "report/store" => "N::Report::Store::Json.new.respond_to?(:write)",
       "tftp/verifier" => "N::Tftp::Verifier.new.respond_to?(:upload_and_verify)",

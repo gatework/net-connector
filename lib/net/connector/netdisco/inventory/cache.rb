@@ -18,6 +18,16 @@ module Net
           class InvalidEntry < StandardError; end
           private_constant :InvalidEntry
 
+          # 离线包装器不持有远端传输或凭据；即使误调用也不访问网络。
+          class OfflineSource
+            def devices
+              raise Inventory::Error.new("remote inventory is disabled in cache-only mode", code: :cache_unavailable), cause: nil
+            end
+          end
+          private_constant :OfflineSource
+
+          def self.offline(**options) = new(inventory: OfflineSource.new.freeze, cache_mode: :only, **options)
+
           DEFAULT_TTL = 3 * 24 * 60 * 60
           ERROR_CODES = %i[inventory_error inventory_timeout request_failed invalid_json connection_failed
                            pagination_stalled max_pages max_response_bytes max_inventory_bytes max_devices
@@ -25,7 +35,7 @@ module Net
           private_constant :ERROR_CODES
           attr_reader :status, :refresh_error_code, :write_error_type, :fetched_at
 
-          def initialize(inventory:, directory:, identity:, ttl: DEFAULT_TTL,
+          def initialize(inventory:, directory:, identity:, ttl: DEFAULT_TTL, cache_mode: :prefer,
                          max_inventory_bytes: Inventory::DEFAULTS.fetch(:max_inventory_bytes),
                          max_devices: Inventory::DEFAULTS.fetch(:max_devices), clock: -> { Time.now.utc }, lock_timeout: 5)
             raise ArgumentError, "inventory must respond to devices" unless inventory.respond_to?(:devices)
@@ -41,6 +51,13 @@ module Net
             end
             raise ArgumentError, "clock must respond to call" unless clock.respond_to?(:call)
 
+            unless (cache_mode.is_a?(String) || cache_mode.is_a?(Symbol)) && %w[prefer only refresh].include?(cache_mode.to_s)
+              raise ArgumentError, "cache_mode must be prefer, only or refresh"
+            end
+            @offline = inventory.instance_of?(OfflineSource)
+            @cache_mode = cache_mode.to_sym
+            raise ArgumentError, "offline cache requires only mode" if @offline && @cache_mode != :only
+
             @inventory, @directory, @clock = inventory, File.expand_path(directory).freeze, clock
             @identity = Digest::SHA256.hexdigest(identity).freeze
             @ttl, @lock_timeout = ttl, lock_timeout
@@ -50,10 +67,20 @@ module Net
           end
 
           # 锁内重读避免多个进程同时刷新；强刷仍然允许远端失败时交付历史清单。
-          def devices(force_refresh: false)
+          def devices(force_refresh: false, cache_mode: @cache_mode)
             raise ArgumentError, "force_refresh must be true or false" unless [true, false].include?(force_refresh)
 
+            unless (cache_mode.is_a?(String) || cache_mode.is_a?(Symbol)) && %w[prefer only refresh].include?(cache_mode.to_s)
+              raise ArgumentError, "cache_mode must be prefer, only or refresh"
+            end
+            mode = cache_mode.to_sym
+            raise ArgumentError, "offline cache requires only mode" if @offline && mode != :only
+            raise ArgumentError, "cache-only cannot force refresh" if mode == :only && force_refresh
+
             @status = @refresh_error_code = @write_error_type = @fetched_at = nil
+            return cached_only if mode == :only
+
+            force_refresh ||= mode == :refresh
             with_directory do
               previous = read_cache
               return deliver(previous, :fresh_cache) if !force_refresh && fresh?(previous)
@@ -71,9 +98,20 @@ module Net
 
           private
 
+          def cached_only
+            with_directory(create: false) do
+              entry = read_cache
+              raise Error, "cache entry unavailable" unless entry
+
+              deliver(entry, fresh?(entry) ? :fresh_cache : :stale_cache)
+            end
+          rescue Error, SystemCallError
+            raise Inventory::Error.new("validated inventory cache is unavailable", code: :cache_unavailable), cause: nil
+          end
+
           # 目录的所有者和权限是末级 NOFOLLOW 检查的前提；不修补不可信的既有目录。
-          def with_directory
-            FileUtils.mkdir_p(@directory, mode: 0o700) unless File.exist?(@directory) || File.symlink?(@directory)
+          def with_directory(create: true)
+            FileUtils.mkdir_p(@directory, mode: 0o700) if create && !File.exist?(@directory) && !File.symlink?(@directory)
             File.open(@directory, File::RDONLY | File::NOFOLLOW | File::NONBLOCK) do |directory|
               stat = directory.stat
               unless stat.directory? && stat.uid == Process.euid && (stat.mode & 0o7777) == 0o700

@@ -23,6 +23,9 @@ module Net
           super(host: host.dup.freeze, path: path.dup.freeze, username: username.dup.freeze, protocol: protocol)
         end
 
+        # Ruby 3.2 的原生更新跳过构造校验；更新也必须建立经过校验的快照。
+        def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
+
         def url
           "#{protocol}://#{username}@#{host}/#{path}"
         end

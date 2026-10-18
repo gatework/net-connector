@@ -40,13 +40,7 @@ module Net
           end
 
           # 模板按行读取；未闭合的引号表示证据不完整，不能把首行当成旧描述。
-          def decode_description(value)
-            value = value.strip
-            value.start_with?('"') ? Shellwords.split(value).join(" ") : value
-          rescue ArgumentError
-            raise ParsingError.new("PAN-OS interface comment is not a complete single-line value",
-                                   code: :unrecognized_output, host: @device.host, phase: :parse)
-          end
+          def decode_description(value) = Net::Connector::Topology::QuotedText.decode(value, host: @device.host)
 
           # 用 PAN-OS set 语法生成接口备注变更。
           def change_commands(change)

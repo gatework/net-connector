@@ -18,7 +18,7 @@ class VendorPlatformsTest < Minitest::Test
   def teardown = @device&.close
 
   def test_platform_capabilities_are_explicit_without_opening_a_connection
-    { topsec: [false, false, false, false], fortinet: [true, true, true, false],
+    { topsec: [false, false, false, false], fortinet: [true, true, true, true],
       juniper: [false, false, true, true] }.each do |vendor, expected|
       build(vendor)
       assert @device.supports?(:backup)
@@ -202,7 +202,7 @@ class VendorPlatformsTest < Minitest::Test
   def test_juniper_reads_physical_interface_descriptions_from_committed_set_configuration
     config = CONFIGS.fetch(:juniper) + "set interfaces xe-0/0/1 unit 0 family inet address 192.0.2.1/24\n"
     build(:juniper, "#{config}#{PROMPTS.fetch(:juniper)}")
-    assert_equal({ "ge-0/0/0" => "uplink core", "xe-0/0/1" => "" }, @device.interface_descriptions)
+    assert_equal({ "ge-0/0/0" => "uplink core", "xe-0/0/1" => "", "xe-0/0/1.0" => "" }, @device.interface_descriptions)
     @device.close
     build(:juniper, "set interfaces ge-0/0/0 description \"truncated\n#{PROMPTS.fetch(:juniper)}")
     assert_raises(Net::Connector::ParsingError) { @device.interface_descriptions }

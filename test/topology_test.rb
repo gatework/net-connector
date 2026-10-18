@@ -54,11 +54,13 @@ class TopologyTest < Minitest::Test
   end
 
   def test_unsupported_vendor_rejects_nonempty_forged_plan_without_network_calls
-    device = Device.new(vendor: :huawei, neighbor_output: "")
+    device = Device.new(vendor: :topsec, neighbor_output: "")
     topology = Net::Connector::Topology.new(device)
-    plan = Net::Connector::Topology::Plan.new(
-      host: device.host, vendor: device.vendor, evidence: {}, changes: [Object.new], commands: ["reload"]
-    )
+    neighbor = Net::Connector::Topology::Neighbor.new(local_interface: "Ethernet1", neighbor_name: "peer",
+                                                      neighbor_interface: "Ethernet2", chassis_id: "chassis", protocol: :lldp)
+    change = Net::Connector::Topology::Change.new(interface: "Ethernet1", old_description: "", new_description: "new", neighbor: neighbor)
+    plan = Net::Connector::Topology::Plan.new(host: device.host, vendor: device.vendor,
+                                              evidence: {}, changes: [change], commands: ["reload"])
 
     error = assert_raises(Net::Connector::UnsupportedOperation) { topology.apply_interface_descriptions(plan, confirmed: true) }
     assert_equal :neighbor_discovery_unsupported, error.code
@@ -83,9 +85,11 @@ class TopologyTest < Minitest::Test
     assert_equal :description_unsupported, error.code
     assert_equal :plan, error.phase
 
-    plan = Net::Connector::Topology::Plan.new(
-      host: device.host, vendor: device.vendor, evidence: {}, changes: [Object.new], commands: ["reload"]
-    )
+    neighbor = Net::Connector::Topology::Neighbor.new(local_interface: "Ethernet1", neighbor_name: "peer",
+                                                      neighbor_interface: "Ethernet2", chassis_id: "chassis", protocol: :lldp)
+    change = Net::Connector::Topology::Change.new(interface: "Ethernet1", old_description: "", new_description: "new", neighbor: neighbor)
+    plan = Net::Connector::Topology::Plan.new(host: device.host, vendor: device.vendor,
+                                              evidence: {}, changes: [change], commands: ["reload"])
     error = assert_raises(Net::Connector::UnsupportedOperation) { topology.apply_interface_descriptions(plan, confirmed: true) }
     assert_equal :description_unsupported, error.code
     assert_equal :apply, error.phase

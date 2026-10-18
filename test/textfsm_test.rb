@@ -7,6 +7,48 @@ require_relative "../lib/net/connector/storage/saved_config"
 require_relative "support/fake_transport"
 
 class TextfsmTest < Minitest::Test
+  def test_h3c_command_index_uses_the_output_header_for_column_order
+    parser = Net::Connector::TextFSM.new
+    samples = ["Local Interface Chassis ID Port ID System Name\nGE1/0/1 0011-2233-4455 GE1/0/2 peer\n",
+               "System Name Local Interface Chassis ID Port ID\npeer GE1/0/1 0011-2233-4455 GE1/0/2\n"]
+    %i[h3c h3c_wireless].each do |vendor|
+      samples.each do |sample|
+        row = parser.call(sample, vendor: vendor, command: "display lldp neighbor-information list").fetch(0)
+        assert_equal "GE1/0/1", row.fetch("LOCAL_INTERFACE")
+        assert_equal "peer", row.fetch("NEIGHBOR_NAME")
+      end
+    end
+  end
+
+  def test_command_index_requires_complete_vendor_and_command_matches
+    parser = Net::Connector::TextFSM.new
+    [[:cisco_ios_other, "show ip interface brief"], [:cisco_ios, "prefix show ip interface brief"],
+     [:cisco_ios, "show ip interface brief\n"]].each do |vendor, command|
+      error = assert_raises(Net::Connector::ParsingError) { parser.call("", vendor: vendor, command: command) }
+      assert_equal :template_missing, error.code
+    end
+  end
+
+  def test_config_command_index_covers_each_implemented_description_dialect
+    cases = {
+      cisco_ios: ["show running-config", "interface Ethernet1\n description uplink\n!\n"],
+      cisco_nxos: ["show running-config", "interface Ethernet1\n description uplink\n\n"],
+      h3c: ["display current-configuration", "interface Ethernet1\n description uplink\n#\n"],
+      h3c_wireless: ["dis cur", "interface Ethernet1\n description uplink\n#\n"],
+      huawei: ["display current-configuration", "interface Ethernet1\n description uplink\n#\n"],
+      hillstone: ["show configuration running", "interface Ethernet1\n description uplink\nexit\n"],
+      palo_alto: ["show", "set network interface ethernet Ethernet1 comment uplink\n"],
+      radware: ["/cfg/dump", "/cfg/port 1/name uplink"],
+      fortinet: ["show full-configuration", "config system interface\n    edit Ethernet1\n        set description uplink\n    next\nend\n"],
+      juniper: ["show configuration | display set | no-more", "set interfaces Ethernet1 description uplink\n"]
+    }
+    parser = Net::Connector::TextFSM.new
+    cases.each do |vendor, (command, text)|
+      rows = parser.call(text, vendor: vendor, command: command)
+      assert_equal "uplink", rows.fetch(0).fetch("DESCRIPTION"), vendor.to_s
+    end
+  end
+
   def test_command_uses_vendor_and_command_index
     output = "Interface IP-Address OK? Method Status Protocol\r\n" \
       "GigabitEthernet0/0 192.0.2.1 YES manual up up\r\n" \

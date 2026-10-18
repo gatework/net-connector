@@ -2,6 +2,7 @@
 
 require_relative "../device/base"
 require_relative "huawei/tftp"
+require_relative "huawei/topology"
 
 module Net
   module Connector
@@ -13,6 +14,7 @@ module Net
         profile do
           running_config_strategy Net::Connector::RunningConfig::Rendered
           tftp_strategy Tftp
+          topology_strategy Topology
           commands do
             running_config "dis cur"
             save_config "save force"

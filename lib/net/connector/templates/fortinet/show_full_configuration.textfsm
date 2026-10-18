@@ -1,0 +1,21 @@
+Value Required INTERFACE ((?:[^"\\\s]|\\.)+)
+Value DESCRIPTION (.*)
+
+Start
+  ^config system interface\s*$$ -> Interfaces
+
+Interfaces
+  ^    edit "${INTERFACE}"\s*$$ -> Interface
+  ^    edit ${INTERFACE}\s*$$ -> Interface
+  ^end\s*$$ -> Start
+
+Interface
+  ^        set description\s*$$ -> Error "interface description has no value"
+  ^        set description ${DESCRIPTION}$$
+  ^        config .+$$ -> Nested
+  ^    next\s*$$ -> Record Interfaces
+
+Nested
+  ^        end\s*$$ -> Interface
+
+EOF

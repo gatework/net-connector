@@ -246,3 +246,17 @@ TFTP 远端未核验回执以及自定义日志目录；离线复核同时支持
 源码根目录 `RENAMES.md` 记录批准的改名与兼容边界。完整验收仍运行 `bundle exec rake ci`；
 临时 PostgreSQL 使用 `bundle exec rake test:postgres`，可通过 `NC_TEST_PG_BINDIR` 指定服务端工具目录。
 最低 Ruby 3.2 必须在对应解释器中运行 lint/test；RuboCop 的 TargetRubyVersion 和 Ruby 4.0 测试不能替代此项。
+
+## 报告统计基准
+
+```sh
+bundle exec ruby script/benchmarks/report_workload.rb 100000 20
+```
+
+脚本分别输出批次构造、首次统计及重复统计的单调时钟耗时与对象分配数；合成结果的创建不计入测量。比较两个源码版本时，在同一 Ruby 与主机上各运行至少三次。批次构造会复制结果容器并累计状态，重复统计复用计数；不读取报告的调用方也承担构造成本。TFTP 文件核验与逐设备明细仍有线性成本，此基准不测网络吞吐或现场设备性能。
+
+## 厂商能力与模板一致性
+
+`test/capabilities_test.rb` 离线核对全部已注册平台的能力；`test/vendor_topology_parity_test.rb` 覆盖 Huawei LLDP 简表与接口描述、FortiOS 顶层接口描述/嵌套表隔离，以及 Junos 物理接口和逻辑单元描述。`test/textfsm_test.rb` 同时检查 H3C 两种列序在通用命令解析入口中的语义、内置厂商/命令的完整匹配，以及各配置方言的索引入口。完整性拒绝路径覆盖缺失表头、残缺记录、未闭合接口表/引号、VDOM 作用域不明和没有值的 Junos description。
+
+新增样本来自官方结构说明构造的离线会话，尚无设备联机验收；模板解析成功不能证明固件覆盖或候选配置写入安全。

@@ -17,7 +17,7 @@ class ModuleLoadingTest < Minitest::Test
                net/connector/device/running_config net/connector/device/local_backup net/connector/device/remote_backup/target
                net/connector/device/remote_backup/receipt net/connector/device/remote_backup
                net/connector/device/tftp/strategy net/connector/device/tftp
-               net/connector/device/topology/strategy net/connector/device/topology
+               net/connector/device/topology/strategy net/connector/device/topology/interface_blocks net/connector/device/topology/quoted_text net/connector/device/topology
                net/connector/device/save_config net/connector/textfsm net/connector/device/base net/connector]
     [paths, paths.reverse].each do |order|
       result = isolated(<<~RUBY)

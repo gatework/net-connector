@@ -5,8 +5,8 @@
 | 平台键 | 系统与登录视图 | 采集命令 | 保存 | 原生远端备份 | 拓扑读取 |
 | --- | --- | --- | --- | --- | --- |
 | `topsec` | TopOS 防火墙，`TopsecOS#` 或 `#` 管理视图 | `show-running nostop` | 未开放 | 使用本地采集备份 | 未开放 |
-| `fortinet` | FortiGate/FortiOS，当前账号授权的根或 VDOM 视图 | `show full-configuration` | `execute cfg save` | TFTP `execute backup full-config tftp` | LLDP 邻居 |
-| `juniper` | Junos OS，`user@host>` 操作视图 | `show configuration \| display set \| no-more` | 已提交配置已持久化；不隐式提交候选库 | FTP/SCP `show configuration \| save` | LLDP 邻居、物理接口描述 |
+| `fortinet` | FortiGate/FortiOS，当前账号授权的根或 VDOM 视图 | `show full-configuration` | `execute cfg save` | TFTP `execute backup full-config tftp` | LLDP 邻居、当前视图接口描述 |
+| `juniper` | Junos OS，`user@host>` 操作视图 | `show configuration \| display set \| no-more` | 已提交配置已持久化；不隐式提交候选库 | FTP/SCP `show configuration \| save` | LLDP 邻居、物理接口及逻辑单元描述 |
 
 这些能力通过合成会话、解析样例和安装检查验证，尚无真实设备验收记录。Topsec 只实现有检索依据的 TopOS 配置读取方言；其他系列需依据其 CLI 手册接入，不能套用 Cisco 的命令。
 
@@ -36,7 +36,7 @@ TFTP 导出包括默认值，不接受 `source_file:` 或 `vrf:`。成功必须�
 
 LLDP 查询先读取 `get system status`，明确解析版本后选择命令：7.6.2 及以前使用 `diagnose lldprx neighbor`，7.6.3 起使用 `diagnose lldp rx neighbor`。无法识别版本时直接报解析错误，不猜测命令。接口行数量与解析记录必须一致，空响应不会被当作零邻居。
 
-Junos LLDP 使用 `show lldp neighbors detail | no-more`，逐个本地接口块核对记录。残缺记录及只有标题的输出会报错；接口描述从已提交的 set 配置中读取，保留 `ge-`、`xe-`、`ae` 等原接口身份。
+Junos LLDP 使用 `show lldp neighbors detail | no-more`，逐个本地接口块核对记录。残缺记录及只有标题的输出会报错；接口描述从已提交的 set 配置中读取，逻辑单元用 `接口.单元号` 独立返回，保留 `ge-`、`xe-`、`ae` 等原接口身份。
 
 ## 命令依据
 
@@ -48,3 +48,14 @@ Junos LLDP 使用 `show lldp neighbors detail | no-more`，逐个本地接口块
 - [Juniper save 配置模式语义](https://www.juniper.net/documentation/us/en/software/junos/cli-reference/topics/ref/statement/save-cli-config.html)：配置模式的层级导出与远端 SCP。
 - [Juniper file copy 协议](https://www.juniper.net/documentation/us/en/software/junos/cli-reference/topics/ref/command/file-copy.html)：支持的远端文件传输 URL。
 - [Juniper LLDP 邻居字段](https://www.juniper.net/documentation/us/en/software/junos/cli-reference/topics/ref/command/show-lldp-neighbors.html)：接口、机箱、端口和系统名字段，`detail` 选项要求 Junos 19.1R2 或以上。
+
+## 拓扑读取能力对齐
+
+Huawei VRP 通过 `display lldp neighbor brief` 提供 LLDP 邻居，运行配置提供接口描述。简表不包含机箱 ID，邻居的 `chassis_id` 保留为空；接口类型与编号之间的空格在返回值中保留，在配置身份关联时移除。没有已验证的提交与保存阶段，因此只开放读取。
+
+FortiOS 从既有 `show full-configuration` 结果中读取顶层 `config system interface` 的 `description`，不把 `alias` 当作描述，不切换 VDOM 或全局视图。嵌套 VDOM 接口表、多个顶层接口表、缺少 next/end 或未闭合描述会报解析错误。输入按标准 CLI 的四空格缩进组织；不对其他导出格式作静默猜测。
+
+- [Huawei LLDP 邻居简表](https://info.support.huawei.com/hedex/api/pages/EDOC1100277650/AZM1016J/04/resources/command/yunshan/LLDPDISPLAYNEIBRIEF%28LLDPOM%29.html)：查询视图、字段及端口拼写。
+- [Huawei 当前接口配置](https://info.support.huawei.com/hedex/api/pages/EDOC1100363264/AEN0403J/05/resources/command/yunshan/BUILDRUNINTERFACE1%28CLIOM%29.html)：接口块及生效配置的范围。
+- [FortiOS 接口配置结构](https://docs.fortinet.com/document/fortigate/7.4.4/cli-reference/317104469/config-system-interface)：description、alias 与 IPv6 等嵌套配置。
+- [Junos 物理接口与逻辑单元描述示例](https://www.juniper.net/documentation/en_US/day-one-books/DayOne-Intro-SRv6.pdf)：物理描述与 unit 描述的独立配置层级。

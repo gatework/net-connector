@@ -134,7 +134,7 @@ class ValueObjectContractTest < Minitest::Test
     assert_nil outcome.with(error_type: nil, diagnostic: nil).diagnostic
   end
 
-  def test_batch_constructor_does_not_deep_freeze_caller_collections
+  def test_batch_owns_collections_and_audit_metadata_without_freezing_callers
     outcomes = []
     callback_error = { host: +"192.0.2.1", error_type: "IOError" }
     callback_errors = [callback_error]
@@ -146,12 +146,14 @@ class ValueObjectContractTest < Minitest::Test
     started_at.localtime(3600)
 
     assert batch.frozen?
-    assert_equal 1, batch.outcomes.size
-    assert_equal "192.0.2.2", batch.callback_errors.first.fetch(:host)
-    assert_equal 3600, batch.started_at.utc_offset
+    assert_empty batch.outcomes
+    assert_equal "192.0.2.1", batch.callback_errors.first.fetch(:host)
+    assert_equal 0, batch.started_at.utc_offset
+    assert batch.outcomes.frozen?
+    assert batch.callback_errors.first.fetch(:host).frozen?
   end
 
-  def test_direct_topology_plan_construction_preserves_member_references
+  def test_direct_topology_plan_construction_owns_member_snapshots
     host = +"192.0.2.1"
     evidence = {}
     changes = []
@@ -163,11 +165,79 @@ class ValueObjectContractTest < Minitest::Test
     commands << "show running-config"
 
     assert plan.frozen?
-    assert_equal "192.0.2.2", plan.host
-    assert_same evidence, plan.evidence
-    assert_equal 1, plan.evidence.size
-    assert_same changes, plan.changes
-    assert_equal ["show running-config"], plan.commands
+    assert_equal "192.0.2.1", plan.host
+    assert_empty plan.evidence
+    refute_same changes, plan.changes
+    assert_empty plan.commands
+    assert plan.evidence.frozen?
+    assert plan.changes.frozen?
+    assert plan.commands.frozen?
+  end
+
+  def test_topology_updates_own_nested_evidence_and_change_strings
+    name = +"peer"
+    neighbor = Connector::Topology::Neighbor.new(local_interface: +"Ethernet1", neighbor_name: name,
+                                                 neighbor_interface: +"Ethernet2", chassis_id: +"chassis", protocol: :lldp)
+    name.replace("changed")
+    assert_equal "peer", neighbor.neighbor_name
+    replacement = +"next-peer"
+    updated_neighbor = neighbor.with(neighbor_name: replacement)
+    replacement.clear
+    assert_equal "next-peer", updated_neighbor.neighbor_name
+    description = +"approved"
+    change = Connector::Topology::Change.new(interface: +"Ethernet1", old_description: +"old",
+                                              new_description: description, neighbor: neighbor)
+    fields = [+"peer", +"Ethernet2", +"old"]
+    commands = [+"show version"]
+    plan = Connector::Topology::Plan.new(host: +"192.0.2.1", vendor: :cisco_ios,
+                                          evidence: { "ethernet1" => fields }, changes: [change], commands: commands)
+    description.clear
+    fields.first.clear
+    commands.first.clear
+    assert_equal "approved", plan.changes.first.new_description
+    assert_equal ["peer", "Ethernet2", "old"], plan.evidence.fetch("ethernet1")
+    assert_equal ["show version"], plan.commands
+    replacement = +"revised"
+    changed = change.with(new_description: replacement)
+    fields = [+"peer", +"Ethernet2", +"old"]
+    updated = plan.with(evidence: { "ethernet1" => fields }, changes: [changed])
+    replacement.clear
+    fields.last.clear
+    assert_equal "revised", updated.changes.first.new_description
+    assert_equal "old", updated.evidence.fetch("ethernet1").last
+    assert_raises(FrozenError) { updated.evidence.fetch("ethernet1").first.clear }
+    assert_raises(ArgumentError) { plan.with(changes: [Object.new]) }
+    assert_raises(ArgumentError) { plan.with(evidence: { "Ethernet1" => ["incomplete"] }) }
+  end
+
+  def test_batch_updates_recompute_counts_and_keep_independent_metadata
+    started = Time.utc(2026, 1, 1)
+    batch = Netdisco::Batch.new(mode: :backup, outcomes: [build_outcome], callback_errors: [],
+                               started_at: started, finished_at: started, report_location: nil, report_error: nil)
+    assert_raises(ArgumentError) { build_outcome(status: []) }
+    status = +"unknown"
+    unknown = batch.with(outcomes: [build_outcome(status: status)])
+    status.clear
+    assert_equal({ "unknown" => 1 }, unknown.counts)
+    refute unknown.build_report(policy: :selected).policy_success?
+    counts = batch.counts
+    counts.clear
+    assert_equal({ failed: 1 }, batch.counts)
+    values = [build_outcome.with(status: :backed_up)]
+    host = +"192.0.2.1"
+    errors = [{ host: host, error_type: +"IOError" }]
+    location = +"report.json"
+    updated = batch.with(outcomes: values, callback_errors: errors, report_location: location)
+    values.clear
+    host.clear
+    errors.clear
+    location.clear
+    assert_equal({ backed_up: 1 }, updated.counts)
+    assert_equal "192.0.2.1", updated.callback_errors.first.fetch(:host)
+    assert_equal "report.json", updated.report_location
+    refute updated.success?
+    assert updated.with(callback_errors: []).success?
+    assert_equal({ failed: 1 }, batch.counts)
   end
 
   private

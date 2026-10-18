@@ -30,18 +30,17 @@ module Net
           # 只认可本厂商明确的保存完成行，设备提示符返回本身不能证明持久化。
           def persistence_pattern = /\ASaved the current configuration to mainboard device successfully\.\z/i
 
-          # H3C 不同版本的列顺序不同，按表头选对应模板。
+          # H3C 列顺序由同一模板按表头分支；策略先拒绝未知表头。
           def neighbor_template(output)
-            return "h3c/display_lldp_neighbor_information_list_name_first.textfsm" if output.match?(/^\s*System Name\s+Local Interface\b/im)
-            return "h3c/display_lldp_neighbor_information_list_local_first.textfsm" if output.match?(/^\s*(?:Local Interface|LocalIf)\s+/im)
+            return "h3c/display_lldp_neighbor_information_list.textfsm" if output.match?(TABLE_HEADER)
 
             raise ParsingError.new("H3C LLDP table header was not recognized", code: :unrecognized_output,
                                    host: @device.host, phase: :discover)
           end
 
           # 按表头后的有效数据行计数，未知行会让完整性校验失败。
-          def expected_neighbor_count(output, template)
-            local_column = template == "h3c/display_lldp_neighbor_information_list_name_first.textfsm" ? 1 : 0
+          def expected_neighbor_count(output, _template)
+            local_column = output.match?(/^[ \t]*System Name[ \t]+Local Interface\b/i) ? 1 : 0
             lines = neighbor_lines(output)
             return unless lines.all? do |line|
               interface = line.split.fetch(local_column, nil)

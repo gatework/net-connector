@@ -74,7 +74,7 @@ module Net
         end
         @topology_strategy = strategy_class(topology_strategy, :topology_strategy,
                                             %i[neighbor_command neighbor_template expected_neighbor_count empty_neighbor_output?
-                                               protocol description_template interface_key configuration_interface
+                                               protocol description_template description_key interface_key configuration_interface
                                                decode_description validate_descriptions! change_error_code supports?
                                                enter_configuration_command change_commands script_command
                                                leave_configuration_commands verification_commands persistence_commands persistence_confirmed?])

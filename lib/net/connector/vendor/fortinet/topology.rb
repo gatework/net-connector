@@ -9,7 +9,7 @@ module Net
       class Fortinet < Net::Connector::Base
         # LLDP 命令自 7.6.3 改名；先核对只读版本信息，不通过失败重试猜测方言。
         class Topology < Net::Connector::Topology::Strategy
-          def self.supports?(capability) = capability == :neighbors
+          def self.supports?(capability) = %i[neighbors interface_descriptions].include?(capability)
 
           def neighbor_command
             status = @device.execute_command("get system status").value!
@@ -20,6 +20,29 @@ module Net
             end
             release = version.captures.map(&:to_i)
             (release <=> [7, 6, 3]) >= 0 ? "diagnose lldp rx neighbor" : "diagnose lldprx neighbor"
+          end
+
+          def description_template = "fortinet/show_full_configuration.textfsm"
+
+          # 接口名称大小写与设备配置一致，不套用 Cisco 接口简称。
+          def interface_key(name) = decode_description(name)
+
+          def configuration_interface(name) = name
+
+          def decode_description(value) = Net::Connector::Topology::QuotedText.decode(value, host: @device.host, split_unquoted: true)
+
+          # 模板只接受当前视图的顶层接口表，嵌套 VDOM 或残缺配置不能冒充完整结果。
+          def validate_descriptions!(config, rows)
+            tables = config.scan(/^config system interface[ \t]*$/).size
+            nested = config.match?(/^[ \t]+config system interface[ \t]*$/)
+            table = config[/^config system interface[ \t]*\n(.*?)^end[ \t]*$/m, 1]
+            expected = table&.scan(/^    edit[ \t]+([^\r\n]+)/)&.flatten
+            names = expected&.map { |name| decode_description(name) }
+            return if !nested && tables == 1 && names == rows.map { |row| interface_key(row.fetch("INTERFACE")) } &&
+                      table.scan(/^    next[ \t]*$/).size == names.size
+
+            raise ParsingError.new("FortiOS interface table is incomplete or outside the current view",
+                                   code: :unrecognized_output, host: @device.host, phase: :parse)
           end
 
           def neighbor_template(_output) = "fortinet/diagnose_lldp_rx_neighbor.textfsm"

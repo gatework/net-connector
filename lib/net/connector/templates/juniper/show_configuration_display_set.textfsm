@@ -1,6 +1,10 @@
 Value Required INTERFACE (\S+)
+Value UNIT (\d+)
 Value DESCRIPTION (.*)
 
 Start
+  ^set interfaces \S+ (?:unit \d+ )?description\s*$$ -> Error "interface description has no value"
+  ^set interfaces ${INTERFACE} unit ${UNIT} description ${DESCRIPTION}$$ -> Record
+  ^set interfaces ${INTERFACE} unit ${UNIT}\s+.*$$ -> Continue.Record
   ^set interfaces ${INTERFACE} description ${DESCRIPTION}$$ -> Record
   ^set interfaces ${INTERFACE}\s+.*$$ -> Record

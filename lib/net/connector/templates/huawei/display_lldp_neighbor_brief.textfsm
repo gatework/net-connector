@@ -1,0 +1,9 @@
+Value Required LOCAL_INTERFACE ([A-Za-z][A-Za-z0-9-]*[ \t]*\d[\w/.:-]*)
+Value Required NEIGHBOR_NAME (\S+)
+Value Required NEIGHBOR_INTERFACE ([A-Za-z][A-Za-z0-9-]*[ \t]*\d[\w/.:-]*|\S+)
+
+Start
+  ^\s*Local Intf\s+Neighbor Dev\s+Neighbor Intf\s+Exptime.*$$ -> Neighbors
+
+Neighbors
+  ^\s*${LOCAL_INTERFACE}\s+${NEIGHBOR_NAME}\s+${NEIGHBOR_INTERFACE}\s+\d+\s*$$ -> Record

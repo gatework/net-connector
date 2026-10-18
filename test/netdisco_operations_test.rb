@@ -277,14 +277,14 @@ class NetdiscoOperationsTest < Minitest::Test
     assert connector.closed
   end
 
-  def test_planning_is_read_only_and_retains_independent_frozen_domain_plans
+  def test_planning_is_read_only_and_shares_immutable_domain_plans
     original = plan(@hosts.first)
     @connectors.fetch(@hosts.first).value = original
     formatter = ->(_) { "description" }
     batch = @operations.plan_interface_descriptions(hosts: [@hosts.first], &formatter)
     value = batch.plans.fetch(@hosts.first)
     assert batch.success?
-    refute_same original, value
+    assert_same original, value
     assert value.evidence.frozen?
     assert value.changes.first.neighbor.neighbor_name.frozen?
     assert_equal :plan, @connectors.fetch(@hosts.first).calls.first.first
@@ -308,7 +308,7 @@ class NetdiscoOperationsTest < Minitest::Test
     call = @connectors.fetch(@hosts.first).calls.first
     assert_equal :apply, call.first
     assert_equal true, call.last
-    refute_same original, call[1]
+    assert_same original, call[1]
     assert call[1].changes.frozen?
     assert_equal 1, @connectors.fetch(@hosts.first).calls.size
   end
@@ -486,7 +486,7 @@ class NetdiscoOperationsTest < Minitest::Test
     assert_raises(ArgumentError) { batch.with(outcomes: [Object.new]) }
     external_plan = plan(@hosts.first)
     outcome = outcome.with(value: external_plan)
-    external_plan.evidence.clear
+    assert_raises(FrozenError) { external_plan.evidence.clear }
     assert_equal 1, outcome.value.evidence.size
     assert outcome.value.evidence.frozen?
     errors = [{ host: +"192.0.2.1", error_type: "IOError" }]
@@ -508,7 +508,7 @@ class NetdiscoOperationsTest < Minitest::Test
 
   private
 
-  # 故意提供可变审批容器，验证复制边界而非依赖生产规划器已经冻结的结果。
+  # 直接构造审批值，验证领域对象与批次共用同一不可变边界。
   def plan(host)
     neighbor = Connector::Topology::Neighbor.new(local_interface: "GigabitEthernet1/0/1", neighbor_name: "secret-neighbor",
                                                  neighbor_interface: "Ethernet1", chassis_id: "chassis", protocol: :lldp)

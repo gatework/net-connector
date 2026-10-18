@@ -46,8 +46,9 @@ module Net
 
           return false if policy == :verified && outcomes.any? { |outcome| outcome.success? && !server_verified?(outcome) }
 
-          outcomes.any? { |outcome| SUCCESS_STATUSES.include?(outcome.status) } &&
-            outcomes.all? { |outcome| SUCCESS_STATUSES.include?(outcome.status) || IGNORABLE_STATUSES.include?(outcome.status) }
+          statuses = counts
+          SUCCESS_STATUSES.any? { |status| statuses.key?(status) } &&
+            statuses.keys.all? { |status| SUCCESS_STATUSES.include?(status) || IGNORABLE_STATUSES.include?(status) }
         end
 
         def with(**attributes)
@@ -61,14 +62,14 @@ module Net
                           policy: policy, duration_ms: duration_ms, report_diagnostic: diagnostic, log_directory: log_directory)
         end
 
-        # 统计不创建逐设备明细；文本与进度输出复用此入口，不缓存调用方持有的批次。
+        # 统计不创建逐设备明细；文本与进度输出复用此入口，复用批次拥有的状态计数。
         def statistics
           batch_data = batch_summary
+          attempted = ATTEMPTED_STATUSES.sum { |status| batch_data[:counts].fetch(status, 0) }
           batch_data.merge(
             schema_version: 2, policy: policy, policy_success: policy_success?, duration_ms: duration_ms,
-            coverage: { complete: !outcomes.empty? && outcomes.all? { |outcome| ATTEMPTED_STATUSES.include?(outcome.status) },
-                        attempted: outcomes.count { |outcome| ATTEMPTED_STATUSES.include?(outcome.status) },
-                        skipped: outcomes.count { |outcome| !ATTEMPTED_STATUSES.include?(outcome.status) } },
+            coverage: { complete: !outcomes.empty? && attempted == outcomes.size,
+                        attempted: attempted, skipped: outcomes.size - attempted },
             callback_errors: callback_errors.map { |entry| { host: entry[:host], error_type: Error::Metadata.type(entry[:error_type]) } },
             report_location: report_location, report_error: Error::Metadata.type(report_error),
             verification: mode == :tftp ? { verified: outcomes.count { |outcome| server_verified?(outcome) },
@@ -86,14 +87,16 @@ module Net
 
         # 生成可写入报告及供命令行展示的结构化摘要。
         def batch_summary
+          statuses = counts
+          succeeded = SUCCESS_STATUSES.sum { |status| statuses.fetch(status, 0) }
+          partial = statuses.fetch(:saved_with_error, 0) + statuses.fetch(:reported_with_error, 0)
+          failed = statuses.fetch(:failed, 0)
           {
             mode: mode, status: status, started_at: started_at.iso8601, finished_at: finished_at.iso8601,
             total: outcomes.size,
-            succeeded: outcomes.count(&:success?),
-            partial: outcomes.count(&:partial?),
-            failed: outcomes.count { |outcome| outcome.status == :failed },
-            skipped: outcomes.count(&:skipped?),
-            counts: counts,
+            succeeded: succeeded, partial: partial, failed: failed,
+            skipped: outcomes.size - succeeded - partial - failed,
+            counts: statuses,
             callback_errors: callback_errors
           }
         end

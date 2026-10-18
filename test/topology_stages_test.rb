@@ -56,8 +56,9 @@ class TopologyStagesTest < Minitest::Test
       assert plan.changes.all?(&:frozen?)
       assert plan.commands.frozen?
       assert plan.commands.all?(&:frozen?)
-      assert description.frozen?
-      assert_raises(FrozenError) { description.replace("changed") }
+      refute description.frozen?
+      description.replace("changed")
+      assert_equal "planned", plan.changes.first.new_description
     end
   end
 
@@ -173,8 +174,11 @@ class TopologyStagesTest < Minitest::Test
     refute device.supports?(:interface_description_changes)
     error = assert_raises(Net::Connector::UnsupportedOperation) { device.plan_interface_descriptions }
     assert_equal :candidate_isolation_unavailable, error.code
+    neighbor = Net::Connector::Topology::Neighbor.new(local_interface: "Ethernet1", neighbor_name: "peer",
+                                                      neighbor_interface: "Ethernet2", chassis_id: "chassis", protocol: :lldp)
+    change = Net::Connector::Topology::Change.new(interface: "Ethernet1", old_description: "", new_description: "new", neighbor: neighbor)
     plan = Net::Connector::Topology::Plan.new(host: device.host, vendor: device.vendor,
-                                                         evidence: {}, changes: [Object.new], commands: ["configure", "commit"])
+                                              evidence: {}, changes: [change], commands: ["configure", "commit"])
     error = assert_raises(Net::Connector::UnsupportedOperation) { device.apply_interface_descriptions(plan, confirmed: true) }
     assert_equal :candidate_isolation_unavailable, error.code
     assert_equal 0, transport.opens

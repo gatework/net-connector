@@ -11,8 +11,8 @@ class CapabilitiesTest < Minitest::Test
       device = Net::Connector.build(vendor, host: "192.0.2.1", username: "admin", transport: transport)
       %i[running_config backup].each { |capability| assert device.supports?(capability), "#{vendor}: #{capability}" }
       assert_equal !%i[palo_alto juniper topsec].include?(vendor), device.supports?(:save_config), vendor.to_s
-      assert_equal !%i[huawei topsec fortinet].include?(vendor), device.supports?(:interface_descriptions), vendor.to_s
-      assert_equal !%i[huawei radware topsec].include?(vendor), device.supports?(:neighbors), vendor.to_s
+      assert_equal vendor != :topsec, device.supports?(:interface_descriptions), vendor.to_s
+      assert_equal !%i[radware topsec].include?(vendor), device.supports?(:neighbors), vendor.to_s
       assert_equal !%i[huawei radware palo_alto topsec fortinet juniper].include?(vendor), device.supports?(:interface_description_changes), vendor.to_s
       assert_equal !%i[topsec juniper].include?(vendor), device.supports?(:tftp_backup)
       assert_equal vendor == :juniper, device.supports?(:remote_backup)

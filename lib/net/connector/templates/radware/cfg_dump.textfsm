@@ -2,12 +2,14 @@ Value Required INTERFACE (\d+)
 Value DESCRIPTION (.*)
 
 Start
-  ^/(?:c|cfg)/port ${INTERFACE}/name "${DESCRIPTION}"\s*$$ -> Record
+  ^/(?:c|cfg)/port \d+/name\s*$$ -> Error "port name has no value"
+  ^/(?:c|cfg)/port ${INTERFACE}/name ${DESCRIPTION}$$ -> Record
   ^/(?:c|cfg)/port ${INTERFACE}\s*$$ -> Port
 
 Port
-  ^\s+name "${DESCRIPTION}"\s*$$
+  ^/(?:c|cfg)/port \d+/name\s*$$ -> Error "port name has no value"
+  ^\s+name\s*$$ -> Error "port name has no value"
   ^\s+name ${DESCRIPTION}$$
   ^/.* -> Continue.Record
-  ^/(?:c|cfg)/port ${INTERFACE}/name "${DESCRIPTION}"\s*$$ -> Record Start
+  ^/(?:c|cfg)/port ${INTERFACE}/name ${DESCRIPTION}$$ -> Record Start
   ^/(?:c|cfg)/port ${INTERFACE}\s*$$

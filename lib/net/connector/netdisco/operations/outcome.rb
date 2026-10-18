@@ -30,7 +30,6 @@ module Net
               raise ArgumentError, "operation duration must be nonnegative and finite"
             end
 
-            value = immutable_plan_value(value) if value.is_a?(Topology::Plan)
             super(device: device, status: status, value: value, error: error,
                   started_at: started_at.dup.freeze, finished_at: finished_at.dup.freeze, duration_ms: duration_ms)
           end
@@ -68,19 +67,6 @@ module Net
                     when :missing_credentials then value.nil? && error.nil?
                     end
             raise ArgumentError, "operation state contradicts its domain value or error" unless valid && same_error
-          end
-
-          # 外部构造或 with 更新也复制审批树，不仅冻结 Data 的最外层。
-          def immutable_plan_value(value)
-            case value
-            when String then value.frozen? ? value : value.dup.freeze
-            when Array then value.map { |item| immutable_plan_value(item) }.freeze
-            when Hash then value.to_h { |key, item| [immutable_plan_value(key), immutable_plan_value(item)] }.freeze
-            when Topology::Plan, Topology::Change, Topology::Neighbor
-              fields = value.to_h.transform_values { |item| immutable_plan_value(item) }
-              value.class.new(**fields).freeze
-            else value
-            end
           end
         end
 

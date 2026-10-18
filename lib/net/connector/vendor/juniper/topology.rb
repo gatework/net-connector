@@ -17,6 +17,12 @@ module Net
 
           def neighbor_template(_output) = "juniper/show_lldp_neighbors_detail.textfsm"
 
+          # 逻辑单元的描述独立于物理端口，不能覆盖端口的 LLDP 身份。
+          def description_key(row)
+            unit = row.fetch("UNIT", "")
+            unit.empty? ? interface_key(row.fetch("INTERFACE")) : "#{interface_key(row.fetch("INTERFACE"))}.#{unit}"
+          end
+
           def description_template = "juniper/show_configuration_display_set.textfsm"
 
           def expected_neighbor_count(output, _template) = output.scan(/^\s*Local Interface\s*:/i).size
@@ -27,12 +33,7 @@ module Net
           end
 
           # 不闭合的描述必须报错，不能把截断的首行当作完整描述。
-          def decode_description(value)
-            Shellwords.split(value).join(" ")
-          rescue ArgumentError
-            raise ParsingError.new("Junos interface description is incomplete", code: :unrecognized_output,
-                                   host: @device.host, phase: :parse), cause: nil
-          end
+          def decode_description(value) = Net::Connector::Topology::QuotedText.decode(value, host: @device.host, split_unquoted: true)
         end
       end
     end

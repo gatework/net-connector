@@ -2,5 +2,6 @@ Value Required INTERFACE (\S+)
 Value DESCRIPTION (.*)
 
 Start
+  ^set network interface ethernet \S+ comment\s*$$ -> Error "interface comment has no value"
   ^set network interface ethernet ${INTERFACE} comment ${DESCRIPTION}$$ -> Record
   ^set network interface ethernet ${INTERFACE}\s+.*$$ -> Record

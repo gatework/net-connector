@@ -247,10 +247,10 @@ Ruby 对象显式拥有资源并使用关键字参数。`Profile` 提供有限�
 | Cisco NX-OS | 是 | 是 | 是 | 是 | 是 | 是 |
 | Radware Alteon | 是 | 是 | 是 | 否 | 是 | 否 |
 | PAN-OS | 是 | 否 | 是 | 是 | 是 | 否，候选隔离未验证 |
-| 华为 | 是 | 是 | 是 | 否 | 否 | 否 |
+| 华为 VRP | 是 | 是 | 是 | 是，LLDP 简表 | 是 | 否，提交阶段未验证 |
 | 山石 | 是 | 是 | 是 | 是 | 是 | 是 |
 | Topsec TopOS | 是 | 否 | 否 | 否 | 否 | 否 |
-| Fortinet FortiOS | 是 | 是 | 是 | 是 | 否 | 否 |
+| Fortinet FortiOS | 是 | 是 | 是 | 是 | 是，当前视图顶层接口表 | 否 |
 | Juniper Junos | 是 | 否 | 否，原生 FTP/SCP | 是 | 是 | 否，候选库提交未开放 |
 
 Junos 的 `remote_backup` 通过 `RemoteBackup` 协调与厂商策略导出已提交配置；回执区分设备报告与远端核验。其余平台保持明确的能力声明，见[平台说明](vendors.md)。
@@ -290,7 +290,7 @@ router.supports?(:tftp_backup) # => true，不连接设备
 
 配置采集可把 `running_config_strategy` 绑定到 `Net::Connector::RunningConfig::Strategy` 子类。策略实现 `clean`、`result_step`、`prompt_text` 和 `validate_response!`；PAN-OS 候选差异只影响配置采集，直接 `execute_command("show config diff")` 返回该命令输出。静态命令列表留在档案中。`clean_config` 和受保护的 `config_result_step` 钩子可覆盖并调用 `super`。Base 负责通用脚本与锁内回调，不决定配置是否完整。
 
-拓扑策略通过 `topology_strategy YourStrategy` 绑定。类方法和实例方法 `supports?` 声明三种拓扑能力，其余方法提供命令、模板、输出完整性和接口拼写。Profile 校验完整接口，包括 `validate_descriptions!`、`change_error_code`、`enter_configuration_command`、`leave_configuration_commands`、`verification_commands`、`persistence_commands` 和 `persistence_confirmed?`。只读策略继承默认空阶段；可写策略必须明确每个阶段，不能用合并的收尾命令推断保存边界。即时生效且使用 interface 块的设备可继承 `Topology::ImmediateStrategy`。自定义采集必须执行已列入计划的命令并返回完成步骤；自定义厂商标签通过 `neighbor_template` 提供模板。
+拓扑策略通过 `topology_strategy YourStrategy` 绑定。类方法和实例方法 `supports?` 声明三种拓扑能力，其余方法提供命令、模板、输出完整性和接口拼写。Profile 校验完整接口，包括 `description_key`、`validate_descriptions!`、`change_error_code`、`enter_configuration_command`、`leave_configuration_commands`、`verification_commands`、`persistence_commands` 和 `persistence_confirmed?`。只读策略继承默认空阶段；可写策略必须明确每个阶段，不能用合并的收尾命令推断保存边界。即时生效且使用 interface 块的设备可继承 `Topology::ImmediateStrategy`。自定义采集必须执行已列入计划的命令并返回完成步骤；自定义厂商标签通过 `neighbor_template` 提供模板。
 
 业务操作针对单个连接器构造，并提供 `call`。TFTP 策略只处理厂商传输差异，公共操作统一成功和失败规则。生成的文件名经过 `TftpTarget` 校验及长度限制；带作用域的 IPv6 地址会转为安全 ASCII 标记，特别长的地址使用稳定 SHA-256 标记。原本合法的文件名保留拼写，只有整体过长才缩短清单名称。TFTP 返回值表示设备报告上传完成，服务器文件核对仍由调用方负责。
 
@@ -449,3 +449,13 @@ end
 `Settings#inventory` 为原始清单适配器包裹 `Inventory::Cache`，默认三天有效。缓存仅保存完整白名单 rows，Rules 和重复地址判定每次重做。身份、SQL 及绑定参数只参与摘要分区，不写入文件；凭据缺失仍在缓存读取前拒绝。过期刷新在有界、按身份的跨进程文件锁内完成，成功后原子替换；失败使用原时间的已验证历史，成功空清单替换旧值。最新查询成功与本地缓存持久化成功是两个事实，不能因写盘失败回退旧数据或重复查询。强刷跳过有效期，不跳过身份、限额、文件校验和失败回退边界。
 
 后台心跳和 HTTP 超时观察使用内部 `Concurrency::Observer` 作用域，前台保留主业务值和原始故障；观察线程的异常同步交付所有者，不受宿主全局线程异常策略影响。创建至登记期间延后中断，停止和等待期间保证线程回收；心跳普通故障转换为显示诊断，正常 HTTP 请求的未知观察故障仍传播。
+
+## 领域值与更新边界
+
+`Topology::Neighbor`、`Topology::Change`、`Topology::Plan` 各有同名文件，构造时复制并冻结自己拥有的字符串与容器。不可变子对象可在单设备、批次和结果之间共享；调用方的原始容器与格式化回调返回的字符串仍归调用方所有。计划构造校验数据形状，执行边界继续负责地址规范化、命令预检、现场证据重验及读回。
+
+`Netdisco::Batch` 复制结果数组和回调诊断，在构造时累计状态计数；`counts` 返回可修改的独立 Hash。未知状态不能满足成功策略。更新结果集合须使用 `with`，它重新计算计数。上述领域值和远程备份目标、回执的 `with` 显式经过构造函数，避免依赖不同 Ruby 版本中原生 `Data#with` 的初始化行为。
+
+拓扑的 `InterfaceBlocks` 模块集中核对 interface 块与解析记录的完整性，由立即生效的变更策略和 Huawei 的只读策略共同组合，读取能力不必继承写入流程。`description_key(row)` 把描述记录映射为领域身份；Junos 逻辑单元使用 `<物理接口>.<单元号>`，保留物理接口描述。FortiOS 读取当前视图顶层 `config system interface`，接口 `description` 与显示 `alias` 分开处理，嵌套 IPv6 表不产生接口记录；无法确认作用域、闭合或记录数量时拒绝结果。
+
+`Topology::QuotedText` 是描述字段的纯解码边界，不接触设备会话；厂商策略选择无引号文本的处理规则，解析异常统一携带 host、parse 阶段和 unrecognized_output 代码，不携带字段原文或底层异常 cause。配置模板保留完整带引号字段供业务层解码，不能先删外层引号而留下未还原的转义字符。

@@ -1,0 +1,13 @@
+Value Required INTERFACE (\S+(?:[ \t]+\d[\w/.:_-]*)?)
+Value DESCRIPTION (.*)
+
+Start
+  ^interface ${INTERFACE}$$ -> Interface
+
+Interface
+  ^\s+description\s*$$ -> Error "interface description has no value"
+  ^\s+description ${DESCRIPTION}$$
+  ^#$$ -> Record Start
+  ^interface .+ -> Continue.Record
+  ^interface ${INTERFACE}$$
+  ^return$$ -> Record End

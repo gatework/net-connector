@@ -2,6 +2,7 @@
 
 require "shellwords"
 require_relative "interface_description"
+require_relative "quoted_text"
 
 module Net
   module Connector
@@ -55,6 +56,9 @@ module Net
 
         # 在下发前允许厂商调整命令对象及超时。
         def script_command(command) = command
+
+        # 描述记录默认表示物理接口；厂商可保留逻辑单元的独立身份。
+        def description_key(row) = interface_key(row.fetch("INTERFACE"))
 
         # 将发现接口名归一为查找当前配置所用的键。
         def interface_key(name) = InterfaceName.key(name)

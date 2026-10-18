@@ -16,6 +16,10 @@ module Net
           super(server: server.dup.freeze, path: path.dup.freeze, protocol: protocol, username: username.dup.freeze,
                 completed_at: completed_at.dup.freeze, configuration_kind: configuration_kind, verification: verification)
         end
+
+        # Ruby 3.2 的原生更新跳过构造校验；更新也必须建立经过校验的快照。
+        def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
+
       end
 
       # 完成后出现收尾错误时保留上传事实，避免调用方盲目重传。

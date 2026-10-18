@@ -65,14 +65,14 @@ module Net
             result = connector.plan_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, &formatter)
             raise TypeError, "description planning must return a Topology::Plan" unless result.is_a?(Topology::Plan)
 
-            copy_plan(result)
+            normalize_plan(result)
           end
         end
 
-        # 审批计划整体复制并验证；单设备应用仍执行现场重验、读回和保存，不直接重放 commands。
+        # 审批计划固定并验证；单设备应用仍执行现场重验、读回和保存，不直接重放 commands。
         def apply_interface_descriptions(plans:, confirmed: false, concurrency: DEFAULT_SETTING, on_start: nil, on_result: nil)
           validate_confirmation!(confirmed)
-          tasks = normalize_mapping(plans, :plans) { |plan| copy_plan(plan) }
+          tasks = normalize_mapping(plans, :plans) { |plan| normalize_plan(plan) }
           tasks.each do |host, plan|
             raise ArgumentError, "plan host does not match its target" unless normalize_host(plan.host) == host
           end
@@ -125,38 +125,20 @@ module Net
           end.freeze
         end
 
-        # 外部审批容器不与执行共享可变子对象，非法领域结构在任何连接前拒绝。
-        def copy_plan(plan)
-          raise ArgumentError, "plans must contain Topology::Plan values" unless plan.is_a?(Topology::Plan)
-          normalize_host(plan.host)
-          unless Net::Connector.vendors.include?(plan.vendor) && plan.evidence.is_a?(Hash) &&
-                 plan.changes.is_a?(Array) && plan.commands.is_a?(Array) && plan.commands.all?(String)
-            raise ArgumentError, "description plan contains invalid fields"
-          end
-          commands = Script.new(plan.commands).map { |command| command.text.dup.freeze }.freeze
-          evidence = plan.evidence.to_h do |interface, fields|
-            unless interface.is_a?(String) && fields.is_a?(Array) && fields.size == 3 && fields.all?(String)
-              raise ArgumentError, "description plan contains invalid evidence"
-            end
-            [interface.dup.freeze, fields.map { |field| field.dup.freeze }.freeze]
-          end.freeze
-          changes = plan.changes.map { |change| copy_change(change) }.freeze
-          raise ArgumentError, "empty description plan cannot contain commands" if changes.empty? && !commands.empty?
+        # 计划自身拥有不可变审批树；这里仅处理批次的地址和输入预检。
+        def normalize_plan(plan)
+          raise ArgumentError, "plans must contain Topology::Plan values" unless plan.instance_of?(Topology::Plan)
+          host = normalize_host(plan.host)
+          raise ArgumentError, "description plan contains an unsupported vendor" unless Net::Connector.vendors.include?(plan.vendor)
 
-          Topology::Plan.new(host: normalize_host(plan.host), vendor: plan.vendor, evidence: evidence,
-                             changes: changes, commands: commands).freeze
-        end
-
-        def copy_change(change)
-          unless change.is_a?(Topology::Change) && change.old_description.is_a?(String) &&
-                 change.neighbor.is_a?(Topology::Neighbor) && change.neighbor.to_h.values.all? { |value| value.is_a?(String) || value.is_a?(Symbol) }
-            raise ArgumentError, "description plan contains an invalid change"
+          Script.new(plan.commands)
+          plan.changes.each do |change|
+            Topology::InterfaceDescription.validate_interface!(change.interface)
+            Topology::InterfaceDescription.validate!(change.new_description)
           end
-          Topology::InterfaceDescription.validate_interface!(change.interface)
-          Topology::InterfaceDescription.validate!(change.new_description)
-          neighbor = Topology::Neighbor.new(**change.neighbor.to_h.transform_values { |value| value.is_a?(String) ? value.dup.freeze : value }).freeze
-          Topology::Change.new(interface: change.interface.dup.freeze, old_description: change.old_description.dup.freeze,
-                               new_description: change.new_description.dup.freeze, neighbor: neighbor).freeze
+          raise ArgumentError, "empty description plan cannot contain commands" if plan.changes.empty? && !plan.commands.empty?
+
+          host == plan.host ? plan : plan.with(host: host)
         end
 
         # 策略只固定一次；清单与连接使用同一快照，凭据仍在每台任务开始时动态读取。

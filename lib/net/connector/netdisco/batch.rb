@@ -15,9 +15,10 @@ module Net
           unless duration_ms.nil? || (duration_ms.is_a?(Numeric) && duration_ms.real? && duration_ms.finite? && duration_ms >= 0)
             raise ArgumentError, "duration_ms must be nonnegative and finite"
           end
+          raise ArgumentError, "status must be a Symbol or String" unless status.is_a?(Symbol) || status.is_a?(String)
           raise ArgumentError, "diagnostic must be a Diagnostic" unless diagnostic.nil? || diagnostic.instance_of?(Diagnostic)
 
-          super(device: device, status: status, backup: backup, error_code: error_code,
+          super(device: device, status: status.is_a?(String) ? status.dup.freeze : status, backup: backup, error_code: error_code,
                 error_type: error_type.is_a?(String) ? error_type.dup.freeze : error_type,
                 started_at: started_at&.dup&.freeze, finished_at: finished_at&.dup&.freeze,
                 duration_ms: duration_ms, diagnostic: diagnostic)
@@ -46,17 +47,45 @@ module Net
       # 汇总一次批量任务的设备结果、回调故障和报告写入状态。
       Batch = Data.define(:mode, :outcomes, :started_at, :finished_at, :callback_errors,
                           :report_location, :report_error) do
-        # 按设备最终状态统计数量。
-        def counts = outcomes.map(&:status).tally
+        # 批次拥有容器与审计元数据；调用方只能通过 with 构造新快照。
+        def initialize(mode:, outcomes:, started_at:, finished_at:, callback_errors:, report_location:, report_error:)
+          unless outcomes.is_a?(Array) && outcomes.all? { |outcome| outcome.instance_of?(Outcome) } && callback_errors.is_a?(Array)
+            raise ArgumentError, "batch requires outcome and callback error Arrays"
+          end
+
+          outcomes = outcomes.dup.freeze
+          @counts = outcomes.each_with_object({}) { |outcome, found| found[outcome.status] = found.fetch(outcome.status, 0) + 1 }.freeze
+          super(mode: mode, outcomes: outcomes,
+                started_at: started_at&.dup&.freeze, finished_at: finished_at&.dup&.freeze,
+                callback_errors: callback_errors.map { |entry| copy_callback_error(entry) }.freeze,
+                report_location: report_location&.dup&.freeze, report_error: report_error&.dup&.freeze)
+        end
+
+        def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
+
+        # 只累计最终计数，不创建与清单等长的中间状态数组。
+        def counts = @counts.dup
 
         # 仅在所有设备成功且回调、报告均正常时判定整批成功。
-        def success? = !outcomes.empty? && outcomes.all?(&:success?) && callback_errors.empty? && report_error.nil?
+        def success? = !outcomes.empty? && @counts.fetch(:backed_up, 0) + @counts.fetch(:reported_uploaded, 0) == outcomes.size &&
+                       callback_errors.empty? && report_error.nil?
 
         # 空清单与已尝试但未全部成功的批次分别标记。
         def status = outcomes.empty? ? :no_devices : (success? ? :succeeded : :incomplete)
 
         # 显式从原始执行结果构造报告。
         def build_report(policy: :strict) = Report.new(self, policy: policy)
+
+        private
+
+        def copy_callback_error(entry)
+          unless entry.is_a?(Hash) && (entry[:host].nil? || entry[:host].is_a?(String))
+            raise ArgumentError, "callback errors must contain a host and error type"
+          end
+
+          { host: entry[:host]&.dup&.freeze, error_type: Error::Metadata.type(entry[:error_type]) }.freeze
+        end
+
       end
 
       autoload :Report, File.expand_path("report", __dir__)

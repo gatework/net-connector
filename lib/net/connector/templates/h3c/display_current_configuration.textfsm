@@ -5,6 +5,7 @@ Start
   ^interface ${INTERFACE}$$ -> Interface
 
 Interface
+  ^\s+description\s*$$ -> Error "interface description has no value"
   ^\s+description ${DESCRIPTION}$$
   ^#$$ -> Record Start
   ^interface .+ -> Continue.Record

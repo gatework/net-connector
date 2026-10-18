@@ -2,6 +2,7 @@
 
 require_relative "topology/strategy"
 require_relative "topology/stages"
+require_relative "topology/plan"
 
 module Net
   module Connector
@@ -30,10 +31,6 @@ module Net
           Topology.new(self).apply_interface_descriptions(plan, confirmed: confirmed)
         end
       end
-
-      Neighbor = Data.define(:local_interface, :neighbor_name, :neighbor_interface, :chassis_id, :protocol)
-      Change = Data.define(:interface, :old_description, :new_description, :neighbor)
-      Plan = Data.define(:host, :vendor, :evidence, :changes, :commands)
 
       # 仅承载厂商档案的离线上下文，不能连接、查询或下发设备命令。
       PlanningContext = Data.define(:host, :vendor, :profile) do
@@ -129,7 +126,7 @@ module Net
         rows = @parser.call(config, template: template, host: @device.host)
         @strategy.validate_descriptions!(config, rows)
         rows.each_with_object({}) do |row, found|
-          interface = @strategy.interface_key(row.fetch("INTERFACE"))
+          interface = @strategy.description_key(row)
           description = @strategy.decode_description(row.fetch("DESCRIPTION", ""))
           previous = found[interface]
           if previous && !previous.empty? && !description.empty? && previous != description
@@ -159,7 +156,6 @@ module Net
         validate_change_support!(:plan) if @strategy.supports?(:neighbors)
         discovered = neighbors
         current = interface_descriptions
-        current.each_value(&:freeze)
         evidence = evidence_for(discovered, current)
         changes = discovered.filter_map do |neighbor|
           old = current.fetch(@strategy.interface_key(neighbor.local_interface))
@@ -171,17 +167,16 @@ module Net
           InterfaceDescription.validate!(proposed)
           next if old == proposed
 
-          Change.new(interface: @strategy.configuration_interface(neighbor.local_interface).freeze, old_description: old.freeze,
-                     new_description: proposed.freeze, neighbor: neighbor).freeze
+          Change.new(interface: @strategy.configuration_interface(neighbor.local_interface), old_description: old,
+                     new_description: proposed, neighbor: neighbor)
         end.freeze
         commands = if changes.empty?
                      []
                    else
                      stage_scripts(changes).values.flat_map { |script| script.map(&:text) }
                    end
-        commands.each(&:freeze)
-        Plan.new(host: @device.host.dup.freeze, vendor: @device.vendor, evidence: evidence,
-                 changes: changes, commands: commands.freeze).freeze
+        Plan.new(host: @device.host, vendor: @device.vendor, evidence: evidence,
+                 changes: changes, commands: commands)
       end
 
       # 只有明确确认且邻居和旧描述未变化时，才下发计划中的命令。

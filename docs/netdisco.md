@@ -76,7 +76,7 @@ The installed command is `net-backup`; source checkouts use `bundle exec bin/net
 
 Here `vendor` is the connector platform key, such as `cisco_ios` or `cisco_nxos`, rather than the manufacturer. Filtering and sampling use that key: a limit of five can select five IOS devices and five NX-OS devices. `source_vendor` retains the original inventory vendor label.
 
-Interactive batch examples use `CLI::Backup` and `CLI::Topology`; `CLI::Credentials.resolve` supplies the inventory source and per-device credential resolver, while `CLI::Options` parses arguments and configuration overrides. These components live under `netdisco/cli/`. The examples explicitly pass `environment_defaults: true` to make public environment values defaults below YAML and CLI options. The formal CLI retains its existing environment precedence.
+Interactive batch examples use `CLI::Backup` and `CLI::Topology`; `CLI::Credentials.resolve` supplies the inventory source and per-device credential resolver, while `CLI::Options` parses arguments and configuration overrides. These components live under `netdisco/cli/`. The examples explicitly pass `load_env: true` to make public environment values defaults below YAML and CLI options. The formal CLI retains its existing environment precedence.
 
 `--export IP` reads an existing canonical `<IP>.txt` file offline. It writes original bytes to stdout, or atomically writes a private file with `--output`. It does not require inventory or device credentials. Hostname-prefixed batch-example files are not searched by this command.
 

@@ -145,6 +145,6 @@ Per-command prompts use `interactions: [Net::Connector::Interaction.new(/Token:\
 
 ## Dependencies and extensions
 
-Load device APIs with `require "net/connector"`; Netdisco has a separate entrypoint. Vendor implementations and TextFSM load on demand. Runtime dependencies declare minimum versions; the host application's lockfile selects compatible versions. Published TextFSM 0.2.0 constrains JSON to 2.x. The explicit JSON 3 source-patch matrix does not establish compatibility of the published dependency.
+Load device APIs with `require "net/connector"`; Netdisco has a separate entrypoint. Vendor implementations and TextFSM load on demand. Runtime dependencies have no version constraints; the host application's lockfile selects compatible versions. Published TextFSM 0.2.0 constrains JSON to 2.x. The explicit JSON 3 source-patch matrix does not establish compatibility of the published dependency.
 
 Examples use the development dependency `dotenv` to read the project `.env`; the library and CLI do not. Follow the [loading and migration reference](architecture.md#加载入口与厂商策略) (Chinese) for custom profiles, strategies, and protected hooks.

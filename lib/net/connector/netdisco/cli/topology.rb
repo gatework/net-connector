@@ -16,10 +16,10 @@ module Net
         # 只读默认的拓扑应用入口；计划先持久化，显式 apply 仍通过设备层重验及保存。
         class Topology
           def initialize(default_config: nil, default_directory: nil, argv: ARGV, env: ENV, input: $stdin,
-                         output: $stdout, error: $stderr, connector_factory: nil, environment_defaults: false)
+                         output: $stdout, error: $stderr, connector_factory: nil, load_env: false)
             @default_config, @default_directory = default_config, default_directory
             @argv, @env, @input, @output, @error = argv, env, input, output, error
-            @environment_defaults = environment_defaults
+            @load_env = load_env
             @connector_factory = connector_factory || ->(device, options) { device.build_connector(**options) }
           end
 
@@ -65,7 +65,7 @@ module Net
             environment["NC_CONFIG"] ||= @default_config if @default_config && !@env["NC_CONFIG"]
             path = environment["NC_CONFIG"] || @env["NC_CONFIG"]
             initialize_config(path, options) if path && !File.exist?(path) && !File.symlink?(path)
-            settings = CLI::Options.settings(options, env: @env, environment_defaults: @environment_defaults)
+            settings = CLI::Options.settings(options, env: @env, load_env: @load_env)
             policy = settings.topology_options
             overrides = topology_overrides(options, policy)
             @settings = settings.with_overrides(overrides).for_run(mode: :topology)

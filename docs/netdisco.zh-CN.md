@@ -243,7 +243,7 @@ directory = Net::Connector::Storage::BatchDirectory.create("./backups")
 
 批量示例由 `Netdisco::CLI::Backup` 统一编排，`CLI::Options.settings` 为示例和正式 CLI 共用配置覆盖入口。
 
-终端入口按职责放在 `cli/`：`CLI::Backup` 编排批量备份，`CLI::Topology` 编排发现、规划与显式应用，`CLI::Credentials.resolve` 解析凭据来源，`CLI::Options` 解析参数和配置覆盖。示例显式传入 `environment_defaults: true`，将公开环境变量作为 YAML 和 CLI 之下的默认值；正式 CLI 保留既有的环境覆盖规则。
+终端入口按职责放在 `cli/`：`CLI::Backup` 编排批量备份，`CLI::Topology` 编排发现、规划与显式应用，`CLI::Credentials.resolve` 解析凭据来源，`CLI::Options` 解析参数和配置覆盖。示例显式传入 `load_env: true`，将公开环境变量作为 YAML 和 CLI 之下的默认值；正式 CLI 保留既有的环境覆盖规则。
 示例默认 `selected`，正式 CLI 保留 `strict` 默认；两者均支持显式 `--success-policy`，退出码与报告的 `policy_success` 一致。
 示例 `summary.json` 使用标准 schema 2 的 `devices`，逐台结果与诊断统一保存在批次报告中。
 TFTP 的 `verification` 汇总与设备条目的 `server_file_verified` 区分上传回执和服务器文件核验，核验成功还包含 `local_file`、`server_archive_file`、`bytes`、`sha256`。

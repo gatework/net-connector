@@ -14,7 +14,7 @@ require_relative "planner"
 require_relative "report"
 require_relative "tftp/verifier"
 require_relative "tftp/archive"
-require_relative "batch_options"
+require_relative "fleet/options"
 
 module Net
   module Connector
@@ -100,11 +100,11 @@ module Net
                                              allow_fixed_name_reuse: preserve_history && (!verification_root.nil? || !verification_roots.empty?))
           end
           validate_plan!(plan, :tftp)
-          effective = tftp_effective_options(plan, policy, success_policy: success_policy, preserve_history: preserve_history)
-          contexts = tftp_contexts(plan, effective, report_directory: report_directory, preserve_history: preserve_history)
-          validate_tftp_targets!(plan, effective, contexts)
+          transfers = tftp_plan_options(plan, policy, success_policy: success_policy, preserve_history: preserve_history)
+          contexts = tftp_contexts(plan, transfers, report_directory: report_directory, preserve_history: preserve_history)
+          validate_tftp_targets!(plan, transfers, contexts)
           run_batch(:tftp, plan, options: options, settings_snapshot: settings_snapshot) do |device, log_directory|
-            transfer = effective.fetch(device.host)
+            transfer = transfers.fetch(device.host)
             archive, verification = contexts.fetch(transfer.server)
             if archive
               archive.upload_and_archive(device, started_at: Time.now.utc) do |remote_filename|
@@ -242,13 +242,13 @@ module Net
           values
         end
 
-        def tftp_effective_options(plan, policy, success_policy:, preserve_history:)
-          effective = plan.inventory.select { |device| device.ready? && device.supports_backup?(mode: :tftp) }.to_h do |device|
+        def tftp_plan_options(plan, policy, success_policy:, preserve_history:)
+          transfers = plan.inventory.select { |device| device.ready? && device.supports_backup?(mode: :tftp) }.to_h do |device|
             [device.host, policy.for(host: device.host, vendor: device.vendor)]
           end
           # 旧调用允许先选设备、执行时再指定服务器；已有服务器和其余策略仍须一致。
-          matching = plan.transfers.keys == effective.keys && plan.transfers.all? do |host, planned|
-            actual = effective.fetch(host)
+          matching = plan.transfers.keys == transfers.keys && plan.transfers.all? do |host, planned|
+            actual = transfers.fetch(host)
             expected = planned.server ? planned : planned.with(server: actual.server)
             expected == actual
           end
@@ -256,7 +256,7 @@ module Net
             raise ArgumentError, "TFTP plan options differ from execution; regenerate the plan"
           end
           plan.selected.each do |device|
-            transfer = effective.fetch(device.host)
+            transfer = transfers.fetch(device.host)
             raise ArgumentError, "selected device requires a TFTP server" unless transfer.server
             if plan.allow_fixed_name_reuse && device.vendor == :palo_alto && !transfer.verification_root
               raise ArgumentError, "fixed-name TFTP uploads require a matching server archive directory"
@@ -268,24 +268,24 @@ module Net
           if plan.allow_fixed_name_reuse && !preserve_history
             raise ArgumentError, "fixed-name TFTP uploads require local history archival"
           end
-          effective
+          transfers
         end
 
-        def tftp_contexts(plan, effective, report_directory:, preserve_history:)
+        def tftp_contexts(plan, transfers, report_directory:, preserve_history:)
           # 每个服务器持有自己的核验/归档上下文，跨服务器设备不能复用全局目录证据。
-          plan.selected.map { |device| effective.fetch(device.host) }.uniq { |transfer| transfer.server }.to_h do |transfer|
+          plan.selected.map { |device| transfers.fetch(device.host) }.uniq { |transfer| transfer.server }.to_h do |transfer|
             archive = Tftp::Archive.new(directory: report_directory, root: transfer.verification_root) if preserve_history
             [transfer.server, [archive, Tftp::Verifier.new(root: transfer.verification_root)]]
           end
         end
 
         # 归档批次可能改变远端名；使用最终目标预检协议限制，不能等到读取凭据或发命令后。
-        def validate_tftp_targets!(plan, effective, contexts)
+        def validate_tftp_targets!(plan, transfers, contexts)
           plan.selected.each do |device|
-            transfer = effective.fetch(device.host)
+            transfer = transfers.fetch(device.host)
             archive, = contexts.fetch(transfer.server)
             filename = archive ? archive.upload_filename(device) : device.tftp_filename
-            Tftp::Policy.validate_effective!(transfer, host: device.host, vendor: device.vendor, path: filename)
+            Tftp::Policy.validate_options!(transfer, host: device.host, vendor: device.vendor, path: filename)
           end
         end
 

@@ -155,7 +155,7 @@ SHA-256，首次使用时从官方 GitHub Release 下载，缓存到 `tmp/tools/
 
 运行依赖写在 `net-connector.gemspec`，包括直接使用的、可能从 Ruby 默认
 安装中拆出的标准库 gem。开发工具只写在 Gemfile，不进入运行依赖。
-共享脱敏要求 `expect-pty ~> 0.5.0`，使用已发布的公共 `Expect::Redactor`。
+共享脱敏使用 expect-pty 已发布的公共 `Expect::Redactor` 接口。
 开发及隔离安装检查使用正式依赖包，不再需要本地 expect 补丁或联调环境包装脚本。
 开发用 `parallel` 保持 1.x，以支持 Ruby 3.2。
 
@@ -163,9 +163,9 @@ SHA-256，首次使用时从官方 GitHub Release 下载，缓存到 `tmp/tools/
 分别解析兼容依赖。应用使用者应在自己的应用中提交 lockfile。测试和打包
 脚本通过隔离安装检查运行依赖，避免依赖开发环境里偶然存在的 gem。
 
-`gemfiles/minimum.gemfile` 固定关键业务依赖下限 expect-pty 0.5.0、textfsm 0.2.0；
+`gemfiles/minimum.gemfile` 固定较早的业务依赖 expect-pty 0.5.0、textfsm 0.2.0；
 标准库和开发工具仍按主 Gemfile 的兼容范围解析。普通矩阵检查允许版本的正常解析，
-另在 Ubuntu / Ruby 3.2、4.0 检查下限组合的全量测试与隔离安装。本地复现：
+另在 Ubuntu / Ruby 3.2、4.0 检查这组版本的全量测试与隔离安装。本地复现：
 
 ```sh
 BUNDLE_GEMFILE=gemfiles/minimum.gemfile bundle install
@@ -173,8 +173,8 @@ BUNDLE_GEMFILE=gemfiles/minimum.gemfile bundle exec rake test package:verify
 ```
 
 这不是所有传递依赖最旧版本的笛卡尔积，也不声称本地 macOS 运行证明远端矩阵通过。
-当前这两个关键依赖的正常解析与下限恰好相同，报告仍记录实际版本，供以后比较。
-开发锁文件均忽略；gemspec 保持兼容范围，基准、夹具、兼容 Gemfile 和审阅报告均不进 gem。
+报告记录实际解析版本，便于比较默认组合和旧版本组合。
+开发锁文件均忽略；gemspec 不限定依赖版本，基准、夹具、兼容 Gemfile 和审阅报告均不进 gem。
 
 gem 只收录库代码、TextFSM 模板、CLI、双语设备/Netdisco 指南、架构/验证/发布文档、双语 README、LICENSE、
 CHANGELOG、SECURITY 和 CONTRIBUTING。仅两个非敏感 YAML 示例随包分发；测试、示例脚本、发布工具、工作流、本地评审快照、本地配置和备份不进入包。

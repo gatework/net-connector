@@ -18,6 +18,7 @@ module Net
 
         def complete? = issues.empty?
         def changes = comparisons.count { |entry| !%i[matches unverified].include?(entry[:status]) }
+        def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
 
         private
 

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-# 仅固定关键业务依赖的声明下限；开发工具和默认允许版本仍由主 Gemfile 解析。
+# 使用较早的业务依赖验证兼容性；开发工具仍由主 Gemfile 解析。
 eval_gemfile File.expand_path("../Gemfile", __dir__)
 gem "expect-pty", "= 0.5.0"
 gem "textfsm", "= 0.2.0"

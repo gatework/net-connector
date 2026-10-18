@@ -8,6 +8,18 @@ require_relative "support/topology_fixture"
 class TopologyAuditTest < Minitest::Test
   C = Net::Connector
 
+  def test_updated_audit_revalidates_and_owns_its_rows
+    original = C::Topology::Audit.new(plan: nil, comparisons: [], issues: [], manual_required: false)
+    assert_same original, original.with
+    assert_raises(ArgumentError) { original.with(manual_required: nil) }
+    rows = [{ interface: +"Gi1", code: :ambiguous_neighbor }]
+    updated = original.with(issues: rows)
+    rows.first[:interface].replace("changed")
+    rows.clear
+    assert_equal "Gi1", updated.issues.first.fetch(:interface)
+    assert updated.issues.first.fetch(:interface).frozen?
+  end
+
   def test_ambiguous_interface_is_excluded_while_verified_interface_can_be_applied
     sample = TopologyFixture::SAMPLES.fetch(:h3c)
     neighbor = sample.fetch(:neighbor) + "GE1/0/2 000f-e25d-ee92 GE1/0/3 other\nGE1/0/2 000f-e25d-ee93 GE1/0/4 duplicate\n"

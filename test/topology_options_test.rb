@@ -31,4 +31,16 @@ class TopologyOptionsTest < Minitest::Test
       end
     end
   end
+
+  def test_updated_options_revalidate_and_own_their_format
+    original = N::TopologyOptions.new
+    assert_same original, original.with
+    assert_raises(ArgumentError) { original.with(concurrency: 0) }
+    assert_raises(ArgumentError) { original.with(description_format: "%{password}") }
+    format = +"Peer_%{neighbor}"
+    updated = original.with(description_format: format)
+    format.replace("changed")
+    assert_equal "Peer_Edge", updated.format(neighbor: "Edge", port: "Gi1")
+    assert updated.description_format.frozen?
+  end
 end

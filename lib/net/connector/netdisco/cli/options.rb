@@ -32,7 +32,7 @@ module Net
           end
 
           def self.parser_for(values, output:, program:, mode:, &additional)
-            raise ArgumentError, "unknown example mode" unless %i[backup tftp topology].include?(mode)
+            raise ArgumentError, "unknown CLI mode" unless %i[backup tftp topology].include?(mode)
 
             OptionParser.new do |opts|
               default = mode == :topology ? "默认只读规划" : "默认沿用配置"
@@ -115,7 +115,7 @@ module Net
           end
 
           # 公开 CLI 参数进入 overrides，凭据留在 environment；内部键不会重新开放已移除环境设置。
-          def self.settings(options, env: ENV, environment_defaults: false)
+          def self.settings(options, env: ENV, load_env: false)
             raise ArgumentError, "--all 不能与抽样同时使用" if options[:all] && options[:limit]
             if options[:host] && options.fetch(:environment).key?("NC_INCLUDE_HOSTS")
               raise ArgumentError, "--host cannot be combined with --hosts"
@@ -125,7 +125,7 @@ module Net
             path = environment["NC_CONFIG"]
             defaults = path && !path.empty? ? ConfigFile.load(path) : {}
             keys = ConfigFile::FIELDS.values.flat_map { |fields| fields.values.map(&:first) }
-            if environment_defaults
+            if load_env
               # 显式启用时，公开环境值只填补 YAML；CLI 覆盖与凭据来源仍分开处理。
               defaults = env.to_h.slice(*keys).merge(defaults)
               environment = environment.reject { |key, _| keys.include?(key) }

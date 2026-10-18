@@ -17,7 +17,7 @@ bundle exec ruby examples/topology.rb --examples
 bundle exec ruby -Itest -e 'Dir["test/examples*_test.rb"].sort.each { |file| require_relative file }'
 ```
 
-`boot.rb` 直接加载库、读取项目根目录 `.env`，再将工作目录切换到项目根目录。已有进程环境变量优先于 `.env` 同名值。三个入口通过库的 `environment_defaults: true` 启用 **CLI > YAML > 环境默认值**；配置合并由 `CLI::Options.settings` 负责，凭据留在环境中，YAML 不接受密码。正式 CLI 保留既有的环境覆盖规则。库本身不加载 `.env`、不切换目录、不退出宿主。CLI/YAML 中的相对配置和输出路径以项目根目录为准；进程启动前设置的 `NC_CONFIG` 先按启动目录转为绝对路径。
+`boot.rb` 直接加载库、读取项目根目录 `.env`，再将工作目录切换到项目根目录。已有进程环境变量优先于 `.env` 同名值。三个入口通过库的 `load_env: true` 启用 **CLI > YAML > 环境默认值**；配置合并由 `CLI::Options.settings` 负责，凭据留在环境中，YAML 不接受密码。正式 CLI 保留既有的环境覆盖规则。库本身不加载 `.env`、不切换目录、不退出宿主。CLI/YAML 中的相对配置和输出路径以项目根目录为准；进程启动前设置的 `NC_CONFIG` 先按启动目录转为绝对路径。
 
 ## 入口与配置
 
@@ -51,7 +51,7 @@ bundle exec ruby examples/backup.rb --plan --hosts 192.0.2.10-20 --name edge --e
 bundle exec ruby examples/topology.rb --inventory-only --name-match glob --name 'edge-*' --vendor h3c --cache-only
 ```
 
-凭据仍来自环境、显式 CLI 或调用方注入，不写入 YAML。单设备 TFTP 使用 `backup_tftp.rb --host IP`，与批量执行共用凭据、连接策略、核验和报告。HTTP 使用 `ND_URL`、`ND_USERNAME` / `ND_PASSWORD` 或 `ND_API_KEY`；PostgreSQL 使用 `ND_DB_HOST`、`ND_DB_NAME`、`ND_DB_USER`、`ND_DB_PASS`。设备使用 `NC_DEVICE_USERNAME`、`NC_DEVICE_PASSWORD`，可选 `NC_ENABLE_PASSWORD` 及按厂商凭据覆盖。PostgreSQL 使用项目已声明的 `pg` 驱动；示例 `.env` 不进入版本库。环境默认模板见 `.env.example`，实际加载位置仍为项目根目录 `.env`。公开设置如 `NC_BACKUP_DIRECTORY`、`NC_HOST_KEY_POLICY`、`NC_KNOWN_HOSTS`、`NC_TFTP_HOST`、`NC_TFTP_ROOT` 通过库的 `environment_defaults: true` 作为默认值，可由对应 YAML 字段覆盖；结构化映射使用 JSON，列表使用逗号分隔；YAML 声明列表或映射字段时整体覆盖该字段。旧 `NETDISCO_URL/USERNAME/PASSWORD` 应改为 `ND_URL/USERNAME/PASSWORD`，`TFTP_ROOT` 应改为 `NC_TFTP_ROOT`，不改变赋值内容。
+凭据仍来自环境、显式 CLI 或调用方注入，不写入 YAML。单设备 TFTP 使用 `backup_tftp.rb --host IP`，与批量执行共用凭据、连接策略、核验和报告。HTTP 使用 `ND_URL`、`ND_USERNAME` / `ND_PASSWORD` 或 `ND_API_KEY`；PostgreSQL 使用 `ND_DB_HOST`、`ND_DB_NAME`、`ND_DB_USER`、`ND_DB_PASS`。设备使用 `NC_DEVICE_USERNAME`、`NC_DEVICE_PASSWORD`，可选 `NC_ENABLE_PASSWORD` 及按厂商凭据覆盖。PostgreSQL 使用项目已声明的 `pg` 驱动；示例 `.env` 不进入版本库。环境默认模板见 `.env.example`，实际加载位置仍为项目根目录 `.env`。公开设置如 `NC_BACKUP_DIRECTORY`、`NC_HOST_KEY_POLICY`、`NC_KNOWN_HOSTS`、`NC_TFTP_HOST`、`NC_TFTP_ROOT` 通过库的 `load_env: true` 作为默认值，可由对应 YAML 字段覆盖；结构化映射使用 JSON，列表使用逗号分隔；YAML 声明列表或映射字段时整体覆盖该字段。旧 `NETDISCO_URL/USERNAME/PASSWORD` 应改为 `ND_URL/USERNAME/PASSWORD`，`TFTP_ROOT` 应改为 `NC_TFTP_ROOT`，不改变赋值内容。
 
 | 缓存模式 | 行为 |
 | --- | --- |

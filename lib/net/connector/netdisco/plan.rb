@@ -25,8 +25,8 @@ module Net
               [device.host, policy.for(host: device.host, vendor: device.vendor)]
             end : {}
           end
-          unless transfers.is_a?(Hash) && transfers.all? { |host, value| host.is_a?(String) && value.instance_of?(Tftp::Policy::Effective) }
-            raise ArgumentError, "plan transfers must contain effective TFTP options by host"
+          unless transfers.is_a?(Hash) && transfers.all? { |host, value| host.is_a?(String) && value.instance_of?(Tftp::Policy::Options) }
+            raise ArgumentError, "plan transfers must contain TFTP options by host"
           end
           transfer_copy = transfers.to_h { |host, value| [host.dup.freeze, value] }.freeze
           super(mode: mode, inventory: inventory.dup.freeze, ready: tasks, outcomes: outcomes.dup.freeze,
@@ -84,7 +84,7 @@ module Net
 
         def validate_tftp_target!(device, selected_filenames)
           transfer = transfers.fetch(device.host)
-          Tftp::Policy.validate_effective!(transfer, host: device.host, vendor: device.vendor, path: device.tftp_filename) if transfer.server
+          Tftp::Policy.validate_options!(transfer, host: device.host, vendor: device.vendor, path: device.tftp_filename) if transfer.server
           filename = target_key(device)
           if selected_filenames.key?(filename) && !(allow_fixed_name_reuse && device.vendor == :palo_alto)
             raise ArgumentError, "plan cannot upload multiple devices to one TFTP filename"

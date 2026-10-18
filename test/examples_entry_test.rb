@@ -21,7 +21,7 @@ class ExamplesEntryTest < Minitest::Test
     end
   end
 
-  def test_trunk_bundler_uses_its_own_implementation
+  def test_bundled_entries_preserve_the_callers_dependency_selection
     %w[backup.rb backup_tftp.rb topology.rb].each do |entry|
       output, error, status = launch(entry, "--help", bundled: true)
       assert status.success?, "bundle exec ruby #{entry}: #{error}"
@@ -33,17 +33,19 @@ class ExamplesEntryTest < Minitest::Test
   private
 
   def launch(entry, option, bundled: false)
-    environment = clean_environment
+    environment = bundled ? {} : clean_environment
     command = [RbConfig.ruby, "-I#{File.join(ROOT, "lib")}", entry, option]
     if bundled
-      environment["BUNDLE_GEMFILE"] = File.join(ROOT, "Gemfile")
+      environment["BUNDLE_GEMFILE"] = File.expand_path(ENV.fetch("BUNDLE_GEMFILE", File.join(ROOT, "Gemfile")))
       command = [RbConfig.ruby, "-S", "bundle", "exec", *command]
     end
     Open3.capture3(environment, *command, chdir: EXAMPLES)
   end
 
   def clean_environment
-    ENV.keys.grep(/\A(?:BUNDLE_|RUBYOPT\z|RUBYLIB\z)/).to_h { |name| [name, nil] }
+    environment = ENV.keys.grep(/\A(?:BUNDLE_|BUNDLER_|RUBYOPT\z|RUBYLIB\z|RUBYGEMS_GEMDEPS\z)/).to_h { |name| [name, nil] }
+    environment["GEM_PATH"] = (Gem.path + Gem.loaded_specs.values.map(&:base_dir)).uniq.join(File::PATH_SEPARATOR)
+    environment
   end
 
 end

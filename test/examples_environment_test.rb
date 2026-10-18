@@ -9,7 +9,7 @@ require "json"
 
 class ExampleEnvironmentTest < Minitest::Test
   ROOT = File.expand_path("..", __dir__)
-  GEMFILE = File.join(ROOT, "Gemfile")
+  GEMFILE = File.expand_path(ENV.fetch("BUNDLE_GEMFILE", File.join(ROOT, "Gemfile")))
 
   def test_explicit_host_overrides_environment_filter_and_topology_uses_shared_concurrency_default
     data = settings(%w[--host 192.0.2.2], { "NC_INCLUDE_HOSTS" => "192.0.2.1", "NC_CONCURRENCY" => "7" })
@@ -17,7 +17,7 @@ class ExampleEnvironmentTest < Minitest::Test
     assert_equal 7, data.dig("topology", "concurrency")
   end
 
-  def test_yaml_overrides_environment_defaults_and_cli_overrides_yaml
+  def test_cli_overrides_yaml_and_yaml_overrides_env
     Dir.mktmpdir do |root|
       path = File.join(root, "policy.yml")
       File.write(path, { "backup" => { "concurrency" => 3, "directory" => File.join(root, "yaml") },
@@ -100,7 +100,7 @@ class ExampleEnvironmentTest < Minitest::Test
       require "net/connector/netdisco"
       require "json"
       options = Net::Connector::Netdisco::CLI::Options.parse(argv: #{argv.inspect})
-      settings = Net::Connector::Netdisco::CLI::Options.settings(options, env: #{defaults.inspect}, environment_defaults: true)
+      settings = Net::Connector::Netdisco::CLI::Options.settings(options, env: #{defaults.inspect}, load_env: true)
       puts JSON.generate(settings.snapshot(mode: :show_config).public_config)
     RUBY
     environment = { "BUNDLE_GEMFILE" => GEMFILE }

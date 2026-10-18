@@ -50,4 +50,15 @@ class TftpPolicyTest < Minitest::Test
       assert_raises(ArgumentError) { N::Tftp::Policy.new(server: "192.0.2.10", **options) }
     end
   end
+
+  def test_updated_effective_options_revalidate_and_own_strings
+    original = N::Tftp::Policy.new(server: "192.0.2.10").for(host: "192.0.2.1", vendor: :h3c)
+    assert_same original, original.with
+    assert_raises(ArgumentError) { original.with(source_interface: Object.new) }
+    interface = +"Vlan-interface10"
+    updated = original.with(source_interface: interface)
+    interface.replace("changed")
+    assert_equal "Vlan-interface10", updated.source_interface
+    assert updated.source_interface.frozen?
+  end
 end

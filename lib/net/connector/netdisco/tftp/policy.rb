@@ -14,17 +14,19 @@ module Net
           PlanningContext = Data.define(:host)
           private_constant :PlanningContext
 
-          Effective = Data.define(:server, :verification_root, :source_file, :source_interface, :vrf) do
+          Options = Data.define(:server, :verification_root, :source_file, :source_interface, :vrf) do
             def initialize(**values)
               unless values.values.all? { |value| value.nil? || value.is_a?(String) }
                 raise ArgumentError, "effective TFTP fields must be strings or nil"
               end
               super(**values.transform_values { |value| value&.dup&.freeze })
             end
+
+            def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
           end
 
-          def self.validate_effective!(transfer, host:, vendor:, path: nil)
-            raise ArgumentError, "invalid effective TFTP options" unless transfer.instance_of?(Effective)
+          def self.validate_options!(transfer, host:, vendor:, path: nil)
+            raise ArgumentError, "invalid TFTP options" unless transfer.instance_of?(Options)
 
             strategy_class = Net::Connector.vendor_class(vendor).profile.tftp_strategy
             raise ArgumentError, "device does not support native TFTP" unless strategy_class
@@ -87,7 +89,7 @@ module Net
 
           def for(host:, vendor:)
             server = @servers.fetch(address(host), @server)
-            Effective.new(server: server, verification_root: @roots[server],
+            Options.new(server: server, verification_root: @roots[server],
                           source_file: @files.for(host: host, vendor: vendor),
                           source_interface: @interfaces.for(host: host, vendor: vendor),
                           vrf: @vrfs.for(host: host, vendor: vendor))

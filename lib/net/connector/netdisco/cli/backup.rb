@@ -18,12 +18,12 @@ module Net
         class Backup
           # 保存批次模式与调用方 IO，构造阶段不读取清单、不创建目录。
           def initialize(mode: :backup, argv: ARGV, env: ENV, input: $stdin, output: $stdout, error: $stderr,
-                         default_config: nil, default_directory: nil, environment_defaults: false)
+                         default_config: nil, default_directory: nil, load_env: false)
             raise ArgumentError, "mode must be backup or tftp" unless %i[backup tftp].include?(mode)
 
             @mode, @argv, @env, @input, @output, @error = mode, argv, env, input, output, error
             @default_config, @default_directory = default_config, default_directory
-            @environment_defaults = environment_defaults
+            @load_env = load_env
           end
 
           # 先固定并校验策略，再预览、执行和保存报告；成功判定使用最终报告。
@@ -121,7 +121,7 @@ module Net
 
           # 预检完成后才创建批次目录；补充日志路径时保持原策略快照与动态凭据来源。
           def prepare(options)
-            settings = CLI::Options.settings(options, env: @env, environment_defaults: @environment_defaults).for_run(mode: @mode)
+            settings = CLI::Options.settings(options, env: @env, load_env: @load_env).for_run(mode: @mode)
             success_policy = options.fetch(:success_policy, :selected)
             raise ArgumentError, "verified policy requires TFTP mode" if success_policy == :verified && @mode != :tftp
             raise ArgumentError, "--tftp-root requires TFTP mode" if options[:tftp_root] && @mode != :tftp

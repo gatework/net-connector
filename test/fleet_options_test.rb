@@ -3,12 +3,12 @@
 require "minitest/autorun"
 require_relative "../lib/net/connector/netdisco/fleet"
 
-class BatchOptionsTest < Minitest::Test
+class FleetOptionsTest < Minitest::Test
   N = Net::Connector::Netdisco
 
   def test_backup_options_own_directory_and_revalidate_updates
     directory = +"backups"
-    options = N::BackupOptions.new(directory: directory, concurrency: 2)
+    options = N::Fleet.const_get(:BackupOptions).new(directory: directory, concurrency: 2)
     directory.replace("changed")
     assert_equal "backups", options.directory
     assert options.directory.frozen?
@@ -22,7 +22,7 @@ class BatchOptionsTest < Minitest::Test
   def test_tftp_options_own_maps_and_validate_even_without_a_device
     sources = { h3c: +"startup.cfg" }
     vrfs = { cisco_nxos: +"management" }
-    options = N::TftpOptions.new(server: "192.0.2.10", source_files: sources, vrfs: vrfs,
+    options = N::Fleet.const_get(:TftpOptions).new(server: "192.0.2.10", source_files: sources, vrfs: vrfs,
                                   concurrency: 2, report_directory: "backups")
     sources[:h3c].replace("changed")
     vrfs[:cisco_nxos].replace("changed")

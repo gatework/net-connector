@@ -38,6 +38,8 @@ module Net
         def format(neighbor:, port:)
           description_format % { neighbor: neighbor.to_s.gsub(/\s+/, "_"), port: port.to_s.gsub(/\s+/, "_") }
         end
+
+        def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
       end
     end
   end

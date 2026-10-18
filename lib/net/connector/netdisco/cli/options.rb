@@ -3,7 +3,7 @@
 require "optparse"
 require_relative "../settings"
 require_relative "../planner"
-require_relative "../config_file"
+require_relative "../config"
 require_relative "help"
 
 module Net
@@ -123,8 +123,8 @@ module Net
 
             environment = environment(options, env: env)
             path = environment["NC_CONFIG"]
-            defaults = path && !path.empty? ? ConfigFile.load(path) : {}
-            keys = ConfigFile::FIELDS.values.flat_map { |fields| fields.values.map(&:first) }
+            defaults = path && !path.empty? ? Config.load(path) : {}
+            keys = Config::FIELDS.values.flat_map { |fields| fields.values.map(&:first) }
             if load_env
               # 显式启用时，公开环境值只填补 YAML；CLI 覆盖与凭据来源仍分开处理。
               defaults = env.to_h.slice(*keys).merge(defaults)

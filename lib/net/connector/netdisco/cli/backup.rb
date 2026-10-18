@@ -5,7 +5,7 @@ require "socket"
 require_relative "options"
 require_relative "credentials"
 require_relative "../fleet"
-require_relative "../config_initializer"
+require_relative "../config/initializer"
 require_relative "../progress"
 require_relative "../report/files"
 require_relative "../../storage/batch_directory"
@@ -91,7 +91,7 @@ module Net
             return unless @default_directory && !values.key?("NC_BACKUP_DIRECTORY")
 
             path = values["NC_CONFIG"] || @env["NC_CONFIG"]
-            document = path && File.file?(path) ? ConfigFile.load(path) : {}
+            document = path && File.file?(path) ? Config.load(path) : {}
             values["NC_BACKUP_DIRECTORY"] = @default_directory unless document.key?("NC_BACKUP_DIRECTORY")
           end
 
@@ -104,7 +104,7 @@ module Net
                          "inventory" => { "include_hosts" => [], "exclude_hosts" => [], "include_names" => [],
                                           "exclude_names" => [], "include_vendors" => [], "exclude_vendors" => [], "name_match" => "contains" },
                          "ssh" => { "protocol" => "ssh", "host_key_policy" => "accept_new" } }
-            ConfigInitializer.new(input: @input, output: @error).create(path: path, document: document, interactive: options[:interactive])
+            Config::Initializer.new(input: @input, output: @error).create(path: path, document: document, interactive: options[:interactive])
             @error.puts "已初始化配置：#{path}；检查配置后再次运行。"
             true
           end

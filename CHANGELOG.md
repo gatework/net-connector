@@ -2,6 +2,7 @@
 
 ## 0.14.0 - 2026-10-18
 
+- 不兼容调整：Netdisco 配置与策略入口整理为 `Config`、`Config::Initializer`、`Device::Policy`、`Topology::Options`，原常量和加载路径已移除，直接引用者需更新。
 - 示例入口统一为 `backup.rb`、`backup_tftp.rb` 和 `topology.rb`，单台 TFTP 使用 `backup_tftp.rb --host IP`，数据库示例配置改为 `inventory.yml`，原 `device_tftp.rb`、`review_tftp.rb` 和 `inventory_sql.yml` 已移除。
 - 备份示例支持默认配置、首次运行初始化、常用与完整帮助及清单预览，直接使用当前安装或 Bundler 选定的库。
 - 新增拓扑发现、描述审计和只读规划入口，只有显式 `--apply` 才下发，应用前重验邻居及原描述，修改后回读并保存，部分失败和中断保留已完成结果。

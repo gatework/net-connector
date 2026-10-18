@@ -5,7 +5,7 @@ require "minitest/mock"
 require "tmpdir"
 require "stringio"
 require_relative "../lib/net/connector/netdisco"
-require_relative "../lib/net/connector/netdisco/config_initializer"
+require_relative "../lib/net/connector/netdisco/config/initializer"
 
 class ConfigInitializerTest < Minitest::Test
   N = Net::Connector::Netdisco
@@ -15,7 +15,7 @@ class ConfigInitializerTest < Minitest::Test
       path = File.join(root, "backup.yml")
       input = Object.new
       input.define_singleton_method(:gets) { raise "must not read stdin" }
-      initializer = N::ConfigInitializer.new(input: input, output: StringIO.new)
+      initializer = N::Config::Initializer.new(input: input, output: StringIO.new)
       document = { "backup" => { "concurrency" => 4 } }
       assert_equal :created, initializer.create(path: path, document: document, interactive: false)
       assert_equal 0o600, File.stat(path).mode & 0o777
@@ -29,7 +29,7 @@ class ConfigInitializerTest < Minitest::Test
   def test_invalid_document_and_symlink_have_no_write_side_effect
     Dir.mktmpdir do |root|
       path = File.join(root, "backup.yml")
-      initializer = N::ConfigInitializer.new(input: StringIO.new, output: StringIO.new)
+      initializer = N::Config::Initializer.new(input: StringIO.new, output: StringIO.new)
       assert_raises(ArgumentError) { initializer.create(path: path, document: { "password" => "private" }, interactive: false) }
       refute File.exist?(path)
       target = File.join(root, "target")
@@ -43,7 +43,7 @@ class ConfigInitializerTest < Minitest::Test
   def test_interactive_eof_leaves_no_partial_file
     Dir.mktmpdir do |root|
       path = File.join(root, "backup.yml")
-      initializer = N::ConfigInitializer.new(input: StringIO.new("y\n"), output: StringIO.new)
+      initializer = N::Config::Initializer.new(input: StringIO.new("y\n"), output: StringIO.new)
       assert_raises(EOFError) { initializer.create(path: path, document: {}, interactive: true) }
       assert_empty Dir.children(root)
     end
@@ -53,7 +53,7 @@ class ConfigInitializerTest < Minitest::Test
     Dir.mktmpdir do |root|
       path = File.join(root, "backup.yml")
       answers = ["y", "http", "https://inventory.example.invalid", "192.0.2.1-20", "", "edge", "wlc", "contains", "h3c", "", "51", "8", "./backups", "192.0.2.10"]
-      initializer = N::ConfigInitializer.new(input: StringIO.new(answers.join("\n") + "\n"), output: StringIO.new)
+      initializer = N::Config::Initializer.new(input: StringIO.new(answers.join("\n") + "\n"), output: StringIO.new)
       assert_equal :created, initializer.create(path: path, document: {}, interactive: true)
       settings = N::Settings.from_file(path, env: {})
       assert_equal 8, settings.concurrency
@@ -70,7 +70,7 @@ class ConfigInitializerTest < Minitest::Test
         File.write(destination, "competitor")
         original.call(source, destination)
       end
-      initializer = N::ConfigInitializer.new(input: StringIO.new, output: StringIO.new)
+      initializer = N::Config::Initializer.new(input: StringIO.new, output: StringIO.new)
       status = File.stub(:link, racing) { initializer.create(path: path, document: {}, interactive: false) }
       assert_equal :exists, status
       assert_equal "competitor", File.read(path)
@@ -88,7 +88,7 @@ class ConfigInitializerTest < Minitest::Test
         file.define_singleton_method(:fsync) { raise interruption }
         file
       end
-      initializer = N::ConfigInitializer.new(input: StringIO.new, output: StringIO.new)
+      initializer = N::Config::Initializer.new(input: StringIO.new, output: StringIO.new)
       error = Tempfile.stub(:new, wrapper) do
         assert_raises(Interrupt) { initializer.create(path: path, document: {}, interactive: false) }
       end
@@ -101,7 +101,7 @@ class ConfigInitializerTest < Minitest::Test
     Dir.mktmpdir do |root|
       input = Object.new
       input.define_singleton_method(:gets) { |*| raise Interrupt }
-      initializer = N::ConfigInitializer.new(input: input, output: StringIO.new)
+      initializer = N::Config::Initializer.new(input: input, output: StringIO.new)
       assert_raises(Interrupt) { initializer.create(path: File.join(root, "backup.yml"), document: {}, interactive: true) }
       assert_empty Dir.children(root)
     end
@@ -111,7 +111,7 @@ class ConfigInitializerTest < Minitest::Test
     Dir.mktmpdir do |root|
       path = File.join(root, "topology.yml")
       answers = ["y", "http", "https://inventory.example.invalid", "", "", "edge", "", "contains", "", "", "6", "./topology"]
-      initializer = N::ConfigInitializer.new(input: StringIO.new(answers.join("\n") + "\n"), output: StringIO.new)
+      initializer = N::Config::Initializer.new(input: StringIO.new(answers.join("\n") + "\n"), output: StringIO.new)
       document = { "topology" => { "mode" => "plan", "concurrency" => 4 } }
       assert_equal :created, initializer.create(path: path, document: document, interactive: true)
       values = YAML.safe_load_file(path)
@@ -131,7 +131,7 @@ class ConfigInitializerTest < Minitest::Test
         file.define_singleton_method(:fsync) { raise IOError, "sync failed" } if name == File.realpath(root)
         file
       end
-      initializer = N::ConfigInitializer.new(input: StringIO.new, output: StringIO.new)
+      initializer = N::Config::Initializer.new(input: StringIO.new, output: StringIO.new)
       File.stub(:open, failing) do
         assert_raises(IOError) { initializer.create(path: path, document: { "backup" => { "concurrency" => 4 } }, interactive: false) }
       end

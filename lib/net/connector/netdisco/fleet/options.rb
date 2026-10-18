@@ -73,7 +73,7 @@ module Net
             server = TftpTarget.new(host: server, path: "preflight.cfg").host if server
             raise ArgumentError, "TFTP requires a default server or device servers" if !server && servers.empty?
 
-            VendorDevicePolicy.new(source_files, vendors: %i[h3c h3c_wireless huawei]) { |value| TftpTarget.validate_source_file!(value) unless value.nil? }
+            Device::Policy.new(source_files, vendors: %i[h3c h3c_wireless huawei]) { |value| TftpTarget.validate_source_file!(value) unless value.nil? }
             vrfs = Settings.validate_vrfs!(vrfs)
             super(server: server, source_files: source_files.transform_values { |value| value.dup.freeze }.freeze,
                   vrfs: vrfs.transform_values { |value| value.dup.freeze }.freeze, concurrency: concurrency,

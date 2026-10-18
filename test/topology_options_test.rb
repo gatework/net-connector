@@ -7,7 +7,7 @@ class TopologyOptionsTest < Minitest::Test
   N = Net::Connector::Netdisco
 
   def test_reference_topology_fields_are_validated_and_resolved_by_settings
-    values = N::ConfigFile.parse("topology" => { "mode" => "plan", "cache_mode" => "only", "concurrency" => 8,
+    values = N::Config.parse("topology" => { "mode" => "plan", "cache_mode" => "only", "concurrency" => 8,
                                                  "directory" => "./topology_reports", "description_format" => "To_%{neighbor}_%{port}",
                                                  "abbreviate_ports" => true, "lowercase_ports" => false })
     options = N::Settings.new(env: {}, defaults: values).snapshot(mode: :topology).topology_options
@@ -26,14 +26,14 @@ class TopologyOptionsTest < Minitest::Test
      { "description_format" => "To_%{neighbor}\nshutdown" }, { "concurrency" => 51 }, { "cache_mode" => "unknown" },
      { "limit" => 0 }, { "mode" => "unknown" }].each do |values|
       assert_raises(ArgumentError) do
-        settings = N::Settings.new(env: {}, defaults: N::ConfigFile.parse("topology" => values))
+        settings = N::Settings.new(env: {}, defaults: N::Config.parse("topology" => values))
         settings.snapshot(mode: :topology)
       end
     end
   end
 
   def test_updated_options_revalidate_and_own_their_format
-    original = N::TopologyOptions.new
+    original = N::Topology::Options.new
     assert_same original, original.with
     assert_raises(ArgumentError) { original.with(concurrency: 0) }
     assert_raises(ArgumentError) { original.with(description_format: "%{password}") }

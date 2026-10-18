@@ -6,7 +6,7 @@ require_relative "options"
 require_relative "credentials"
 require_relative "../fleet"
 require_relative "../progress"
-require_relative "../config_initializer"
+require_relative "../config/initializer"
 require_relative "../../storage/batch_directory"
 
 module Net
@@ -86,7 +86,7 @@ module Net
           def initialize_config(path, options)
             document = { "topology" => { "mode" => "plan", "cache_mode" => "prefer", "concurrency" => 4 } }
             document["topology"]["directory"] = @default_directory if @default_directory
-            ConfigInitializer.new(input: @input, output: @error).create(path: path, document: document, interactive: options[:interactive])
+            Config::Initializer.new(input: @input, output: @error).create(path: path, document: document, interactive: options[:interactive])
             @error.puts "已初始化配置：#{path}；检查配置后再次运行。"
             # 新建配置不能继续访问清单；由 run 入口处理这个明确状态。
             @initialized = true

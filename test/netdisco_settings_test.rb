@@ -463,7 +463,7 @@ class NetdiscoSettingsTest < Minitest::Test
   end
 
   def test_legacy_and_removed_environment_settings_fail_without_echoing_values
-    keys = Netdisco::ConfigFile::FIELDS.values.flat_map { |fields| fields.values.map(&:first) } - Settings::ENVIRONMENT_KEYS
+    keys = Netdisco::Config::FIELDS.values.flat_map { |fields| fields.values.map(&:first) } - Settings::ENVIRONMENT_KEYS
     keys += %w[NC_H3C_PROTOCOL NC_PROGRESS NET_CONNECTOR_DEVICE_PASSWORD NETDISCO_URL NETDISCO_PASSWORD TFTP_HOST TFTP_ROOT]
     keys.each do |key|
       status, output, error = cli({ key => "private-value" })

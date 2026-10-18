@@ -3,9 +3,9 @@
 require "minitest/autorun"
 require_relative "../lib/net/connector/netdisco"
 
-class VendorDevicePolicyTest < Minitest::Test
+class DevicePolicyTest < Minitest::Test
   def policy(values)
-    Net::Connector::Netdisco::VendorDevicePolicy.new(values, vendors: %i[cisco_nxos hillstone]) do |value|
+    Net::Connector::Netdisco::Device::Policy.new(values, vendors: %i[cisco_nxos hillstone]) do |value|
       unless value.nil? || (value.is_a?(String) && value.match?(/\A[A-Za-z0-9_][A-Za-z0-9_.-]*\z/))
         raise ArgumentError, "invalid VRF"
       end

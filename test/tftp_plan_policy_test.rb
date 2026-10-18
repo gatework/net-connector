@@ -50,7 +50,7 @@ class TftpPlanPolicyTest < Minitest::Test
   def test_only_device_server_and_matching_verification_root_do_not_require_global_defaults
     Dir.mktmpdir do |root|
       row = { "ip" => "192.0.2.1", "vendor" => "H3C" }
-      defaults = N::ConfigFile.parse("tftp" => { "servers" => { "192.0.2.1" => "192.0.2.10" },
+      defaults = N::Config.parse("tftp" => { "servers" => { "192.0.2.1" => "192.0.2.10" },
                                                 "verification_roots" => { "192.0.2.10" => root } })
       factory = lambda do |*|
         Object.new.tap do |connector|
@@ -71,7 +71,7 @@ class TftpPlanPolicyTest < Minitest::Test
 
   def test_explicit_server_override_cannot_rebind_the_old_server_verification_root
     Dir.mktmpdir do |root|
-      defaults = N::ConfigFile.parse("tftp" => { "server" => "192.0.2.10", "verification_root" => root })
+      defaults = N::Config.parse("tftp" => { "server" => "192.0.2.10", "verification_root" => root })
       calls = []
       fleet = N::Fleet.new(settings: N::Settings.new(env: {}, defaults: defaults),
                             inventory: Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }]), report_store: nil,
@@ -88,7 +88,7 @@ class TftpPlanPolicyTest < Minitest::Test
       rows = (1..2).map { |index| { "ip" => "192.0.2.#{index}", "vendor" => "Palo Alto Networks" } }
       servers = { "192.0.2.1" => "192.0.2.10", "192.0.2.2" => "192.0.2.11" }
       server_roots = servers.values.zip(roots).to_h
-      defaults = N::ConfigFile.parse("tftp" => { "servers" => servers, "verification_roots" => server_roots })
+      defaults = N::Config.parse("tftp" => { "servers" => servers, "verification_roots" => server_roots })
       received = []
       factory = lambda do |device, _options|
         Object.new.tap do |connector|

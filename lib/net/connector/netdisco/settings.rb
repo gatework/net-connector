@@ -7,10 +7,10 @@ require_relative "../concurrency/pool"
 require_relative "inventory/http"
 require_relative "inventory/postgres"
 require_relative "inventory/cache"
-require_relative "config_file"
-require_relative "vendor_device_policy"
+require_relative "config"
+require_relative "device/policy"
 require_relative "tftp/policy"
-require_relative "topology_options"
+require_relative "topology/options"
 require_relative "rules"
 require_relative "planner"
 
@@ -30,7 +30,7 @@ module Net
 
         # 加载无凭据 YAML 作为默认策略，保留传入环境作为动态凭据来源。
         def self.from_file(path, env: ENV)
-          new(env: env, defaults: ConfigFile.load(path))
+          new(env: env, defaults: Config.load(path))
         end
 
         # 只有 NC_CONFIG 显式指定时才读取文件，不隐式加载 .env。
@@ -164,7 +164,7 @@ module Net
 
         def topology_options
           directory = value("NC_TOPOLOGY_DIRECTORY")
-          TopologyOptions.new(mode: raw("NC_TOPOLOGY_MODE", "plan"), cache_mode: raw("NC_TOPOLOGY_CACHE_MODE", raw("ND_CACHE_MODE", "prefer")),
+          Topology::Options.new(mode: raw("NC_TOPOLOGY_MODE", "plan"), cache_mode: raw("NC_TOPOLOGY_CACHE_MODE", raw("ND_CACHE_MODE", "prefer")),
                               concurrency: integer("NC_TOPOLOGY_CONCURRENCY", concurrency), directory: directory && absolute_path(directory),
                               description_format: raw("NC_TOPOLOGY_DESCRIPTION_FORMAT", "To_%{neighbor}_%{port}"),
                               abbreviate_ports: boolean("NC_TOPOLOGY_ABBREVIATE", true), lowercase_ports: boolean("NC_TOPOLOGY_LOWERCASE", false),
@@ -260,7 +260,7 @@ module Net
         def tftp_vrf_policy = self.class.vrf_policy(tftp_vrfs)
 
         def self.vrf_policy(vrfs)
-          VendorDevicePolicy.new(vrfs, vendors: %i[cisco_nxos hillstone]) do |name|
+          Device::Policy.new(vrfs, vendors: %i[cisco_nxos hillstone]) do |name|
             unless name.nil? || (name.is_a?(String) && name.match?(/\A[A-Za-z0-9_][A-Za-z0-9_.-]*\z/))
               raise ArgumentError, "vrfs must contain safe VRF names or explicit null"
             end
@@ -457,7 +457,7 @@ module Net
         end
 
         def non_secret_keys
-          ConfigFile::FIELDS.values.flat_map { |section| section.values.map(&:first) }
+          Config::FIELDS.values.flat_map { |section| section.values.map(&:first) }
         end
 
         # 旧前缀和已移除策略明确报错；错误只包含变量名，不泄露变量值。

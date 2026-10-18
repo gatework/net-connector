@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "ipaddr"
-require_relative "../vendor_device_policy"
+require_relative "../device/policy"
 require_relative "../../../connector"
 require_relative "../../device/tftp/target"
 
@@ -64,10 +64,10 @@ module Net
               raise ArgumentError, "distinct TFTP servers cannot share a verification root"
             end
             @roots.freeze
-            @files = VendorDevicePolicy.new(source_files, vendors: %i[h3c h3c_wireless huawei]) do |value|
+            @files = Device::Policy.new(source_files, vendors: %i[h3c h3c_wireless huawei]) do |value|
               TftpTarget.validate_source_file!(value) unless value.nil?
             end
-            @interfaces = VendorDevicePolicy.new(source_interfaces, vendors: %i[h3c h3c_wireless radware]) do |value|
+            @interfaces = Device::Policy.new(source_interfaces, vendors: %i[h3c h3c_wireless radware]) do |value|
               unless value.nil? || (value.is_a?(String) && value.match?(/\A[A-Za-z][A-Za-z0-9_.\/: -]*\z/) && !value.end_with?(" "))
                 raise ArgumentError, "source_interfaces contain an unsafe value"
               end
@@ -79,7 +79,7 @@ module Net
                 strategy.validate_source_interface!(target, source_interface: value)
               end
             end
-            @vrfs = VendorDevicePolicy.new(vrfs, vendors: %i[cisco_nxos hillstone]) do |value|
+            @vrfs = Device::Policy.new(vrfs, vendors: %i[cisco_nxos hillstone]) do |value|
               unless value.nil? || (value.is_a?(String) && value.match?(/\A[A-Za-z0-9_][A-Za-z0-9_.-]*\z/))
                 raise ArgumentError, "vrfs contain an unsafe value"
               end

@@ -18,7 +18,7 @@ module Net
             unless %i[succeeded partial failed missing_credentials].include?(status)
               raise ArgumentError, "operation outcome contains an invalid status"
             end
-            unless value.nil? || value.is_a?(Result) || value.is_a?(Topology::Plan)
+            unless value.nil? || value.is_a?(Result) || value.is_a?(Net::Connector::Topology::Plan)
               raise ArgumentError, "operation outcome contains an invalid domain value"
             end
             raise ArgumentError, "operation error must be a StandardError or nil" unless error.nil? || error.is_a?(StandardError)
@@ -49,7 +49,7 @@ module Net
             { host: device.host, vendor: device.vendor, status: status,
               started_at: started_at.iso8601, finished_at: finished_at.iso8601, duration_ms: duration_ms,
               steps: value.is_a?(Result) ? value.steps.size : nil,
-              changes: value.is_a?(Topology::Plan) ? value.changes.size : nil,
+              changes: value.is_a?(Net::Connector::Topology::Plan) ? value.changes.size : nil,
               diagnostic: Diagnostic.from(error)&.to_h }.compact
           end
 

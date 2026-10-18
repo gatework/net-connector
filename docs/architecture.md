@@ -357,6 +357,9 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 | 命令结果 | `Command::Result`，位于 `engine/command/result.rb`；脚本汇总仍为 `Result` |
 | 安全诊断词表 | `Error::Metadata`，位于 `engine/error/metadata.rb` |
 | 清单预算与缓存 | `Netdisco::Inventory::Budget/Cache`，位于 `netdisco/inventory/` |
+| 配置解析与初始化 | `Netdisco::Config` 和 `Config::Initializer`，位于 `netdisco/config.rb` 和 `netdisco/config/initializer.rb` |
+| 逐设备策略 | `Netdisco::Device::Policy`，位于 `netdisco/device/policy.rb`，按厂商默认和设备地址选取参数 |
+| 拓扑批次参数 | `Netdisco::Topology::Options`，位于 `netdisco/topology/options.rb`；设备拓扑能力仍为 `Net::Connector::Topology` |
 | 配置操作结果 | `Netdisco::Operations::Batch/Outcome`，位于 `netdisco/operations/` |
 | 报告存储 | `Netdisco::Report::Store`，位于 `netdisco/report/store.rb`，通过 `report_store:` 注入 |
 | 服务器上传证据 | `Netdisco::Tftp::Verifier/Archive`，位于 `netdisco/tftp/` |

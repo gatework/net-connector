@@ -63,7 +63,7 @@ module Net
 
           run(:plan_interface_descriptions, tasks, concurrency: concurrency, on_start: on_start, on_result: on_result) do |connector, _|
             result = connector.plan_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, &formatter)
-            raise TypeError, "description planning must return a Topology::Plan" unless result.is_a?(Topology::Plan)
+            raise TypeError, "description planning must return a Net::Connector::Topology::Plan" unless result.is_a?(Net::Connector::Topology::Plan)
 
             normalize_plan(result)
           end
@@ -127,14 +127,14 @@ module Net
 
         # 计划自身拥有不可变审批树；这里仅处理批次的地址和输入预检。
         def normalize_plan(plan)
-          raise ArgumentError, "plans must contain Topology::Plan values" unless plan.instance_of?(Topology::Plan)
+          raise ArgumentError, "plans must contain Net::Connector::Topology::Plan values" unless plan.instance_of?(Net::Connector::Topology::Plan)
           host = normalize_host(plan.host)
           raise ArgumentError, "description plan contains an unsupported vendor" unless Net::Connector.vendors.include?(plan.vendor)
 
           Script.new(plan.commands)
           plan.changes.each do |change|
-            Topology::InterfaceDescription.validate_interface!(change.interface)
-            Topology::InterfaceDescription.validate!(change.new_description)
+            Net::Connector::Topology::InterfaceDescription.validate_interface!(change.interface)
+            Net::Connector::Topology::InterfaceDescription.validate!(change.new_description)
           end
           raise ArgumentError, "empty description plan cannot contain commands" if plan.changes.empty? && !plan.commands.empty?
 
@@ -187,10 +187,10 @@ module Net
             unless device&.ready? && !duplicates.key?(host)
               raise ArgumentError, "target must identify exactly one ready inventory device"
             end
-            if value.is_a?(Topology::Plan)
-              Topology.validate_plan!(value, host: device.host, vendor: device.vendor)
+            if value.is_a?(Net::Connector::Topology::Plan)
+              Net::Connector::Topology.validate_plan!(value, host: device.host, vendor: device.vendor)
             elsif value.nil?
-              Topology.validate_vendor_support!(host: device.host, vendor: device.vendor, phase: :plan)
+              Net::Connector::Topology.validate_vendor_support!(host: device.host, vendor: device.vendor, phase: :plan)
             end
             device
           end
@@ -203,7 +203,7 @@ module Net
           notify(on_start, device, callback_errors, device.host)
           value, error = Net::Connector::Device::Scope.call(factory: -> { build_connector(device, snapshot) }) do |connector|
             result = operation.call(connector)
-            if result.is_a?(Topology::Plan) && (result.host != device.host || result.vendor != device.vendor)
+            if result.is_a?(Net::Connector::Topology::Plan) && (result.host != device.host || result.vendor != device.vendor)
               raise ArgumentError, "planned evidence does not match its inventory device"
             end
             result

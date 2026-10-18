@@ -50,7 +50,7 @@ module Net
           # 只有完整成功的只读规划自动进入下一阶段；关闭失败的证据仍可从 outcome.value 显式检查。
           def plans
             outcomes.each_with_object({}) do |outcome, found|
-              found[outcome.device.host] = outcome.value if outcome.success? && outcome.value.is_a?(Topology::Plan)
+              found[outcome.device.host] = outcome.value if outcome.success? && outcome.value.is_a?(Net::Connector::Topology::Plan)
             end.freeze
           end
 

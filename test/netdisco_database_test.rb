@@ -131,7 +131,7 @@ class NetdiscoDatabaseTest < Minitest::Test
 
       %w[password user db_pass db_user db_host].each do |name|
         File.write(path, "netdisco:\n  #{name}: forbidden\n")
-        assert_raises(ArgumentError) { Netdisco::ConfigFile.load(path) }
+        assert_raises(ArgumentError) { Netdisco::Config.load(path) }
       end
     end
   end

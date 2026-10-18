@@ -139,6 +139,10 @@ class ModuleLoadingTest < Minitest::Test
 
   def test_netdisco_entry_points_declare_their_dependencies
     cases = {
+      "config" => 'N::Config.parse("backup" => { "concurrency" => 2 }) == { "NC_CONCURRENCY" => "2" }',
+      "config/initializer" => 'require "tmpdir"; require "stringio"; Dir.mktmpdir { |root| path = File.join(root, "settings.yml"); N::Config::Initializer.new(output: StringIO.new).create(path: path, document: {}, interactive: false) == :created && N::Config.load(path).empty? }',
+      "device/policy" => 'N::Device::Policy.new({ h3c: "startup.cfg" }, vendors: [:h3c]) { |value| value }.for(vendor: :h3c, host: "192.0.2.1") == "startup.cfg"',
+      "topology/options" => 'N::Topology::Options.new.format(neighbor: "edge", port: "Gi1") == "To_edge_Gi1"',
       "inventory" => "N::Inventory.options.fetch(:page_size) == 500",
       "inventory/budget" => "N::Inventory::Budget.new(N::Inventory.options, clock: -> { 0 }).remaining == 300",
       "inventory/http" => 'N::Inventory::HTTP.new(url: "https://inventory.example", api_key: "fixture").respond_to?(:devices)',

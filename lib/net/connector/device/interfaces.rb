@@ -1,41 +1,18 @@
 # frozen_string_literal: true
 
-require_relative "topology/strategy"
-require_relative "topology/stages"
-require_relative "topology/plan"
-require_relative "topology/audit"
+require_relative "interfaces/strategy"
+require_relative "interfaces/stages"
+require_relative "interfaces/plan"
+require_relative "interfaces/audit"
 
 module Net
   module Connector
-    # 从 CDP/LLDP 回显生成链路邻居，并规划接口描述变更。
-    class Topology
-      # 设备入口与功能实现共置，Base 只组合能力，不重复业务流程。
+    # 绑定单设备的接口集合；现场证据按操作重读，连接及租约仍由设备持有。
+    class Interfaces
+      # 设备只公开集合入口，读取和变更动作由集合对象承载。
       module Capability
-        # 执行 CDP 或 LLDP 查询并返回统一的链路邻居记录。
-        def neighbors = Topology.new(self).neighbors
-
-        # 读取运行配置中的接口描述或端口名称。
-        def interface_descriptions = Topology.new(self).interface_descriptions
-
-        # 显式同步请求在同一会话中完成发现、修改、读回与保存，无须调用方传递计划。
-        def sync_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
-          Topology.new(self).sync_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, &formatter)
-        end
-
-        # 以邻居和现有配置为证据，生成待确认的接口描述变更计划。
-        def plan_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
-          Topology.new(self).plan_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, &formatter)
-        end
-
-        # 核实各接口，保留缺失/冲突证据并为可确认的接口构造独立计划。
-        def audit_interface_descriptions(abbreviate: true, lowercase: false, description_matcher: nil, &formatter)
-          Topology.new(self).audit_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, description_matcher: description_matcher, &formatter)
-        end
-
-        # 明确确认且现场证据未变化时执行接口描述计划。
-        def apply_interface_descriptions(plan, confirmed: false)
-          Topology.new(self).apply_interface_descriptions(plan, confirmed: confirmed)
-        end
+        # 获取对象不访问设备；复用解析器与策略，不缓存邻居、描述或审批计划。
+        def interfaces = @interfaces ||= Interfaces.new(self)
       end
 
       # 仅承载厂商档案的离线上下文，不能连接、查询或下发设备命令。
@@ -119,10 +96,10 @@ module Net
       end
 
       # 从运行配置读取已设置的接口描述或端口名称。
-      def interface_descriptions = read_interface_descriptions
+      def descriptions = read_descriptions
 
       # 内部读取先交付执行步骤，再处理解析；解析失败也不能抹去已经完成的采集命令。
-      def read_interface_descriptions
+      def read_descriptions
         template = @strategy.description_template
         unless @strategy.supports?(:interface_descriptions) && template
           raise UnsupportedOperation.new("interface descriptions are unsupported for this vendor",
@@ -145,37 +122,69 @@ module Net
         end
       end
 
-      private :read_interface_descriptions
+      private :read_descriptions
 
       # 调用即表达修改意图；同一租约覆盖发现到保存，外部变更仍须重验。
-      def sync_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
-        unless [abbreviate, lowercase].all? { |value| value == true || value == false }
-          raise ArgumentError, "description formatting options must be boolean"
-        end
+      def sync(abbreviate: true, lowercase: false, &formatter)
+        validate_format_options!(abbreviate, lowercase)
         validate_change_support!(:apply)
         @device.with_operation(:apply) do
-          plan = plan_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, &formatter)
+          plan = build_plan(abbreviate: abbreviate, lowercase: lowercase, &formatter)
           plan.changes.empty? ? Result.new : apply_plan(plan)
         end
       end
 
       # 在同一会话内采集邻居和描述，返回逐接口证据与候选修正计划。
-      def audit_interface_descriptions(abbreviate: true, lowercase: false, description_matcher: nil, &formatter)
-        unless [abbreviate, lowercase].all? { |value| value == true || value == false }
-          raise ArgumentError, "description formatting options must be boolean"
-        end
+      def audit(abbreviate: true, lowercase: false, description_matcher: nil, &formatter)
+        validate_format_options!(abbreviate, lowercase)
         formatter ||= ->(peer) { InterfaceDescription.format(peer, abbreviate: abbreviate, lowercase: lowercase) }
         @device.with_operation(:plan) do
           AuditBuilder.new(host: @device.host, vendor: @device.vendor, strategy: @strategy,
-                           neighbors: neighbors, descriptions: interface_descriptions, formatter: formatter, description_matcher: description_matcher).call
+                           neighbors: neighbors, descriptions: descriptions, formatter: formatter, description_matcher: description_matcher).call
         end
       end
 
       # 比对邻居和现有描述，生成包含确切命令的只读变更计划。
-      def plan_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
+      def plan(abbreviate: true, lowercase: false, &formatter)
+        validate_format_options!(abbreviate, lowercase)
         validate_change_support!(:plan) if @strategy.supports?(:neighbors)
+        @device.with_operation(:plan) do
+          build_plan(abbreviate: abbreviate, lowercase: lowercase, &formatter)
+        end
+      end
+
+      # 只有明确确认且邻居和旧描述未变化时，才下发计划中的命令。
+      def apply(plan, confirmed: false)
+        unless confirmed == true
+          raise UnsupportedOperation.new("description plan requires confirmation", code: :confirmation_required,
+                                         host: @device.host, phase: :apply)
+        end
+        raise ArgumentError, "plan must be an interface plan for this device" unless plan.is_a?(Plan) &&
+                                                                                      plan.host == @device.host &&
+                                                                                      plan.vendor == @device.vendor
+        if plan.changes.empty?
+          raise ArgumentError, "empty interface plan cannot contain commands" unless plan.commands.empty?
+
+          return Result.new
+        end
+
+        @strategy.supports?(:neighbors) ? validate_change_support!(:apply) : neighbors
+        @device.with_operation(:apply) { apply_plan(plan) }
+      end
+
+      private
+
+      # 所有规划入口采用相同预检，空邻居表或自定义格式化也不能绕过参数校验。
+      def validate_format_options!(abbreviate, lowercase)
+        return if [abbreviate, lowercase].all? { |value| value == true || value == false }
+
+        raise ArgumentError, "description formatting options must be boolean"
+      end
+
+      # 调用方持有会话租约后才读取证据，保证发现与描述采集之间不能插入其他操作。
+      def build_plan(abbreviate:, lowercase:, &formatter)
         discovered = neighbors
-        current = interface_descriptions
+        current = descriptions
         evidence = evidence_for(discovered, current)
         changes = discovered.filter_map do |neighbor|
           old = current.fetch(@strategy.interface_key(neighbor.local_interface))
@@ -198,27 +207,6 @@ module Net
         Plan.new(host: @device.host, vendor: @device.vendor, evidence: evidence,
                  changes: changes, commands: commands)
       end
-
-      # 只有明确确认且邻居和旧描述未变化时，才下发计划中的命令。
-      def apply_interface_descriptions(plan, confirmed: false)
-        unless confirmed == true
-          raise UnsupportedOperation.new("description plan requires confirmation", code: :confirmation_required,
-                                         host: @device.host, phase: :apply)
-        end
-        raise ArgumentError, "plan must be a topology plan for this device" unless plan.is_a?(Plan) &&
-                                                                                   plan.host == @device.host &&
-                                                                                   plan.vendor == @device.vendor
-        if plan.changes.empty?
-          raise ArgumentError, "empty topology plan cannot contain commands" unless plan.commands.empty?
-
-          return Result.new
-        end
-
-        @strategy.supports?(:neighbors) ? validate_change_support!(:apply) : neighbors
-        @device.with_operation(:apply) { apply_plan(plan) }
-      end
-
-      private
 
       # 同一租约覆盖重验、修改、读回与保存；有完成步骤后发生的错误必须带回这些步骤。
       def apply_plan(plan)
@@ -250,7 +238,7 @@ module Net
           raise DeviceError.new("configuration readback commands changed after approval",
                                 code: :verification_plan_changed, host: @device.host, phase: :verify)
         end
-        updated = read_interface_descriptions do |readback|
+        updated = read_descriptions do |readback|
           steps.concat(readback.steps)
           if readback.success? && readback.steps.map { |step| step.command.text } != script.map(&:text)
             raise DeviceError.new("configuration readback did not execute the approved commands",
@@ -266,7 +254,7 @@ module Net
       # 重验失败仍在写入前直接抛异常，保持 stale_plan 的既有契约。
       def revalidate_plan!(plan)
         discovered = neighbors
-        current = interface_descriptions
+        current = descriptions
         if plan.scope == :interfaces
           discovered = discovered.select { |neighbor| plan.evidence.key?(@strategy.interface_key(neighbor.local_interface)) }
           current = current.slice(*plan.evidence.keys)

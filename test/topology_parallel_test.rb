@@ -37,7 +37,7 @@ class TopologyParallelTest < Minitest::Test
   end
 
   def test_revalidation_write_and_readback_share_one_operation_lock
-    plan = @device.plan_interface_descriptions { "planned" }
+    plan = @device.interfaces.plan { "planned" }
     checked = Queue.new
     @resume = Queue.new
     resume = @resume
@@ -52,7 +52,7 @@ class TopologyParallelTest < Minitest::Test
       end
       result
     end
-    @applying = Thread.new { @device.apply_interface_descriptions(plan, confirmed: true) }
+    @applying = Thread.new { @device.interfaces.apply(plan, confirmed: true) }
     @applying.report_on_exception = false
     Timeout.timeout(3) { checked.pop }
     concurrent = @device.execute_script(["configure terminal", "interface GigabitEthernet1/0/1", "description concurrent", "end"])
@@ -67,16 +67,16 @@ class TopologyParallelTest < Minitest::Test
   end
 
   def test_facade_forwards_description_format_options
-    plan = @device.plan_interface_descriptions(abbreviate: false, lowercase: true)
+    plan = @device.interfaces.plan(abbreviate: false, lowercase: true)
     assert_equal "To_peer_gigabitethernet1/0/2", plan.changes.first.new_description
     assert_equal "GigabitEthernet1/0/1", plan.changes.first.interface
     assert_equal "GigabitEthernet1/0/2", plan.changes.first.neighbor.neighbor_interface
   end
 
   def test_stale_plan_releases_operation_lock_without_applying_changes
-    plan = @device.plan_interface_descriptions { "planned" }
+    plan = @device.interfaces.plan { "planned" }
     @description = "changed before apply"
-    error = assert_raises(Net::Connector::DeviceError) { @device.apply_interface_descriptions(plan, confirmed: true) }
+    error = assert_raises(Net::Connector::DeviceError) { @device.interfaces.apply(plan, confirmed: true) }
     assert_equal :stale_plan, error.code
     refute_includes @transport.writes, "description planned\n"
     assert @device.execute_command("show version").success?
@@ -109,7 +109,7 @@ class TopologyParallelTest < Minitest::Test
   end
 
   def test_readback_failure_preserves_completed_changes_and_releases_the_lease
-    plan = @device.plan_interface_descriptions { "planned" }
+    plan = @device.interfaces.plan { "planned" }
     collect = @device.method(:running_config)
     calls = 0
     @device.define_singleton_method(:running_config) do
@@ -118,7 +118,7 @@ class TopologyParallelTest < Minitest::Test
 
       collect.call
     end
-    result = @device.apply_interface_descriptions(plan, confirmed: true)
+    result = @device.interfaces.apply(plan, confirmed: true)
     assert result.failure?
     assert_equal :unrecognized_output, result.error.code
     assert_includes result.steps.map { |step| step.command.text }, "description planned"

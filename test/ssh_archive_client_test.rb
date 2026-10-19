@@ -6,12 +6,12 @@ require "open3"
 require "tmpdir"
 require "fileutils"
 require_relative "../lib/net/connector/netdisco"
-require_relative "../lib/net/connector/netdisco/tftp/ssh_archive"
+require_relative "../lib/net/connector/netdisco/ssh/archive/client"
 require_relative "support/fake_transport"
 
-class TftpSshArchiveTest < Minitest::Test
+class SshArchiveClientTest < Minitest::Test
   N = Net::Connector::Netdisco
-  WORKER = File.expand_path("../lib/net/connector/netdisco/tftp/ssh_archive_worker.py", __dir__)
+  WORKER = File.expand_path("../lib/net/connector/netdisco/ssh/archive/worker.py", __dir__)
 
   def test_remote_roots_keep_their_uri_without_copying_credentials
     settings = N::Settings.new(env: {}, defaults: N::Config.parse("tftp" => {
@@ -191,7 +191,7 @@ class TftpSshArchiveTest < Minitest::Test
             print('{"ok": false, "error": "tftp_archive_failed"}', flush=True)
       PYTHON
       launcher = ->(&block) { Open3.popen3("python3", "-u", "-c", harness, WORKER, server, outside, &block) }
-      archive = N::Tftp::SshArchive.new(directory: reports, root: "ssh://archive@backup.example#{server}", launcher: launcher)
+      archive = N::SSH::Archive::Client.new(directory: reports, root: "ssh://archive@backup.example#{server}", launcher: launcher)
       result = archive.upload_and_archive(device, started_at: Time.now.utc) do |name|
         File.write(File.join(server, name), "uploaded")
         uploaded(device, name)
@@ -219,7 +219,7 @@ class TftpSshArchiveTest < Minitest::Test
 
   def test_a_failed_ssh_authentication_is_not_retried_for_each_device
     Dir.mktmpdir do |directory|
-      archive = N::Tftp::SshArchive.new(directory: directory, root: "ssh://archive@backup.example/srv/tftp")
+      archive = N::SSH::Archive::Client.new(directory: directory, root: "ssh://archive@backup.example/srv/tftp")
       attempts = 0
       archive.stub(:system, lambda { |*args, **options|
         attempts += 1
@@ -229,7 +229,7 @@ class TftpSshArchiveTest < Minitest::Test
         false
       }) do
         2.times do
-          error = assert_raises(N::Tftp::SshArchive::AuthenticationUnavailable) { archive.prepare }
+          error = assert_raises(N::SSH::Archive::Client::AuthenticationUnavailable) { archive.prepare }
           assert_includes error.message, "NC_TFTP_SSH_PASSWORD"
         end
       end
@@ -292,12 +292,12 @@ class TftpSshArchiveTest < Minitest::Test
         transport.on_write = ->(*) { File.write(File.join(server, "running-config.xml"), "configuration #{item.host}") }
         item.build_connector(**options, transport: transport)
       })
-      original = N::Tftp::SshArchive.method(:new)
+      original = N::SSH::Archive::Client.method(:new)
       factory = lambda do |directory:, root:, password: nil|
         original.call(directory: directory, root: root, password: password,
                       launcher: ->(&block) { Open3.popen3("python3", "-u", WORKER, &block) })
       end
-      report = N::Tftp::SshArchive.stub(:new, factory) do
+      report = N::SSH::Archive::Client.stub(:new, factory) do
         fleet.tftp_backup_all(server: "192.0.2.10", verification_root: "ssh://archive@backup.example#{server}",
                               preserve_history: true, report_directory: reports, success_policy: :verified, parallel: 3)
       end
@@ -330,7 +330,7 @@ class TftpSshArchiveTest < Minitest::Test
       reports = File.join(File.realpath(root), "reports")
       FileUtils.mkdir_p([server, reports])
       launcher = ->(&block) { Open3.popen3("python3", "-u", WORKER, &block) }
-      archive = N::Tftp::SshArchive.new(directory: reports, root: "ssh://archive@backup.example#{server}", launcher: launcher)
+      archive = N::SSH::Archive::Client.new(directory: reports, root: "ssh://archive@backup.example#{server}", launcher: launcher)
       yield archive, server, reports
     ensure
       archive&.close

@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 require_relative "../../device/base"
-require_relative "../../device/topology/immediate_strategy"
+require_relative "../../device/interfaces/immediate_strategy"
 
 module Net
   module Connector
     module Vendor
       class H3c < Net::Connector::Base
         # 适配 H3C LLDP 表头与接口视图，数量核对失败时禁止继续规划变更。
-        class Topology < Net::Connector::Topology::ImmediateStrategy
+        class Topology < Net::Connector::Interfaces::ImmediateStrategy
           TABLE_HEADER = /^\s*(?:System Name\s+Local Interface\b|(?:Local Interface|LocalIf)\s+)/i
           # H3C 提供 LLDP 邻居、配置描述读取和描述变更。
           def self.supports?(capability)
@@ -55,7 +55,7 @@ module Net
 
           # 在接口视图设置描述后用 quit 返回系统视图。
           def change_commands(change)
-            Net::Connector::Topology::InterfaceDescription.commands(interface: change.interface, description: change.new_description, leave: "quit")
+            Net::Connector::Interfaces::InterfaceDescription.commands(interface: change.interface, description: change.new_description, leave: "quit")
           end
 
           private

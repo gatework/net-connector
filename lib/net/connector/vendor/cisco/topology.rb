@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 require_relative "../../device/base"
-require_relative "../../device/topology/immediate_strategy"
+require_relative "../../device/interfaces/immediate_strategy"
 
 module Net
   module Connector
     module Vendor
       class Cisco < Net::Connector::Base
         # 基于 CDP 证据规划接口描述，变更后读回确认，再执行独立保存阶段。
-        class Topology < Net::Connector::Topology::ImmediateStrategy
+        class Topology < Net::Connector::Interfaces::ImmediateStrategy
           # IOS 提供 CDP 邻居、配置描述读取和描述变更。
           def self.supports?(capability)
             %i[neighbors interface_descriptions interface_description_changes].include?(capability)
@@ -44,7 +44,7 @@ module Net
 
           # 复用公共接口描述命令，保留本机接口原名。
           def change_commands(change)
-            Net::Connector::Topology::InterfaceDescription.commands(interface: change.interface, description: change.new_description)
+            Net::Connector::Interfaces::InterfaceDescription.commands(interface: change.interface, description: change.new_description)
           end
         end
       end

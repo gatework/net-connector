@@ -5,6 +5,7 @@ require_relative "../engine/error/metadata"
 require_relative "../engine/log/event"
 require_relative "../parallel/observer"
 require_relative "topology/presentation"
+require_relative "diagnostic"
 
 module Net
   module Connector
@@ -70,6 +71,7 @@ module Net
 
         # 在共享锁内累计拓扑结果、邻居及变更数，并刷新安全进度。
         def operation_result(device:, status:, duration_ms:, error_code: nil, neighbors: 0, changes: 0, issues: [])
+          error_code = Diagnostic.new(error_code: error_code).error_code
           @mutex.synchronize do
             @completed += 1
             @active -= 1
@@ -138,12 +140,13 @@ module Net
 
         # 只消费最终任务结果，分别展示已保存、设备报告上传和服务器核验状态。
         def result(outcome)
+          error_code = diagnostic_code(outcome)
           @mutex.synchronize do
             @completed += 1
             @active -= 1
             @stages.delete(outcome.device.host)
             @task_started.delete(outcome.device.host)
-            @failures[outcome.error_code || outcome.status] += 1 unless outcome.success?
+            @failures[error_code || outcome.status] += 1 unless outcome.success?
             outcome.success? ? @succeeded += 1 : @failed += 1
             @unverified += 1 if outcome.status == :reported_uploaded && outcome.backup&.verification != :server_verified
             message = case outcome.status
@@ -151,11 +154,11 @@ module Net
                       when :reported_uploaded
                         outcome.backup&.verification == :server_verified ? "配置已归档（#{outcome.backup.server_bytes} 字节）" :
                           "设备报告上传完成；服务器文件尚未核验"
-                      when :saved_with_error then "备份有产物但未完全成功（#{outcome.error_code}）"
-                      when :reported_with_error then "设备报告上传但收尾异常（#{outcome.error_code}）"
-                      else "未完成（#{outcome.error_code || outcome.status}）"
+                      when :saved_with_error then "备份有产物但未完全成功（#{error_code || outcome.status}）"
+                      when :reported_with_error then "设备报告上传但收尾异常（#{error_code || outcome.status}）"
+                      else "未完成（#{error_code || outcome.status}）"
                       end
-            hint = failure_hint(outcome.error_code)
+            hint = failure_hint(error_code)
             message = "#{message}；#{hint}" if hint
             if @verbose || !outcome.success?
               emit(outcome.device.host, "#{message}；耗时 #{outcome.duration_ms} ms")
@@ -172,7 +175,7 @@ module Net
 
           summary = report.statistics
           failures = report.outcomes.reject { |item| item.success? || %i[filtered sample_limit].include?(item.status) }
-                           .group_by { |item| item.error_code || item.status }.transform_values(&:size)
+                           .group_by { |item| diagnostic_code(item) || item.status }.transform_values(&:size)
           unless failures.empty?
             write(nil, "未完成分类：#{failures.sort_by { |code, count| [-count, code.to_s] }.map { |code, count| "#{code}=#{count}" }.join("，")}")
           end
@@ -181,7 +184,7 @@ module Net
           write(nil, "其中 #{unverified} 台仅设备报告上传完成，服务器文件尚未核验") if unverified.positive?
           return unless !report.callback_errors.empty? || report.report_error
 
-          write(nil, "回调异常 #{report.callback_errors.size}，报告错误 #{report.report_error || "无"}")
+          write(nil, "回调异常 #{report.callback_errors.size}，报告错误 #{summary[:report_error] || "无"}")
         end
 
         # 心跳只负责显示；退出、异常或中断时先唤醒并回收线程。
@@ -229,6 +232,11 @@ module Net
         end
 
         private
+
+        # 与持久化摘要采用同一诊断白名单，保留领域结果自身的原始错误字段。
+        def diagnostic_code(outcome)
+          (outcome.diagnostic || Diagnostic.new(error_code: outcome.error_code)).error_code
+        end
 
         # 根据已知错误码返回简短排查建议，不展示任意异常正文。
         def failure_hint(code)

@@ -120,9 +120,9 @@ begin
     raise "Installed encoding error changed" unless error.code == :invalid_output_encoding && error.cause.nil?
   end
 
-  applied = device.sync_interface_descriptions
+  applied = device.interfaces.sync
   raise "Installed staged topology failed" unless applied.success?
-  raise "Installed description format changed" unless device.interface_descriptions.fetch("ethernet1/1") == "To_peer_Eth1/2"
+  raise "Installed description format changed" unless device.interfaces.descriptions.fetch("ethernet1/1") == "To_peer_Eth1/2"
   raise "Installed topology omitted readback steps" unless applied.steps.any? { |step| step.command.text == "show running-config" && step.command.output_sensitive? }
 
   transfer = device.tftp_backup(host: "192.0.2.10", path: "installed.cfg")

@@ -3,6 +3,7 @@
 require "minitest/autorun"
 require "rbconfig"
 require "securerandom"
+require "stringio"
 require "tmpdir"
 require_relative "../lib/net/connector"
 
@@ -284,6 +285,51 @@ class ConnectorTransportTest < Minitest::Test
     device&.close
   end
 
+  # 容量检查不能为每个正常分片取得正文快照；Unicode 也按字节计量。
+  def test_buffer_size_capability_avoids_snapshots_until_the_output_limit_is_exceeded
+    with_buffer_channel do |buffer, transcript, snapshots, log|
+      buffer.replace("中x")
+      assert_equal 4, transcript.write("中x")
+      assert_empty snapshots
+      assert_equal "中x", log.string
+
+      buffer << "y"
+      error = assert_raises(Connector::OutputLimitExceeded) { transcript.write("y") }
+      assert_equal "中xy".bytes, error.output.bytes
+      assert_equal "中x", log.string
+      buffer.clear
+      assert_equal "中xy".bytes, error.output.bytes
+    end
+  end
+
+  def test_disabled_logging_still_enforces_the_output_limit
+    with_buffer_channel(logging: false) do |buffer, transcript, _snapshots, _log|
+      buffer.replace("abcd")
+      assert_equal 4, transcript.write("abcd")
+      buffer << "e"
+      error = assert_raises(Connector::OutputLimitExceeded) { transcript.write("e") }
+      assert_equal "abcde", error.output
+    end
+  end
+
+  # 注入信道同样遵守当前 Session 契约，不会因为碰巧存在旧方法而走另一条路径。
+  def test_reads_use_the_current_expect_result_contract
+    channel = Object.new
+    channel.define_singleton_method(:expect_result) { |*, **| raise "legacy reader must not be called" }
+    channel.define_singleton_method(:expect) do |*patterns, timeout:|
+      raise "incorrect read arguments" unless patterns == [/router#/, LocalTransport::STREAM] && timeout == 2
+
+      Struct.new(:number, :before, :match, :error).new(1, "output", "router#", nil)
+    end
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "audit")
+    transport = LocalTransport.new(configuration, "")
+    transport.instance_variable_set(:@channel, channel)
+    event = transport.read([/router#/], timeout: 2)
+    assert_equal 0, event.index
+    assert_equal "output", event.before
+    assert_equal "router#", event.match
+  end
+
   def test_cumulative_output_limit_keeps_finished_steps_and_reaps_the_local_pty
     device, transport = local_device(<<~'RUBY', max_script_output_bytes: 20)
       STDOUT.sync = true
@@ -513,6 +559,25 @@ class ConnectorTransportTest < Minitest::Test
   end
 
   private
+
+  # 模拟 read_available 已追加正文后的回调，真实适配器仍负责预算与日志处理。
+  def with_buffer_channel(logging: true)
+    buffer, snapshots, transcript = +"", [], nil
+    channel = Object.new
+    channel.define_singleton_method(:buffer) { snapshots << buffer.bytesize; buffer.dup }
+    channel.define_singleton_method(:buffer_bytesize) { buffer.bytesize }
+    channel.define_singleton_method(:transcript=) { |writer| transcript = writer }
+    channel.define_singleton_method(:spawn) { |*, **| }
+    channel.define_singleton_method(:hard_close) {}
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "audit", max_output_bytes: 4)
+    transport = LocalTransport.new(configuration, "", channel_factory: -> { channel })
+    log = StringIO.new
+    transport.log_output = log if logging
+    transport.open
+    yield buffer, transcript, snapshots, log
+  ensure
+    transport&.close
+  end
 
   def local_device(script, **options)
     configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test",

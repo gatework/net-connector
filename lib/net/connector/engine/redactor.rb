@@ -10,10 +10,6 @@ module Net
 
       # 保存初始凭据，并建立第一版脱敏词表。
       def initialize(*secrets)
-        unless Expect.constants(false).include?(:Redactor) && Expect::Redactor.respond_to?(:redact)
-          raise LoadError, "net-connector requires expect-pty with the public Expect::Redactor API"
-        end
-
         @configured = secrets.compact.map(&:b).map(&:freeze).freeze
         reset
       end
@@ -78,6 +74,9 @@ module Net
 
       # 一次性诊断不共享流状态；原标记作为不透明区间，避免再次展开它。
       def call(text)
+        # 无凭据的密钥会话仍需独立字节副本，但无须为每个事件字段分配过滤器。
+        return text.to_s.b if patterns.empty?
+
         Expect::Redactor.redact(text.to_s.b, patterns, replacement: MASK)
       end
 

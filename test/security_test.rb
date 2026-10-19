@@ -47,7 +47,8 @@ class SecurityTest < Minitest::Test
       assert PackageCheck.allowed_path?("bin/net-backup")
       assert PackageCheck.allowed_path?("examples/backup.example.yml")
       refute PackageCheck.allowed_path?("examples/backup.yml")
-      assert PackageCheck.allowed_path?("lib/net/connector/netdisco/tftp/ssh_archive_worker.py")
+      assert PackageCheck.allowed_path?("lib/net/connector/netdisco/ssh/archive/worker.py")
+      refute PackageCheck.allowed_path?("lib/net/connector/netdisco/tftp/ssh_archive_worker.py")
       refute PackageCheck.allowed_path?("lib/other_worker.py")
       %w[bin/other bin/../net-backup exe/net-connector-backup].each do |path|
         refute PackageCheck.allowed_path?(path), path

@@ -35,12 +35,13 @@ class CLITopologyTest < Minitest::Test
   def test_apply_requires_and_persists_a_fresh_plan_before_device_application
     Dir.mktmpdir do |root|
       inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "name" => "edge01", "vendor" => "H3C" }])
-      plan = C::Topology::Plan.new(host: "192.0.2.1", vendor: :h3c, evidence: {}, changes: [], commands: [])
+      plan = C::Interfaces::Plan.new(host: "192.0.2.1", vendor: :h3c, evidence: {}, changes: [], commands: [])
       calls = []
       factory = lambda do |*|
         Object.new.tap do |connector|
-          connector.define_singleton_method(:audit_interface_descriptions) { |**_options, &_format| calls << :plan; C::Topology::Audit.new(plan: plan, comparisons: [], issues: [], manual_required: false) }
-          connector.define_singleton_method(:apply_interface_descriptions) do |value, confirmed:|
+          connector.define_singleton_method(:interfaces) { self }
+          connector.define_singleton_method(:audit) { |**_options, &_format| calls << :plan; C::Interfaces::Audit.new(plan: plan, comparisons: [], issues: [], manual_required: false) }
+          connector.define_singleton_method(:apply) do |value, confirmed:|
             assert = Dir.glob(File.join(root, "*", "plan.json"))
             raise "plan not persisted before apply" unless assert.size == 1 && File.file?(assert.first + ".sha256")
             raise "unconfirmed or different plan" unless confirmed && value.equal?(plan)
@@ -86,10 +87,11 @@ class CLITopologyTest < Minitest::Test
       calls = []
       factory = lambda do |device, _options|
         Object.new.tap do |connector|
-          connector.define_singleton_method(:audit_interface_descriptions) do |**_options, &_format|
+          connector.define_singleton_method(:interfaces) { self }
+          connector.define_singleton_method(:audit) do |**_options, &_format|
             calls << device.host
-            plan = C::Topology::Plan.new(host: device.host, vendor: device.vendor, evidence: {}, changes: [], commands: [])
-            C::Topology::Audit.new(plan: plan, comparisons: [], issues: [], manual_required: false)
+            plan = C::Interfaces::Plan.new(host: device.host, vendor: device.vendor, evidence: {}, changes: [], commands: [])
+            C::Interfaces::Audit.new(plan: plan, comparisons: [], issues: [], manual_required: false)
           end
           connector.define_singleton_method(:close) {}
         end
@@ -492,12 +494,13 @@ class CLITopologyTest < Minitest::Test
   def audit_factory(completed, interrupt: false)
     lambda do |device, _options|
       Object.new.tap do |connector|
-        connector.define_singleton_method(:audit_interface_descriptions) do |**_options, &_format|
+        connector.define_singleton_method(:interfaces) { self }
+        connector.define_singleton_method(:audit) do |**_options, &_format|
           completed << :audit
           raise Interrupt if interrupt
 
-          plan = C::Topology::Plan.new(host: device.host, vendor: device.vendor, evidence: {}, changes: [], commands: [])
-          C::Topology::Audit.new(plan: plan, comparisons: [], issues: [], manual_required: false)
+          plan = C::Interfaces::Plan.new(host: device.host, vendor: device.vendor, evidence: {}, changes: [], commands: [])
+          C::Interfaces::Audit.new(plan: plan, comparisons: [], issues: [], manual_required: false)
         end
         connector.define_singleton_method(:close) { completed << :close }
       end

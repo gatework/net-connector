@@ -27,6 +27,17 @@ class NetdiscoProgressTest < Minitest::Test
     assert_includes output.string, "结果 未完成"
   end
 
+  def test_topology_result_filters_unknown_error_codes
+    output = StringIO.new
+    progress = Netdisco::Progress.new(io: output, verbose: true)
+    device = Struct.new(:host, :vendor).new("192.0.2.1", :h3c)
+    progress.operation_plan([device], parallel: 1, label: "拓扑规划")
+    progress.start(device)
+    progress.operation_result(device: device, status: :failed, duration_ms: 10, error_code: :private_diagnostic)
+    refute_includes output.string, "private_diagnostic"
+    assert_includes output.string, "耗时 10 ms"
+  end
+
   def test_live_events_and_private_file_log_coexist_without_configuration_output
     output = StringIO.new
     progress = Netdisco::Progress.new(io: output, verbose: true)

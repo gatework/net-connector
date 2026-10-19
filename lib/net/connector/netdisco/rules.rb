@@ -2,7 +2,7 @@
 
 require "ipaddr"
 require_relative "../../connector"
-require_relative "address_filter"
+require_relative "address_set"
 
 module Net
   module Connector
@@ -13,8 +13,8 @@ module Net
         def initialize(include_hosts: [], exclude_hosts: [], include_vendors: [], vendor_overrides: {},
                        host_overrides: {}, mappings: [], include_names: [], exclude_names: [],
                        name_match: :contains, exclude_vendors: [])
-          @include_hosts = AddressFilter.new(include_hosts)
-          @exclude_hosts = AddressFilter.new(exclude_hosts)
+          @include_hosts = AddressSet.new(include_hosts)
+          @exclude_hosts = AddressSet.new(exclude_hosts)
           @include_vendors = vendor_list(include_vendors)
           @exclude_vendors = vendor_list(exclude_vendors)
           @include_names = name_list(include_names)

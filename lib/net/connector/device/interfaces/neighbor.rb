@@ -2,7 +2,7 @@
 
 module Net
   module Connector
-    class Topology
+    class Interfaces
       # 邻居身份拥有独立字符串，格式化回调不能改写发现证据。
       Neighbor = Data.define(:local_interface, :neighbor_name, :neighbor_interface, :chassis_id, :protocol) do
         # 复制并冻结本地端口、邻居名称、远端端口及发现协议。

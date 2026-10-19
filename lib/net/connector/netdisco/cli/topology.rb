@@ -181,7 +181,7 @@ module Net
                 next observe_task(device, directory) { { host: device.host, vendor: device.vendor, status: :unsupported_operation } }
               end
               perform(device, settings, credentials, directory) do |connector|
-                audit = connector.audit_interface_descriptions(abbreviate: policy.abbreviate_ports, lowercase: policy.lowercase_ports,
+                audit = connector.interfaces.audit(abbreviate: policy.abbreviate_ports, lowercase: policy.lowercase_ports,
                                                                  description_matcher: policy.method(:description_matches?),
                                                                  &formatter(policy))
                 audit_outcome(audit, device, policy)
@@ -202,12 +202,12 @@ module Net
 
           # 将接口审计转换为规划、发现或需人工处理的任务结果。
           def audit_outcome(audit, device, policy)
-            raise TypeError, "topology audit must return an Audit" unless audit.instance_of?(Net::Connector::Topology::Audit)
+            raise TypeError, "topology audit must return an Audit" unless audit.instance_of?(Net::Connector::Interfaces::Audit)
             plan = audit.plan
             if plan && (plan.host != device.host || plan.vendor != device.vendor)
               raise ArgumentError, "topology plan does not match its inventory device"
             end
-            Net::Connector::Topology.validate_plan!(plan, host: device.host, vendor: device.vendor) if plan
+            Net::Connector::Interfaces.validate_plan!(plan, host: device.host, vendor: device.vendor) if plan
             status = if !audit.complete?
                        plan && !plan.changes.empty? && policy.mode != :discover ? :partial_planned : :unverified
                      elsif policy.mode == :discover
@@ -257,10 +257,13 @@ module Net
             started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
             result = nil
             begin
-              @progress.start(device, label: "拓扑操作")
-              result = yield
-            rescue StandardError => failure
-              result = { host: device.host, vendor: device.vendor, status: :failed, diagnostic: Diagnostic.from(failure)&.to_h }
+              # 阻塞 I/O 仍可取消；完成值或同步失败先固定，再交付返回间隙中的异步中断。
+              Thread.handle_interrupt(Exception => :on_blocking) do
+                @progress.start(device, label: "拓扑操作")
+                result = yield
+              rescue StandardError => failure
+                result = { host: device.host, vendor: device.vendor, status: :failed, diagnostic: Diagnostic.from(failure)&.to_h }
+              end
             rescue Exception => failure # rubocop:disable Lint/RescueException -- 完成事件仍须记录，取消随后传播。
               primary = failure
               raise
@@ -332,7 +335,7 @@ module Net
               plan = outcome.fetch(:plan)
               device = @devices_by_host.fetch(plan.host)
               perform(device, settings, credentials, directory) do |connector|
-                result = connector.apply_interface_descriptions(plan, confirmed: true)
+                result = connector.interfaces.apply(plan, confirmed: true)
                 raise TypeError, "topology application must return a Result" unless result.is_a?(Result)
 
                 status = if result.failure?

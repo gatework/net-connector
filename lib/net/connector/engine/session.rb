@@ -133,8 +133,8 @@ module Net
       end
 
       # 命令准备、交换、后处理及回调共用一份临时词表，退出时一并清除。
-      def with_command_redaction(command)
-        redactor.with_scope do
+      def with_command_redaction(command, reuse: false)
+        redactor.with_scope(reuse: reuse) do
           protect_command(command)
           yield
         end

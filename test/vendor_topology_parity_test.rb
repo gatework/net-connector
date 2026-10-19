@@ -14,7 +14,7 @@ class VendorTopologyParityTest < Minitest::Test
       Gigabitethernet 0/1/0    peer-a         Gigabitethernet 0/1/1      101
       XGE1/0/5                peer-b         XGE1/0/18                  111
     TEXT
-    rows = @device.neighbors
+    rows = @device.interfaces.neighbors
     assert_equal ["Gigabitethernet 0/1/0", "XGE1/0/5"], rows.map(&:local_interface)
     assert_equal ["Gigabitethernet 0/1/1", "XGE1/0/18"], rows.map(&:neighbor_interface)
     assert(rows.all? { |neighbor| neighbor.protocol == :lldp && neighbor.chassis_id.empty? })
@@ -23,17 +23,17 @@ class VendorTopologyParityTest < Minitest::Test
 
   def test_huawei_empty_header_is_distinct_from_missing_or_partial_output
     build(:huawei, "Local Intf   Neighbor Dev   Neighbor Intf   Exptime(s)\n---\n")
-    assert_empty @device.neighbors
+    assert_empty @device.interfaces.neighbors
     ["", "Unknown output\n", "Local Intf   Neighbor Dev   Neighbor Intf   Exptime(s)\nGE1/0/1 peer\n"].each do |text|
       @device.close
       build(:huawei, text)
-      assert_raises(Net::Connector::ParsingError) { @device.neighbors }
+      assert_raises(Net::Connector::ParsingError) { @device.interfaces.neighbors }
     end
   end
 
   def test_huawei_reads_descriptions_and_preserves_interface_identity
     build(:huawei, "interface GigabitEthernet 0/1/0\n description uplink core\n#\ninterface XGigabitEthernet1/0/5\n#\nreturn\n")
-    assert_equal({ "gigabitethernet0/1/0" => "uplink core", "tengigabitethernet1/0/5" => "" }, @device.interface_descriptions)
+    assert_equal({ "gigabitethernet0/1/0" => "uplink core", "tengigabitethernet1/0/5" => "" }, @device.interfaces.descriptions)
     assert @device.supports?(:neighbors)
     assert @device.supports?(:interface_descriptions)
     refute @device.supports?(:interface_description_changes)
@@ -41,7 +41,7 @@ class VendorTopologyParityTest < Minitest::Test
 
   def test_huawei_does_not_accept_silently_dropped_interface_blocks
     build(:huawei, "interface GigabitEthernet1/0/1 invalid\n description partial\n#\n")
-    assert_raises(Net::Connector::ParsingError) { @device.interface_descriptions }
+    assert_raises(Net::Connector::ParsingError) { @device.interfaces.descriptions }
   end
 
   def test_fortios_reads_descriptions_without_alias_or_nested_table_leakage
@@ -68,7 +68,7 @@ class VendorTopologyParityTest < Minitest::Test
           next
       end
     TEXT
-    assert_equal({ "port1" => "uplink core", "port2" => "" }, @device.interface_descriptions)
+    assert_equal({ "port1" => "uplink core", "port2" => "" }, @device.interfaces.descriptions)
     assert_equal ["show full-configuration\n"], @transport.writes
   end
 
@@ -79,7 +79,7 @@ class VendorTopologyParityTest < Minitest::Test
      "config system interface\nend\nconfig system interface\nend\n"].each do |config|
       @device&.close
       build(:fortinet, config)
-      assert_raises(Net::Connector::ParsingError) { @device.interface_descriptions }
+      assert_raises(Net::Connector::ParsingError) { @device.interfaces.descriptions }
     end
   end
 
@@ -91,14 +91,14 @@ class VendorTopologyParityTest < Minitest::Test
       set interfaces ge-0/0/0 unit 100 description "another VLAN"
     TEXT
     assert_equal({ "ge-0/0/0" => "physical uplink", "ge-0/0/0.0" => "customer VLAN", "ge-0/0/0.100" => "another VLAN" },
-                 @device.interface_descriptions)
+                 @device.interfaces.descriptions)
   end
 
   def test_junos_missing_description_value_is_not_an_empty_description
     ["set interfaces ge-0/0/0 description\n", "set interfaces ge-0/0/0 unit 100 description\n"].each do |config|
       @device&.close
       build(:juniper, config)
-      assert_raises(Net::Connector::ParsingError) { @device.interface_descriptions }
+      assert_raises(Net::Connector::ParsingError) { @device.interfaces.descriptions }
     end
   end
 
@@ -117,10 +117,10 @@ class VendorTopologyParityTest < Minitest::Test
       context = Struct.new(:profile, :host, :vendor, :config) do
         def running_config = Net::Connector::Result.new(config: config)
       end.new(Net::Connector.vendor_class(vendor).profile, "192.0.2.1", vendor, config)
-      topology = Net::Connector::Topology.new(context)
-      assert_raises(Net::Connector::ParsingError, vendor.to_s) { topology.interface_descriptions }
+      topology = Net::Connector::Interfaces.new(context)
+      assert_raises(Net::Connector::ParsingError, vendor.to_s) { topology.descriptions }
       context.config = config.sub(/(description|comment|name)\n/) { "#{Regexp.last_match(1)} \"\"\n" }
-      assert_equal [""], topology.interface_descriptions.values, vendor.to_s
+      assert_equal [""], topology.descriptions.values, vendor.to_s
     end
   end
 
@@ -129,14 +129,14 @@ class VendorTopologyParityTest < Minitest::Test
       def running_config = Net::Connector::Result.new(config: config)
     end.new(Net::Connector.vendor_class(:radware).profile, "192.0.2.1", :radware,
             %q(/cfg/port 1/name "uplink \"core\"") + "\n")
-    topology = Net::Connector::Topology.new(context)
-    assert_equal({ "1" => 'uplink "core"' }, topology.interface_descriptions)
+    topology = Net::Connector::Interfaces.new(context)
+    assert_equal({ "1" => 'uplink "core"' }, topology.descriptions)
     ["/cfg/port 2/name\n", "/cfg/port 1\n  name valid\n/cfg/port 2/name\n"].each do |config|
       context.config = config
-      assert_raises(Net::Connector::ParsingError) { topology.interface_descriptions }
+      assert_raises(Net::Connector::ParsingError) { topology.descriptions }
     end
     context.config = "/cfg/port 1\n  name \"truncated-private-marker\n"
-    error = assert_raises(Net::Connector::ParsingError) { topology.interface_descriptions }
+    error = assert_raises(Net::Connector::ParsingError) { topology.descriptions }
     assert_equal :unrecognized_output, error.code
     assert_nil error.cause
     refute_includes error.full_message, "truncated-private-marker"

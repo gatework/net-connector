@@ -3,9 +3,9 @@
 require "minitest/autorun"
 require "json"
 require "tmpdir"
-require_relative "../lib/net/connector/netdisco/operations"
+require_relative "../lib/net/connector/netdisco/operation"
 
-class NetdiscoOperationsTest < Minitest::Test
+class NetdiscoOperationTest < Minitest::Test
   Connector = Net::Connector
   Netdisco = Connector::Netdisco
 
@@ -25,19 +25,21 @@ class NetdiscoOperationsTest < Minitest::Test
       value
     end
 
-    def sync_interface_descriptions(**options, &formatter)
+    def interfaces = self
+
+    def sync(**options, &formatter)
       @calls << [:sync, options, formatter]
       raise failure if failure
 
       value
     end
 
-    def plan_interface_descriptions(**options, &formatter)
+    def plan(**options, &formatter)
       @calls << [:plan, options, formatter]
       value
     end
 
-    def apply_interface_descriptions(plan, confirmed:)
+    def apply(plan, confirmed:)
       @calls << [:apply, plan, confirmed]
       value
     end
@@ -56,11 +58,11 @@ class NetdiscoOperationsTest < Minitest::Test
     @inventory_calls = @credential_calls = 0
     @connectors = @hosts.to_h { |host| [host, FakeConnector.new] }
     @settings = Netdisco::Settings.new(env: {})
-    @operations = operations
+    @operation = operation
   end
 
-  def operations(settings: @settings, inventory: nil, credentials: nil, factory: nil)
-    Netdisco::Operations.new(settings: settings,
+  def operation(settings: @settings, inventory: nil, credentials: nil, factory: nil)
+    Netdisco::Operation.new(settings: settings,
                             inventory: inventory || lambda { |_snapshot|
                               @inventory_calls += 1
                               @devices
@@ -75,7 +77,7 @@ class NetdiscoOperationsTest < Minitest::Test
   def test_sync_forwards_backend_formatting_and_isolates_connection_cleanup_failure
     formatter = ->(_neighbor) { "custom uplink" }
     @connectors.fetch(@hosts.first).close_failure = IOError.new("private cleanup")
-    batch = @operations.sync_interface_descriptions(hosts: @hosts, abbreviate: false, lowercase: true, &formatter)
+    batch = @operation.sync_descriptions(hosts: @hosts, abbreviate: false, lowercase: true, &formatter)
     assert_equal({ total: 2, succeeded: 1, failed: 1, partial: 1, missing_credentials: 0, callback_errors: 0 }, batch.summary)
     assert_equal [[:sync, { abbreviate: false, lowercase: true }, formatter]], @connectors.fetch(@hosts.last).calls
     assert @connectors.values.all?(&:closed)
@@ -84,7 +86,7 @@ class NetdiscoOperationsTest < Minitest::Test
 
   def test_sync_rejects_a_non_result_without_affecting_another_device
     @connectors.fetch(@hosts.first).value = nil
-    batch = @operations.sync_interface_descriptions(hosts: @hosts)
+    batch = @operation.sync_descriptions(hosts: @hosts)
     assert_instance_of TypeError, batch.outcomes.first.error
     assert_equal 1, batch.summary.fetch(:succeeded)
     assert_equal 1, batch.summary.fetch(:failed)
@@ -92,7 +94,7 @@ class NetdiscoOperationsTest < Minitest::Test
   end
 
   def test_sync_empty_targets_report_zero_and_do_not_query_inventory
-    batch = @operations.sync_interface_descriptions(hosts: [])
+    batch = @operation.sync_descriptions(hosts: [])
     assert_equal :no_devices, batch.status
     assert_equal 0, batch.summary.fetch(:total)
     assert_equal 0, @inventory_calls
@@ -100,19 +102,19 @@ class NetdiscoOperationsTest < Minitest::Test
   end
 
   def test_sync_preflights_all_targets_and_options_before_connecting
-    [-> { @operations.sync_interface_descriptions(hosts: @hosts, lowercase: nil) },
-     -> { @operations.sync_interface_descriptions(hosts: [@hosts.first, @hosts.first]) },
-     -> { @operations.sync_interface_descriptions(hosts: [@hosts.first, "192.0.2.99"]) }].each do |call|
+    [-> { @operation.sync_descriptions(hosts: @hosts, lowercase: nil) },
+     -> { @operation.sync_descriptions(hosts: [@hosts.first, @hosts.first]) },
+     -> { @operation.sync_descriptions(hosts: [@hosts.first, "192.0.2.99"]) }].each do |call|
       assert_raises(ArgumentError, &call)
     end
     @devices[-1] = @devices.last.with(vendor: :palo_alto)
-    assert_raises(Connector::UnsupportedOperation) { @operations.sync_interface_descriptions(hosts: @hosts) }
+    assert_raises(Connector::UnsupportedOperation) { @operation.sync_descriptions(hosts: @hosts) }
     assert_equal 0, @credential_calls
     assert(@connectors.values.all? { |connector| connector.calls.empty? })
   end
 
   def test_scripts_parse_once_and_preserve_request_order
-    batch = @operations.execute_scripts(scripts: { @hosts.last => "# comment\nshow status\n", @hosts.first => ["show version"] }, confirmed: true)
+    batch = @operation.execute_scripts(scripts: { @hosts.last => "# comment\nshow status\n", @hosts.first => ["show version"] }, confirmed: true)
     assert batch.success?
     assert_equal(@hosts.reverse, batch.outcomes.map { |outcome| outcome.device.host })
     assert_equal [[:execute, ["show status"]]], @connectors.fetch(@hosts.last).calls
@@ -123,13 +125,13 @@ class NetdiscoOperationsTest < Minitest::Test
 
   def test_all_inputs_fail_before_inventory_or_credentials
     invalid_calls = [
-      -> { @operations.execute_scripts(scripts: { @hosts.first => ["show"] }) },
-      -> { @operations.execute_scripts(scripts: { @hosts.first => ["show"] }, confirmed: true, parallel: 0) },
-      -> { @operations.execute_scripts(scripts: { @hosts.first => ["show"] }, confirmed: true, on_result: Object.new) },
-      -> { @operations.execute_scripts(scripts: { @hosts.first => ["show"], @hosts.last => [Object.new] }, confirmed: true) },
-      -> { @operations.execute_scripts(scripts: { "2001:db8::1" => [], "2001:db8:0:0::1" => [] }, confirmed: true) },
-      -> { @operations.plan_interface_descriptions(hosts: [@hosts.first, @hosts.first]) },
-      -> { @operations.plan_interface_descriptions(hosts: @hosts, lowercase: "true") }
+      -> { @operation.execute_scripts(scripts: { @hosts.first => ["show"] }) },
+      -> { @operation.execute_scripts(scripts: { @hosts.first => ["show"] }, confirmed: true, parallel: 0) },
+      -> { @operation.execute_scripts(scripts: { @hosts.first => ["show"] }, confirmed: true, on_result: Object.new) },
+      -> { @operation.execute_scripts(scripts: { @hosts.first => ["show"], @hosts.last => [Object.new] }, confirmed: true) },
+      -> { @operation.execute_scripts(scripts: { "2001:db8::1" => [], "2001:db8:0:0::1" => [] }, confirmed: true) },
+      -> { @operation.plan_descriptions(hosts: [@hosts.first, @hosts.first]) },
+      -> { @operation.plan_descriptions(hosts: @hosts, lowercase: "true") }
     ]
     invalid_calls.each { |call| assert_raises(ArgumentError, Connector::ScriptError, &call) }
     assert_equal 0, @inventory_calls
@@ -139,11 +141,11 @@ class NetdiscoOperationsTest < Minitest::Test
 
   def test_unknown_or_nonready_later_target_never_starts_earlier_device
     assert_raises(ArgumentError) do
-      @operations.execute_scripts(scripts: { @hosts.first => ["change"], "192.0.2.99" => ["change"] }, confirmed: true)
+      @operation.execute_scripts(scripts: { @hosts.first => ["change"], "192.0.2.99" => ["change"] }, confirmed: true)
     end
     @devices[-1] = @devices.last.with(issue: :duplicate_host)
     assert_raises(ArgumentError) do
-      @operations.execute_scripts(scripts: @hosts.to_h { |host| [host, ["change"]] }, confirmed: true)
+      @operation.execute_scripts(scripts: @hosts.to_h { |host| [host, ["change"]] }, confirmed: true)
     end
     assert_equal 0, @credential_calls
     assert(@connectors.values.all? { |connector| connector.calls.empty? })
@@ -156,7 +158,7 @@ class NetdiscoOperationsTest < Minitest::Test
     connector = @connectors.fetch(@hosts.first)
     connector.value = result
     connector.close_failure = IOError.new("private-close")
-    batch = @operations.execute_scripts(scripts: { @hosts.first => ["change"] }, confirmed: true)
+    batch = @operation.execute_scripts(scripts: { @hosts.first => ["change"] }, confirmed: true)
     outcome = batch.outcomes.first
     assert_same result, outcome.value
     assert_same error, outcome.error
@@ -170,7 +172,7 @@ class NetdiscoOperationsTest < Minitest::Test
   def test_failed_result_without_steps_is_failed_even_without_an_exception
     result = Connector::Result.new(error: Connector::DeviceError.new("failed"))
     @connectors.fetch(@hosts.first).value = result
-    outcome = @operations.execute_scripts(scripts: { @hosts.first => ["change"] }, confirmed: true).outcomes.first
+    outcome = @operation.execute_scripts(scripts: { @hosts.first => ["change"] }, confirmed: true).outcomes.first
     assert_equal :failed, outcome.status
     assert_same result.error, outcome.error
   end
@@ -178,7 +180,7 @@ class NetdiscoOperationsTest < Minitest::Test
   def test_successful_result_with_close_failure_is_partial_even_without_steps
     connector = @connectors.fetch(@hosts.first)
     connector.close_failure = IOError.new("closed")
-    outcome = @operations.execute_scripts(scripts: { @hosts.first => [] }, confirmed: true).outcomes.first
+    outcome = @operation.execute_scripts(scripts: { @hosts.first => [] }, confirmed: true).outcomes.first
     assert outcome.partial?
     assert_same connector.value, outcome.value
   end
@@ -187,7 +189,7 @@ class NetdiscoOperationsTest < Minitest::Test
     connector = @connectors.fetch(@hosts.first)
     connector.failure = IOError.new("failure")
     connector.close_failure = ArgumentError.new("later failure")
-    batch = @operations.execute_scripts(scripts: @hosts.to_h { |host| [host, ["change"]] }, confirmed: true)
+    batch = @operation.execute_scripts(scripts: @hosts.to_h { |host| [host, ["change"]] }, confirmed: true)
     assert_equal %i[failed succeeded], batch.outcomes.map(&:status)
     assert_same connector.failure, batch.outcomes.first.error
     assert @connectors.values.all?(&:closed)
@@ -195,7 +197,7 @@ class NetdiscoOperationsTest < Minitest::Test
 
   def test_callback_failure_is_separate_safe_summary
     callback = ->(_) { raise IOError, "private-callback" }
-    batch = @operations.execute_scripts(scripts: { @hosts.first => [] }, confirmed: true, on_start: callback, on_result: callback)
+    batch = @operation.execute_scripts(scripts: { @hosts.first => [] }, confirmed: true, on_start: callback, on_result: callback)
     assert batch.outcomes.first.success?
     refute batch.success?
     assert_equal 2, batch.callback_errors.size
@@ -218,7 +220,7 @@ class NetdiscoOperationsTest < Minitest::Test
 
         connectors.fetch(device.host)
       end
-      operation = operations(inventory: ->(_) { devices }, credentials: credentials, factory: factory)
+      operation = operation(inventory: ->(_) { devices }, credentials: credentials, factory: factory)
       batch = operation.execute_scripts(scripts: hosts.to_h { |host| [host, ["change"]] }, confirmed: true, parallel: parallel)
       assert_equal(hosts, batch.outcomes.map { |outcome| outcome.device.host })
       assert_equal %i[succeeded failed partial missing_credentials failed], batch.outcomes.map(&:status)
@@ -252,7 +254,7 @@ class NetdiscoOperationsTest < Minitest::Test
       value
     end
     hosts = @hosts + [host]
-    batch = @operations.execute_scripts(scripts: hosts.to_h { |target| [target, ["change"]] }, confirmed: true, parallel: 2)
+    batch = @operation.execute_scripts(scripts: hosts.to_h { |target| [target, ["change"]] }, confirmed: true, parallel: 2)
     assert_equal %i[failed succeeded succeeded], batch.outcomes.map(&:status)
     assert_equal({ total: 3, succeeded: 2, failed: 1, partial: 0, missing_credentials: 0, callback_errors: 0 }, batch.summary)
     assert @connectors.values.all?(&:closed)
@@ -260,7 +262,7 @@ class NetdiscoOperationsTest < Minitest::Test
   end
 
   def test_empty_batch_report_contains_zero_counts
-    batch = @operations.execute_scripts(scripts: {}, confirmed: true)
+    batch = @operation.execute_scripts(scripts: {}, confirmed: true)
     assert_equal :no_devices, batch.status
     refute batch.success?
     assert_equal({ total: 0, succeeded: 0, failed: 0, partial: 0, missing_credentials: 0, callback_errors: 0 }, batch.summary)
@@ -271,7 +273,7 @@ class NetdiscoOperationsTest < Minitest::Test
     connector.failure = Interrupt.new("stop")
     connector.close_failure = IOError.new("close")
     error = assert_raises(Interrupt) do
-      @operations.execute_scripts(scripts: { @hosts.first => ["change"] }, confirmed: true)
+      @operation.execute_scripts(scripts: { @hosts.first => ["change"] }, confirmed: true)
     end
     assert_same connector.failure, error
     assert connector.closed
@@ -281,7 +283,7 @@ class NetdiscoOperationsTest < Minitest::Test
     original = plan(@hosts.first)
     @connectors.fetch(@hosts.first).value = original
     formatter = ->(_) { "description" }
-    batch = @operations.plan_interface_descriptions(hosts: [@hosts.first], &formatter)
+    batch = @operation.plan_descriptions(hosts: [@hosts.first], &formatter)
     value = batch.plans.fetch(@hosts.first)
     assert batch.success?
     assert_same original, value
@@ -295,15 +297,15 @@ class NetdiscoOperationsTest < Minitest::Test
   def test_planning_close_failure_keeps_evidence_but_does_not_auto_approve_it
     @connectors.fetch(@hosts.first).value = plan(@hosts.first)
     @connectors.fetch(@hosts.first).close_failure = IOError.new("close")
-    batch = @operations.plan_interface_descriptions(hosts: [@hosts.first])
+    batch = @operation.plan_descriptions(hosts: [@hosts.first])
     assert batch.outcomes.first.partial?
-    assert_instance_of Connector::Topology::Plan, batch.outcomes.first.value
+    assert_instance_of Connector::Interfaces::Plan, batch.outcomes.first.value
     assert_empty batch.plans
   end
 
   def test_apply_delegates_to_domain_operation_with_fixed_plan_and_confirmation
     original = plan(@hosts.first)
-    batch = @operations.apply_interface_descriptions(plans: { @hosts.first => original }, confirmed: true)
+    batch = @operation.apply_descriptions(plans: { @hosts.first => original }, confirmed: true)
     assert batch.success?
     call = @connectors.fetch(@hosts.first).calls.first
     assert_equal :apply, call.first
@@ -315,17 +317,17 @@ class NetdiscoOperationsTest < Minitest::Test
 
   def test_all_apply_plans_are_preflighted_before_any_connection
     assert_raises(ArgumentError) do
-      @operations.apply_interface_descriptions(plans: { @hosts.first => plan(@hosts.first), @hosts.last => Object.new }, confirmed: true)
+      @operation.apply_descriptions(plans: { @hosts.first => plan(@hosts.first), @hosts.last => Object.new }, confirmed: true)
     end
     assert_equal 0, @inventory_calls
     wrong_vendor = plan(@hosts.first).with(vendor: :cisco_ios)
     assert_raises(ArgumentError) do
-      @operations.apply_interface_descriptions(plans: { @hosts.first => wrong_vendor }, confirmed: true)
+      @operation.apply_descriptions(plans: { @hosts.first => wrong_vendor }, confirmed: true)
     end
     assert_equal 0, @credential_calls
     modified = plan(@hosts.last).with(commands: ["unapproved command"])
     assert_raises(ArgumentError) do
-      @operations.apply_interface_descriptions(plans: { @hosts.first => plan(@hosts.first), @hosts.last => modified }, confirmed: true)
+      @operation.apply_descriptions(plans: { @hosts.first => plan(@hosts.first), @hosts.last => modified }, confirmed: true)
     end
     assert_equal 0, @credential_calls
     assert @connectors.values.none?(&:closed)
@@ -333,10 +335,10 @@ class NetdiscoOperationsTest < Minitest::Test
 
   def test_unsupported_later_topology_target_is_rejected_before_any_device_session
     @devices[-1] = @devices.last.with(vendor: :palo_alto)
-    assert_raises(Connector::UnsupportedOperation) { @operations.plan_interface_descriptions(hosts: @hosts) }
+    assert_raises(Connector::UnsupportedOperation) { @operation.plan_descriptions(hosts: @hosts) }
     unsupported = plan(@hosts.last).with(vendor: :palo_alto)
     assert_raises(Connector::UnsupportedOperation) do
-      @operations.apply_interface_descriptions(plans: { @hosts.first => plan(@hosts.first), @hosts.last => unsupported }, confirmed: true)
+      @operation.apply_descriptions(plans: { @hosts.first => plan(@hosts.first), @hosts.last => unsupported }, confirmed: true)
     end
     assert_equal 0, @credential_calls
     assert @connectors.values.none?(&:closed)
@@ -344,11 +346,11 @@ class NetdiscoOperationsTest < Minitest::Test
 
   def test_filtered_and_duplicate_inventory_targets_cannot_be_forced_with_explicit_hosts
     @devices[-1] = @devices.last.with(issue: :filtered)
-    assert_raises(ArgumentError) { @operations.plan_interface_descriptions(hosts: @hosts) }
+    assert_raises(ArgumentError) { @operation.plan_descriptions(hosts: @hosts) }
     @devices[-1] = @devices.last.with(issue: nil)
     @devices << @devices.first
     assert_raises(ArgumentError) do
-      @operations.execute_scripts(scripts: { @hosts.first => [] }, confirmed: true)
+      @operation.execute_scripts(scripts: { @hosts.first => [] }, confirmed: true)
     end
     assert_equal 0, @credential_calls
   end
@@ -359,10 +361,10 @@ class NetdiscoOperationsTest < Minitest::Test
     duplicate = first.with(new_description: "conflicting")
     commands = original.commands.dup
     commands.insert(commands.index("return"),
-                    *Connector::Topology::InterfaceDescription.commands(interface: first.interface, description: "conflicting", leave: "quit"))
+                    *Connector::Interfaces::InterfaceDescription.commands(interface: first.interface, description: "conflicting", leave: "quit"))
     invalid = original.with(changes: [first, duplicate], commands: commands)
     assert_raises(ArgumentError) do
-      @operations.apply_interface_descriptions(plans: { @hosts.first => plan(@hosts.first), @hosts.last => invalid }, confirmed: true)
+      @operation.apply_descriptions(plans: { @hosts.first => plan(@hosts.first), @hosts.last => invalid }, confirmed: true)
     end
     assert_equal 0, @credential_calls
     assert(@connectors.values.all? { |connector| connector.calls.empty? && !connector.closed })
@@ -380,14 +382,14 @@ class NetdiscoOperationsTest < Minitest::Test
       seen << [options.fetch(:username), options.fetch(:protocol)]
       @connectors.fetch(device.host)
     end
-    operation = operations(credentials: credentials, factory: factory)
+    operation = operation(credentials: credentials, factory: factory)
     assert operation.execute_scripts(scripts: @hosts.to_h { |host| [host, []] }, confirmed: true).success?
     assert_equal @hosts.map { |host| ["operator-#{host}", :telnet] }.sort, seen.sort
   end
 
   def test_planning_wrong_device_evidence_is_not_accepted
     @connectors.fetch(@hosts.first).value = plan(@hosts.last)
-    batch = @operations.plan_interface_descriptions(hosts: [@hosts.first])
+    batch = @operation.plan_descriptions(hosts: [@hosts.first])
     assert_equal :failed, batch.outcomes.first.status
     assert_empty batch.plans
     assert @connectors.fetch(@hosts.first).closed
@@ -405,7 +407,7 @@ class NetdiscoOperationsTest < Minitest::Test
       end
     end
     runner = Thread.new do
-      operations.execute_scripts(scripts: @hosts.to_h { |host| [host, []] }, confirmed: true)
+      operation.execute_scripts(scripts: @hosts.to_h { |host| [host, []] }, confirmed: true)
     end
     first = started.pop
     assert_equal 0, started.size
@@ -423,7 +425,7 @@ class NetdiscoOperationsTest < Minitest::Test
 
   def test_script_input_changes_during_inventory_do_not_change_commands
     scripts = { @hosts.first => [+"original"] }
-    operation = operations(inventory: lambda { |_snapshot|
+    operation = operation(inventory: lambda { |_snapshot|
       scripts.fetch(@hosts.first)[0].replace("mutated")
       @devices
     })
@@ -432,7 +434,7 @@ class NetdiscoOperationsTest < Minitest::Test
   end
 
   def test_empty_batch_has_no_device_sessions
-    batch = @operations.execute_scripts(scripts: {}, confirmed: true)
+    batch = @operation.execute_scripts(scripts: {}, confirmed: true)
     assert_equal :no_devices, batch.status
     refute batch.success?
     assert_equal 0, @credential_calls
@@ -441,12 +443,12 @@ class NetdiscoOperationsTest < Minitest::Test
   end
 
   def test_missing_credentials_is_distinct_from_invalid_resolver_value
-    operation = operations(credentials: ->(_) { nil })
+    operation = operation(credentials: ->(_) { nil })
     outcome = operation.execute_scripts(scripts: { @hosts.first => [] }, confirmed: true).outcomes.first
     assert_equal :missing_credentials, outcome.status
     assert_nil outcome.error
     assert @connectors.values.none?(&:closed)
-    operation = operations(credentials: ->(_) { {} })
+    operation = operation(credentials: ->(_) { {} })
     outcome = operation.execute_scripts(scripts: { @hosts.first => [] }, confirmed: true).outcomes.first
     assert_equal :failed, outcome.status
     assert_instance_of ArgumentError, outcome.error
@@ -457,7 +459,7 @@ class NetdiscoOperationsTest < Minitest::Test
       log_directory = File.join(directory, "logs")
       settings = Netdisco::Settings.new(env: {}, overrides: { "NC_LOG_DIRECTORY" => log_directory })
       seen = []
-      operation = operations(settings: settings, factory: lambda { |device, options|
+      operation = operation(settings: settings, factory: lambda { |device, options|
         seen << options.fetch(:log_file)
         @connectors.fetch(device.host)
       })
@@ -472,7 +474,7 @@ class NetdiscoOperationsTest < Minitest::Test
   end
 
   def test_data_updates_keep_validation_and_immutable_containers
-    batch = @operations.execute_scripts(scripts: { @hosts.first => [] }, confirmed: true)
+    batch = @operation.execute_scripts(scripts: { @hosts.first => [] }, confirmed: true)
     mutable_time = Time.now
     outcome = batch.outcomes.first.with(started_at: mutable_time)
     assert outcome.started_at.frozen?
@@ -498,7 +500,7 @@ class NetdiscoOperationsTest < Minitest::Test
 
   def test_data_updates_cannot_relabel_a_failed_result_as_success
     @connectors.fetch(@hosts.first).value = Connector::Result.new(error: Connector::DeviceError.new("failed"))
-    outcome = @operations.execute_scripts(scripts: { @hosts.first => [] }, confirmed: true).outcomes.first
+    outcome = @operation.execute_scripts(scripts: { @hosts.first => [] }, confirmed: true).outcomes.first
     assert_raises(ArgumentError) { outcome.with(status: :succeeded) }
     assert_raises(ArgumentError) { outcome.with(status: :partial) }
     assert_raises(ArgumentError) { outcome.with(status: :missing_credentials) }
@@ -510,17 +512,17 @@ class NetdiscoOperationsTest < Minitest::Test
 
   # 直接构造审批值，验证领域对象与批次共用同一不可变边界。
   def plan(host)
-    neighbor = Connector::Topology::Neighbor.new(local_interface: "GigabitEthernet1/0/1", neighbor_name: "secret-neighbor",
+    neighbor = Connector::Interfaces::Neighbor.new(local_interface: "GigabitEthernet1/0/1", neighbor_name: "secret-neighbor",
                                                  neighbor_interface: "Ethernet1", chassis_id: "chassis", protocol: :lldp)
-    change = Connector::Topology::Change.new(interface: "GigabitEthernet1/0/1", old_description: "old", new_description: "new", neighbor: neighbor)
+    change = Connector::Interfaces::Change.new(interface: "GigabitEthernet1/0/1", old_description: "old", new_description: "new", neighbor: neighbor)
     profile = Connector.vendor_class(:h3c).profile
     context = Struct.new(:host, :profile).new(host, profile)
     context.define_singleton_method(:config_commands) { profile.config_commands }
     strategy = profile.topology_strategy.new(context)
-    commands = Connector::Topology::Stages.build(strategy: strategy, host: host, changes: [change]).values.flat_map do |script|
+    commands = Connector::Interfaces::Stages.build(strategy: strategy, host: host, changes: [change]).values.flat_map do |script|
       script.map(&:text)
     end
-    Connector::Topology::Plan.new(host: host, vendor: :h3c,
+    Connector::Interfaces::Plan.new(host: host, vendor: :h3c,
                                  evidence: { "GigabitEthernet1/0/1" => ["secret-neighbor", "Ethernet1", "old"] },
                                  changes: [change], commands: commands)
   end

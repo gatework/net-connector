@@ -12,9 +12,9 @@ Gem::Specification.new do |spec|
                      "collect and back up configurations, and discover and reconcile interface " \
                      "descriptions using Netdisco inventories."
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 3.2"
+  spec.required_ruby_version = ">= 3.4"
   # 使用明确的发布清单；本地凭据、设备备份、日志和开发产物不能进入安装包。
-  spec.files = Dir["lib/**/*.rb", "lib/net/connector/netdisco/tftp/ssh_archive_worker.py",
+  spec.files = Dir["lib/**/*.rb", "lib/net/connector/netdisco/ssh/archive/worker.py",
                    "lib/net/connector/textfsm/**/*.textfsm", "lib/net/connector/textfsm/index",
                    "bin/net-backup", "docs/architecture.md", "docs/RELEASING.md", "docs/VERIFICATION.md",
                    "docs/templates.md", "docs/vendors.md", "docs/usage.md", "docs/usage.zh-CN.md", "docs/netdisco.md", "docs/netdisco.zh-CN.md",
@@ -23,8 +23,8 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
   spec.bindir = "bin"
   spec.executables = ["net-backup"]
-  # 依赖版本由宿主应用选择并通过锁文件固定。
-  spec.add_dependency "expect-pty"
+  # 使用当前 Session 与缓冲字节查询契约，具体版本由宿主应用锁定。
+  spec.add_dependency "expect-pty", ">= 0.9.4"
   spec.add_dependency "textfsm"
   spec.add_dependency "pg"
   # 直接使用的标准库 gem 也要声明，最小 Bundler 应用不能借用开发工具的依赖。

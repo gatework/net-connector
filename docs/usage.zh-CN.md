@@ -2,11 +2,11 @@
 
 [English](usage.md) | [返回首页](../README.zh-CN.md) | [Netdisco 批量备份](netdisco.zh-CN.md)
 
-支持 Ruby 3.2 及以上版本和 POSIX 系统。SSH 调用本机 OpenSSH，Telnet 需要本机安装 `telnet` 并显式选择。主要依赖为 [`expect-pty`](https://rubygems.org/gems/expect-pty) 0.5.0 及以上和 [`textfsm`](https://rubygems.org/gems/textfsm) 0.2.0 及以上。
+支持 Ruby 3.4 及以上版本和 POSIX 系统。SSH 调用本机 OpenSSH，Telnet 需要本机安装 `telnet` 并显式选择。要求 [`expect-pty`](https://rubygems.org/gems/expect-pty) 0.9.4 及以上；[`textfsm`](https://rubygems.org/gems/textfsm) 由宿主选择版本，最低依赖测试覆盖 0.2.0。
 
-脱敏直接复用 expect-pty 从 0.5.0 起公开的 `Expect::Redactor` 接口；连接器只管理秘密作用域和配置输出的隐私策略。
+脱敏直接复用 expect-pty 的公开 `Expect::Redactor` 接口；连接器只管理秘密作用域和配置输出的隐私策略。
 
-运行时依赖不设置版本约束，宿主应用通过自己的 Gemfile 和锁文件选择兼容版本。正式发布依赖的安装验证使用 JSON 2。RubyGems 上 textfsm 0.2.0 仍约束 json ~> 2.0；JSON 3 使用固定 TextFSM 源码和显式依赖声明补丁单独验证，不代表公开依赖已经支持 JSON 3。开发工具及兼容测试矩阵的版本约束不影响 gem 使用者。
+gemspec 声明 expect-pty 的接口版本下界；宿主应用通过自己的 Gemfile 和锁文件固定具体依赖版本。最低依赖组合使用 textfsm 0.2.0 与 JSON 2；JSON 3 另有固定 TextFSM 源码及显式依赖声明补丁的验证通道。开发工具及测试矩阵的版本约束不进入 gem 的运行依赖。
 
 示例脚本通过开发依赖 `dotenv` 自动读取项目根目录 `.env`（先执行 `bundle install`），已有进程环境变量优先；库和 CLI 本身不会隐式读取 `.env`。
 
@@ -114,20 +114,29 @@ rows = saved.parse(host: "192.0.2.10", template: "/path/to/template.textfsm")
 
 ## 邻居发现与接口描述
 
-`neighbors` 在 Cisco IOS/NX-OS 上查询 CDP，在 H3C、H3C 无线、山石和 PAN-OS 上查询 LLDP。记录包含 `local_interface`、`neighbor_name`、`neighbor_interface`、`chassis_id` 和 `protocol`。H3C 会按表头选择不同列顺序的模板；未知输出会抛出 `ParsingError`，不会误判为空表。`interface_descriptions` 从运行配置读取当前描述，Radware 则从配置转储读取端口名称。
+`device.interfaces` 返回绑定当前设备的 `Net::Connector::Interfaces` 集合，获取对象不访问设备；它复用设备会话，每次操作重新读取现场证据。`interfaces.neighbors` 在 Cisco IOS/NX-OS 上查询 CDP，在 H3C、H3C 无线、山石和 PAN-OS 上查询 LLDP。记录包含 `local_interface`、`neighbor_name`、`neighbor_interface`、`chassis_id` 和 `protocol`。H3C 会按表头选择不同列顺序的模板；未知输出会抛出 `ParsingError`，不会误判为空表。`interfaces.descriptions` 从运行配置读取当前描述，Radware 则从配置转储读取端口名称。
 
 ```ruby
 Net::Connector.open(:h3c, host: "192.0.2.10", username: ENV.fetch("NC_DEVICE_USERNAME"),
                     password: ENV.fetch("NC_DEVICE_PASSWORD")) do |device|
-  device.sync_interface_descriptions.value!
+  interfaces = device.interfaces
+  neighbors = interfaces.neighbors
+  descriptions = interfaces.descriptions
+  plan = interfaces.plan
+  audit = interfaces.audit
+
+  # 审阅计划后显式应用；直接同步可使用 interfaces.sync。
+  interfaces.apply(plan, confirmed: true).value!
 end
 ```
 
-显式调用 `sync_interface_descriptions`，在同一连接中完成发现、修改、读回和保存，不需要处理计划或二次确认；已有描述一致时不修改、不保存。需要单独预览审批时，后端仍可使用 `plan_interface_descriptions` 与 `apply_interface_descriptions(plan, confirmed: true)`。
+`plan` 和 `audit` 为只读操作，分别返回不可变的 `Interfaces::Plan` 和 `Interfaces::Audit`；审计还保留无法核实的接口问题。单独预览审批使用 `interfaces.plan` 与 `interfaces.apply(plan, confirmed: true)`。
+
+显式调用 `interfaces.sync.value!`，在同一连接中完成发现、修改、读回和保存，不需要处理计划或二次确认；已有描述一致时不修改、不保存。三个规划入口都在访问设备前校验 `abbreviate:`、`lowercase:` 必须为布尔值。规划的邻居和配置读取全程持有设备会话租约，其他线程或 Fiber 不能插入命令；租约不隔离管理员和其他设备会话。
 
 规划、审计与同步会保留语义一致的旧描述：仅大小写或同类接口别名（如 G/GE/Gi、SE/Smartrate-Ethernet）不同不触发写入。邻居名称或端口编号、速率不同仍需修正。未知名称或端口占位符（如 `-`、`unknown`）不能形成变更，审计记录问题，直接规划/同步及下发重验会拒绝未知身份。
 
-默认描述为 `To_<邻居名称>_<接口简称>`，例如 `To_Core-SW_Gi1/0/1`。同类接口的厂商全称、简称和大小写统一，显示文本中的空格替换为下划线。端口、拆分通道与子接口编号完整保留；原始邻居记录和本机下发接口拼写不改变。`abbreviate: false` 保留对端接口全称，`lowercase: true` 仅将对端接口简称转为小写；后端也可用代码块定制。公共纯函数是 `Net::Connector::Topology::InterfaceDescription.format`。
+默认描述为 `To_<邻居名称>_<接口简称>`，例如 `To_Core-SW_Gi1/0/1`。同类接口的厂商全称、简称和大小写统一，显示文本中的空格替换为下划线。端口、拆分通道与子接口编号完整保留；原始邻居记录和本机下发接口拼写不改变。`abbreviate: false` 保留对端接口全称，`lowercase: true` 仅将对端接口简称转为小写；后端也可用代码块定制。公共纯函数是 `Net::Connector::Interfaces::InterfaceDescription.format`。
 
 | 接口类型 | 厂商名称与别名 | 描述简称 |
 | --- | --- | --- |

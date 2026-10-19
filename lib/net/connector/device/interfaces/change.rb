@@ -4,7 +4,7 @@ require_relative "neighbor"
 
 module Net
   module Connector
-    class Topology
+    class Interfaces
       # 变更的描述和接口归本对象所有；邻居值对象可安全共享。
       Change = Data.define(:interface, :old_description, :new_description, :neighbor) do
         # 复制并冻结接口名、新旧描述及对应邻居，固定单接口变更。

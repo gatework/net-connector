@@ -10,6 +10,25 @@ class RedactionContractTest < Minitest::Test
   MARKER = "[REDACTED]"
   SECRET = "callback-secret-8492"
 
+  def test_empty_dictionary_returns_owned_binary_text_and_accepts_later_secrets
+    redactor = Net::Connector::Redactor.new
+    [[nil, "".b], ["", "".b], [+"ordinary output", "ordinary output".b],
+     ["名称", "名称".b], ["\xFF\x00".b, "\xFF\x00".b]].each do |input, expected|
+      original = input&.dup
+      output = redactor.call(input)
+      assert_equal expected, output
+      assert_equal Encoding::BINARY, output.encoding
+      refute output.frozen?
+      refute_same input, output
+      output << "changed"
+      input.nil? ? assert_nil(input) : assert_equal(original, input)
+    end
+
+    redactor.remember(SECRET)
+    assert_equal "before #{MARKER} after", redactor.call("before #{SECRET} after")
+    assert_equal "before #{MARKER} after", redact_chunks(redactor, ["before #{SECRET[0, 8]}", "#{SECRET[8..]} after"])
+  end
+
   def test_repeated_or_absent_secret_registration_keeps_pending_stream_private
     redactor = Net::Connector::Redactor.new(SECRET)
     stream = redactor.stream
@@ -69,6 +88,26 @@ class RedactionContractTest < Minitest::Test
     assert_equal "renew token", result.error.command
   ensure
     device&.close
+  end
+
+  def test_followup_prompt_resolver_errors_respect_the_followup_command_privacy
+    [{ sensitive: true }, { output_sensitive: true }].each do |privacy|
+      device, transport = build("fw#")
+      followup = Net::Connector::Command.new("set password #{SECRET}", **privacy)
+      resolver = lambda do |command|
+        raise "resolver rejected #{SECRET}" if command.equal?(followup)
+      end
+      after_command = ->(_, _, execution) { execution.execute_command(followup) }
+      result = device.execute_operation(Net::Connector::Script.new(["show status"]), name: :audit,
+                                        privilege: false, prompt: resolver, after_command: after_command)
+
+      assert_private_failure(result)
+      assert_equal 1, result.steps.size
+      assert_equal ["show status\n"], transport.writes
+      assert transport.closed?
+    ensure
+      device&.close
+    end
   end
 
   def test_after_command_query_keeps_dynamic_secret_until_outer_callback_finishes
@@ -285,18 +324,6 @@ class RedactionContractTest < Minitest::Test
     end
     assert_equal "#{MARKER} temporary", redactor.call("permanent temporary")
     assert_equal "#{MARKER} temporary", redact_chunks(redactor, ["perma", "nent temporary"])
-  end
-
-  def test_missing_public_dependency_api_is_rejected_before_a_filter_is_constructed
-    Expect.stub(:constants, []) do
-      error = assert_raises(LoadError) { Net::Connector::Redactor.new }
-      assert_includes error.message, "public Expect::Redactor API"
-    end
-    Expect::Redactor.stub(:respond_to?, false) do
-      error = assert_raises(LoadError) { Net::Connector::Redactor.new }
-      assert_includes error.message, "public Expect::Redactor API"
-    end
-    assert_instance_of Expect::Redactor, Net::Connector::Redactor.new.stream
   end
 
   private

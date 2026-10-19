@@ -128,7 +128,7 @@ NC-00 未保存逐文件数据，因此本轮不伪造逐文件历史下限；�
 
 ## 平台与工具
 
-CI 矩阵为 Ubuntu 24.04 / macOS 15 × Ruby 3.2、3.3、3.4、4.0。
+CI 矩阵为 Ubuntu 24.04 / macOS 15 × Ruby 3.4、4.0。
 GitHub Actions 固定提交 SHA；Gitleaks 与 actionlint 固定版本和各平台归档
 SHA-256，首次使用时从官方 GitHub Release 下载，缓存到 `tmp/tools/`。
 已有工具归档和可执行文件也会再次校验。初次安装依赖和下载工具需要联网；
@@ -155,17 +155,17 @@ SHA-256，首次使用时从官方 GitHub Release 下载，缓存到 `tmp/tools/
 
 运行依赖写在 `net-connector.gemspec`，包括直接使用的、可能从 Ruby 默认
 安装中拆出的标准库 gem。开发工具只写在 Gemfile，不进入运行依赖。
-共享脱敏使用 expect-pty 已发布的公共 `Expect::Redactor` 接口。
-开发及隔离安装检查使用正式依赖包，不再需要本地 expect 补丁或联调环境包装脚本。
-开发用 `parallel` 保持 1.x，以支持 Ruby 3.2。
+PTY 与共享脱敏直接依赖 expect-pty 0.9.4+ 的公开 `Session`、`buffer_bytesize` 和 `Expect::Redactor` 接口。
+开发用 `parallel` 保持 1.x。升级 expect-pty 时先验证源码集成，再用本次构建的 gem 验证隔离安装；
+新依赖版本发布前不得将本地构建验证记成已发布版本验收，也不能退回旧接口掩盖依赖缺失。
 
 本项目是库，`Gemfile.lock` 仅作本地开发记录并被忽略；各 Ruby 版本的 CI
 分别解析兼容依赖。应用使用者应在自己的应用中提交 lockfile。测试和打包
 脚本通过隔离安装检查运行依赖，避免依赖开发环境里偶然存在的 gem。
 
-`gemfiles/minimum.gemfile` 固定较早的业务依赖 expect-pty 0.5.0、textfsm 0.2.0；
+`gemfiles/minimum.gemfile` 固定受支持的依赖下界 expect-pty 0.9.4、textfsm 0.2.0；
 标准库和开发工具仍按主 Gemfile 的兼容范围解析。普通矩阵检查允许版本的正常解析，
-另在 Ubuntu / Ruby 3.2、4.0 检查这组版本的全量测试与隔离安装。本地复现：
+另在 Ubuntu / Ruby 3.4、4.0 检查这组版本的全量测试与隔离安装。本地复现：
 
 ```sh
 BUNDLE_GEMFILE=gemfiles/minimum.gemfile bundle install
@@ -173,8 +173,8 @@ BUNDLE_GEMFILE=gemfiles/minimum.gemfile bundle exec rake test package:verify
 ```
 
 这不是所有传递依赖最旧版本的笛卡尔积，也不声称本地 macOS 运行证明远端矩阵通过。
-报告记录实际解析版本，便于比较默认组合和旧版本组合。
-开发锁文件均忽略；gemspec 不限定依赖版本，基准、夹具、兼容 Gemfile 和审阅报告均不进 gem。
+报告记录实际解析版本，便于比较默认组合和受支持的最低组合。
+开发锁文件均忽略；gemspec 声明必要的接口版本下界，基准、夹具、兼容 Gemfile 和审阅报告均不进 gem。
 
 gem 只收录库代码、TextFSM 模板、CLI、双语设备/Netdisco 指南、架构/验证/发布文档、双语 README、LICENSE、
 CHANGELOG、SECURITY 和 CONTRIBUTING。仅两个非敏感 YAML 示例随包分发；测试、示例脚本、发布工具、工作流、本地评审快照、本地配置和备份不进入包。
@@ -211,7 +211,7 @@ Gitleaks 默认规则之外，还检查网络设备密码/SNMP community 配置�
 默认及最低依赖任务验证实际发布依赖。TextFSM 0.2.0 的公开声明仍为 `json ~> 2.0`；
 本地同版本 gem 的修订不能证明普通消费者能安装 JSON 3。
 
-CI 的 `json3-source-compatibility` 在 Ruby 3.2 / 4.0 检出固定 TextFSM commit
+CI 的 `json3-source-compatibility` 在 Ruby 3.4 / 4.0 检出固定 TextFSM commit
 `733340de378f2d7fbe530b48f2cf1dd6c30c69b0`，应用仓库内
 `script/compatibility/textfsm-json3.patch`，只放宽依赖声明，再执行完整测试和真实打包隔离安装。
 该任务明确代表尚未发布依赖声明下的源码兼容性；不自动发布、替换正式依赖或修改用户的全局 gem。
@@ -245,7 +245,7 @@ TFTP 远端未核验回执以及自定义日志目录；离线复核同时支持
 实施记录使用当前工作区文件和方法可见性快照，区别已有改动与本轮增量，不以 Git HEAD 冒充修改前基线。
 源码根目录 `RENAMES.md` 记录批准的改名与兼容边界。完整验收仍运行 `bundle exec rake ci`；
 临时 PostgreSQL 使用 `bundle exec rake test:postgres`，可通过 `NC_TEST_PG_BINDIR` 指定服务端工具目录。
-最低 Ruby 3.2 必须在对应解释器中运行 lint/test；RuboCop 的 TargetRubyVersion 和 Ruby 4.0 测试不能替代此项。
+最低 Ruby 3.4 必须在对应解释器中运行 lint/test；RuboCop 的 TargetRubyVersion 和 Ruby 4.0 测试不能替代此项。
 
 ## 报告统计基准
 

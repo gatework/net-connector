@@ -8,7 +8,7 @@ require_relative "support/topology_fixture"
 class TopologySyncTest < Minitest::Test
   def test_default_sync_discovers_changes_reads_back_and_saves_in_one_session
     each_fixture do |fixture|
-      result = fixture.device.sync_interface_descriptions
+      result = fixture.device.interfaces.sync
       assert result.success?, result.error.inspect
       assert_match(/\ATo_peer_/, fixture.description)
       changed = fixture.observed.index { |command, _| command.start_with?("description ") }
@@ -42,12 +42,12 @@ class TopologySyncTest < Minitest::Test
                  when :hillstone then "System Name Local Interface Chassis ID Port ID\npeer #{local} 000f-e25d-ee91 #{remote}\nTotal lldp neighbor number: 1.\n"
                  end
       fixture = TopologyFixture.new(vendor, interface: configured, neighbor: neighbor)
-      result = fixture.device.sync_interface_descriptions
+      result = fixture.device.interfaces.sync
       assert result.success?, "#{local}: #{result.error.inspect}"
       assert_equal "To_peer_#{expected}", fixture.description
-      assert_equal local, fixture.device.neighbors.first.local_interface
-      assert_equal remote, fixture.device.neighbors.first.neighbor_interface
-      assert_includes fixture.observed.map(&:first), "interface #{Net::Connector::Topology::InterfaceName.configuration(local)}"
+      assert_equal local, fixture.device.interfaces.neighbors.first.local_interface
+      assert_equal remote, fixture.device.interfaces.neighbors.first.neighbor_interface
+      assert_includes fixture.observed.map(&:first), "interface #{Net::Connector::Interfaces::InterfaceName.configuration(local)}"
       assert_equal(1, fixture.observed.count { |command, _| command == fixture.sample.fetch(:save) })
     ensure
       fixture&.close
@@ -56,9 +56,9 @@ class TopologySyncTest < Minitest::Test
 
   def test_unchanged_descriptions_do_not_enter_configuration_or_save_again
     each_fixture do |fixture|
-      fixture.device.sync_interface_descriptions.value!
+      fixture.device.interfaces.sync.value!
       fixture.observed.clear
-      result = fixture.device.sync_interface_descriptions
+      result = fixture.device.interfaces.sync
       assert result.success?
       assert_empty result.steps
       refute(fixture.observed.any? { |command, _| [fixture.sample.fetch(:enter), fixture.sample.fetch(:save)].include?(command) })
@@ -67,10 +67,10 @@ class TopologySyncTest < Minitest::Test
 
   def test_custom_formatter_and_format_options_remain_backend_choices
     each_fixture do |fixture|
-      result = fixture.device.sync_interface_descriptions(abbreviate: false, lowercase: true)
+      result = fixture.device.interfaces.sync(abbreviate: false, lowercase: true)
       assert result.success?
-      assert_equal "To_peer_#{fixture.device.neighbors.first.neighbor_interface.downcase}", fixture.description
-      result = fixture.device.sync_interface_descriptions { "custom uplink" }
+      assert_equal "To_peer_#{fixture.device.interfaces.neighbors.first.neighbor_interface.downcase}", fixture.description
+      result = fixture.device.interfaces.sync { "custom uplink" }
       assert result.success?
       assert_equal "custom uplink", fixture.description
     end
@@ -79,7 +79,7 @@ class TopologySyncTest < Minitest::Test
   def test_readback_failure_keeps_completed_changes_without_saving
     each_fixture do |fixture|
       fixture.mismatch = true
-      result = fixture.device.sync_interface_descriptions
+      result = fixture.device.interfaces.sync
       assert result.failure?
       assert_equal :description_unconfirmed, result.error.code
       assert(result.steps.any? { |step| step.command.text.start_with?("description ") })
@@ -91,7 +91,7 @@ class TopologySyncTest < Minitest::Test
   def test_unconfirmed_persistence_is_not_replayed
     each_fixture do |fixture|
       fixture.save_output = ""
-      result = fixture.device.sync_interface_descriptions
+      result = fixture.device.interfaces.sync
       assert result.failure?
       assert_equal :persistence_unconfirmed, result.error.code
       assert_equal(1, fixture.observed.count { |command, _| command == fixture.sample.fetch(:save) })
@@ -106,7 +106,7 @@ class TopologySyncTest < Minitest::Test
         reads += 1 if sent == command
         fixture.description = "changed externally" if reads == 2
       end
-      error = assert_raises(Net::Connector::DeviceError) { fixture.device.sync_interface_descriptions }
+      error = assert_raises(Net::Connector::DeviceError) { fixture.device.interfaces.sync }
       assert_equal :stale_plan, error.code
       refute(fixture.observed.any? { |sent, _| sent == fixture.sample.fetch(:enter) })
       assert fixture.device.execute_command("show version").success?
@@ -116,7 +116,7 @@ class TopologySyncTest < Minitest::Test
   def test_invalid_format_options_fail_without_opening_the_transport
     each_fixture do |fixture|
       [{ abbreviate: nil }, { lowercase: "true" }].each do |options|
-        assert_raises(ArgumentError) { fixture.device.sync_interface_descriptions(**options) }
+        assert_raises(ArgumentError) { fixture.device.interfaces.sync(**options) }
       end
       assert_empty fixture.observed
       assert_equal 0, fixture.transport.opens
@@ -125,7 +125,7 @@ class TopologySyncTest < Minitest::Test
 
   def test_unsafe_description_is_rejected_before_any_write
     each_fixture do |fixture|
-      assert_raises(ArgumentError) { fixture.device.sync_interface_descriptions { "uplink\nreload" } }
+      assert_raises(ArgumentError) { fixture.device.interfaces.sync { "uplink\nreload" } }
       refute(fixture.observed.any? { |sent, _| sent == fixture.sample.fetch(:enter) })
       assert fixture.device.execute_command("show version").success?
     end
@@ -137,7 +137,7 @@ class TopologySyncTest < Minitest::Test
     discovered = Queue.new
     resume = Queue.new
     worker = Thread.new do
-      fixture.device.sync_interface_descriptions do |_neighbor|
+      fixture.device.interfaces.sync do |_neighbor|
         discovered << true
         Timeout.timeout(3) { resume.pop }
         "planned"

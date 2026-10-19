@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 require_relative "../../device/base"
-require_relative "../../device/topology/strategy"
+require_relative "../../device/interfaces/strategy"
 
 module Net
   module Connector
     module Vendor
       class PaloAlto < Net::Connector::Base
         # 仅开放 LLDP 和描述读取；未验证候选隔离协议前不开放自动提交。
-        class Topology < Net::Connector::Topology::Strategy
+        class Topology < Net::Connector::Interfaces::Strategy
           # 候选配置缺少经固件实验确认的所有权/commit 协议，暂只提供读取能力。
           def self.supports?(capability)
             %i[neighbors interface_descriptions].include?(capability)
@@ -40,7 +40,7 @@ module Net
           end
 
           # 模板按行读取；未闭合的引号表示证据不完整，不能把首行当成旧描述。
-          def decode_description(value) = Net::Connector::Topology::QuotedText.decode(value, host: @device.host)
+          def decode_description(value) = Net::Connector::Interfaces::QuotedText.decode(value, host: @device.host)
 
           # 用 PAN-OS set 语法生成接口备注变更。
           def change_commands(change)

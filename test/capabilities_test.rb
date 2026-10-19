@@ -47,7 +47,7 @@ class CapabilitiesTest < Minitest::Test
     assert_same original, inherited.profile
     assert_same original.tftp_strategy, inherited.profile.tftp_strategy
     assert_raises(Net::Connector::UnsupportedOperation) { device.tftp_backup(host: "192.0.2.2") }
-    error = assert_raises(Net::Connector::UnsupportedOperation) { device.neighbors }
+    error = assert_raises(Net::Connector::UnsupportedOperation) { device.interfaces.neighbors }
     assert_equal :neighbor_discovery_unsupported, error.code
   end
 

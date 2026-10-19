@@ -31,12 +31,8 @@ module Net
           Thread.handle_interrupt(Exception => :on_blocking) do
             @channel = if @channel_factory
                          @channel_factory.call
-                       elsif defined?(Expect::Session)
-                         Expect::Session.new(buffer_limit: nil, write_timeout: configuration.write_timeout)
                        else
-                         Expect.new(raw_pty: true, reset_timeout_on_read: false, buffer_limit: nil,
-                                    preserve_buffer: false, log_stdout: false, log_listeners: false,
-                                    debug_level: 0, write_timeout: configuration.write_timeout)
+                         Expect::Session.new(buffer_limit: nil, write_timeout: configuration.write_timeout)
                        end
           rescue Exception => error # rubocop:disable Lint/RescueException -- 退出屏蔽范围交付取消之前，先保存构造器的同步故障。
             failure = error
@@ -44,20 +40,15 @@ module Net
           end
           # Profile 使用宽、高；PTY 使用行数、列数。
           @channel.slave.winsize = @terminal_size.reverse if @terminal_size
-          if @channel.respond_to?(:transcript=)
-            writer = Object.new
-            callback = method(:write_log_output)
-            # 将新版本通道的回显转交统一日志边界，并返回原始分片字节数。
-            writer.define_singleton_method(:write) do |bytes|
-              callback.call(bytes)
-              bytes.bytesize
-            end
-            @channel.transcript = writer
-            @channel.spawn(*argv, raw: true)
-          else
-            @channel.log_output = method(:write_log_output)
-            @channel.spawn(*argv)
+          writer = Object.new
+          callback = method(:write_log_output)
+          # 将通道回显转交统一日志边界，并返回原始分片字节数。
+          writer.define_singleton_method(:write) do |bytes|
+            callback.call(bytes)
+            bytes.bytesize
           end
+          @channel.transcript = writer
+          @channel.spawn(*argv, raw: true)
           self
         rescue Exception => error # rubocop:disable Lint/RescueException -- 中断时也必须释放尚未完成初始化的 PTY。
           close_preserving_failure
@@ -66,8 +57,7 @@ module Net
 
         # 从信道读取下一事件，并把字符串字段转换为字节字符串。
         def read(patterns, timeout:)
-          reader = @channel.respond_to?(:expect_result) ? :expect_result : :expect
-          result = @channel.public_send(reader, *patterns, STREAM, timeout: timeout)
+          result = @channel.expect(*patterns, STREAM, timeout: timeout)
           Event.new(index: result.number && (result.number - 1), before: result.before.to_s,
                     match: result.match.to_s, error: result.error)
         end
@@ -138,7 +128,8 @@ module Net
 
         # 检查缓冲上限并把设备输出写入当前日志目标。
         def write_log_output(bytes)
-          if @channel.buffer.bytesize > configuration.max_output_bytes
+          # 只读标量，避免背压读取时每个分片都复制累计正文。
+          if @channel.buffer_bytesize > configuration.max_output_bytes
             raise OutputLimitExceeded.new("transport buffer exceeded max_output_bytes",
                                           phase: :read, output: @channel.buffer.dup), cause: nil
           end

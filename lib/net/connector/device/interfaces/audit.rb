@@ -5,7 +5,7 @@ require_relative "stages"
 
 module Net
   module Connector
-    class Topology
+    class Interfaces
       # 逐接口区分可核实变更、未核实证据和只读平台；计划只包含明确获准的接口范围。
       Audit = Data.define(:plan, :comparisons, :issues, :manual_required) do
         # 校验并复制审计计划、接口比较与问题列表，避免调用方修改证据。

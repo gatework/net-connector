@@ -2,7 +2,7 @@
 
 module Net
   module Connector
-    class Topology
+    class Interfaces
       # 接口身份匹配与描述展示共用名称规则；展示简称不能直接用作下发命令。
       module InterfaceName
         RULES = [

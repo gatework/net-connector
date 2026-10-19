@@ -3,35 +3,37 @@
 require_relative "../diagnostic"
 require_relative "../device"
 require_relative "../../engine/result"
-require_relative "../../device/topology"
+require_relative "../../device/interfaces"
 require "time"
 
 module Net
   module Connector
     module Netdisco
-      class Operations
+      class Operation
         # 设备操作保留领域返回值；公开摘要不展开命令、配置、异常消息或审批证据。
         Outcome = Data.define(:device, :status, :value, :error, :started_at, :finished_at, :duration_ms) do
           # 时间对象也可被调用方修改；领域值由操作边界固定，结果不共享可变时间。
           def initialize(device:, status:, value:, error:, started_at:, finished_at:, duration_ms:)
             raise ArgumentError, "operation outcome requires a Device" unless device.is_a?(Device)
-            unless %i[succeeded partial failed missing_credentials].include?(status)
+            unless %i[succeeded partial failed missing_credentials interrupted not_started].include?(status)
               raise ArgumentError, "operation outcome contains an invalid status"
             end
-            unless value.nil? || value.is_a?(Result) || value.is_a?(Net::Connector::Topology::Plan)
+            unless value.nil? || value.is_a?(Result) || value.is_a?(Net::Connector::Interfaces::Plan)
               raise ArgumentError, "operation outcome contains an invalid domain value"
             end
             raise ArgumentError, "operation error must be a StandardError or nil" unless error.nil? || error.is_a?(StandardError)
             validate_state!(status, value, error)
-            unless started_at.is_a?(Time) && finished_at.is_a?(Time)
+            unstarted = status == :not_started
+            unless unstarted ? started_at.nil? && finished_at.nil? : started_at.is_a?(Time) && finished_at.is_a?(Time)
               raise ArgumentError, "operation outcome timestamps must be Times"
             end
-            unless duration_ms.is_a?(Numeric) && duration_ms.real? && duration_ms.finite? && duration_ms >= 0
+            cancelled = %i[interrupted not_started].include?(status)
+            unless cancelled ? duration_ms.nil? : duration_ms.is_a?(Numeric) && duration_ms.real? && duration_ms.finite? && duration_ms >= 0
               raise ArgumentError, "operation duration must be nonnegative and finite"
             end
 
             super(device: device, status: status, value: value, error: error,
-                  started_at: started_at.dup.freeze, finished_at: finished_at.dup.freeze, duration_ms: duration_ms)
+                  started_at: started_at&.dup&.freeze, finished_at: finished_at&.dup&.freeze, duration_ms: duration_ms)
           end
 
           # 返回经校验的更新快照，未更新时沿用当前对象。
@@ -51,9 +53,9 @@ module Net
           # 将设备操作转换为受控摘要，省略配置正文、命令和原始错误信息。
           def to_h
             { host: device.host, vendor: device.vendor, status: status,
-              started_at: started_at.iso8601, finished_at: finished_at.iso8601, duration_ms: duration_ms,
+              started_at: started_at&.iso8601, finished_at: finished_at&.iso8601, duration_ms: duration_ms,
               steps: value.is_a?(Result) ? value.steps.size : nil,
-              changes: value.is_a?(Net::Connector::Topology::Plan) ? value.changes.size : nil,
+              changes: value.is_a?(Net::Connector::Interfaces::Plan) ? value.changes.size : nil,
               diagnostic: Diagnostic.from(error)&.to_h }.compact
           end
 
@@ -69,7 +71,7 @@ module Net
                     when :succeeded then value && error.nil? && (!value.is_a?(Result) || value.success?)
                     when :partial then value && error && (!value.is_a?(Result) || value.success? || !value.steps.empty?)
                     when :failed then error && (value.nil? || (value.is_a?(Result) && value.failure? && value.steps.empty?))
-                    when :missing_credentials then value.nil? && error.nil?
+                    when :missing_credentials, :interrupted, :not_started then value.nil? && error.nil?
                     end
             raise ArgumentError, "operation state contradicts its domain value or error" unless valid && same_error
           end

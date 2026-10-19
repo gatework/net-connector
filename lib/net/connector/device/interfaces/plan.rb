@@ -4,7 +4,7 @@ require_relative "change"
 
 module Net
   module Connector
-    class Topology
+    class Interfaces
       # 审批树在领域边界固定；单设备与批量操作共享同一不可变计划。
       Plan = Data.define(:host, :vendor, :evidence, :changes, :commands, :scope) do
         # 校验并冻结主机、厂商、证据、变更和命令，形成可审批的计划。

@@ -2,6 +2,26 @@
 
 ## 未发布
 
+- `prepare_command` 仅接受 `Command` 或 `nil`；非法返回值在替代命令发送前转为带原脚本位置的 `ScriptError`，保留此前完成步骤且不展开返回值。
+- 拓扑 CLI 在交付异步取消前固定完成回执或同步失败，避免已完成应用被记成状态不明的中断；阻塞操作仍可取消。
+- PTY 输出预算直接使用 expect-pty 的公开 `buffer_bytesize` 查询，减少大输出背压时的累计正文复制；输出上限不受日志开关影响。
+- **不兼容**：要求 Ruby 3.4+ 与 expect-pty 0.9.4+；PTY 传输和 SSH 归档认证统一使用 `Session`、`transcript`、`spawn(raw: true)` 与 `expect`，移除旧接口分支及旧依赖能力探测，CI 与文档同步更新。
+
+- 单设备接口业务收敛为 `device.interfaces.neighbors/descriptions/plan/audit/apply/sync`；直接迁移原 Topology 实现至 `Interfaces` 与 `device/interfaces/`，移除旧设备平铺入口、常量和加载路径。计划、审计、策略及 CLI/批量调用同步迁移，Netdisco 多设备方法和 Batch 返回值不变。
+- 接口规划、审计与同步统一在设备访问前校验格式选项；规划的邻居和描述采集全程持有会话租约，接口对象复用时仍重新读取现场证据。
+
+- 配置与接口描述批次复用 Worker 的结果发布机制；取消后保留已完成回执，区分执行中断与未启动任务，提供 `Operation#last_batch` 和 `Fleet#last_operation_batch`，原始中断仍传播且不重放命令。
+- 文本报告与终端进度共用诊断白名单，未知错误码和类型不再作为自由文本输出。
+- 追加敏感命令的脱敏范围覆盖提示符回调及异常归一化；无秘密规则的日志脱敏跳过过滤器分配，保留独立二进制返回值。
+
+- 地址成员集合改名为 `Netdisco::AddressSet`，文件为 `netdisco/address_set.rb`；移除 `AddressFilter` 旧名称。
+
+- Netdisco 多设备描述动作使用 `plan_descriptions`、`apply_descriptions`、`sync_descriptions`，移除更早的长方法名，更新批次操作名称；单设备入口见上方 `device.interfaces` 迁移。
+
+- 设备批次操作统一为单数 `Netdisco::Operation` 与 `netdisco/operation/`，同步入口、结果对象及 Fleet 调用，移除复数旧接口。
+
+- SSH 归档集中到 `netdisco/ssh/archive/`，统一为 `SSH::Archive::Client/Pool` 与 `worker.py`；认证独立为 `SSH::Authentication`，移除旧加载路径及常量。
+
 - 拓扑默认输出中文分类摘要和实际配置来源，区分待核实证据与执行失败，取消重复的逐设备刷屏；详细模式仍显示每台原因，JSON 保留状态码并增加统计。
 
 - 拓扑计划按设备导出 `scripts/设备名-IP.cfg` 和 `devices/设备名-IP.txt`，命名与备份一致；索引记录路径及命令文件 SHA-256，导出失败阻止应用，无变更不生成空命令文件。

@@ -94,8 +94,8 @@ class ParsingEncodingTest < Minitest::Test
         Net::Connector::Result.new(config: output)
       end
       device.define_singleton_method(:running_config) { raise "invalid neighbors must stop before config collection" }
-      topology = Net::Connector::Topology.new(device)
-      error = assert_raises(Net::Connector::ParsingError) { topology.plan_interface_descriptions { "proposed" } }
+      topology = Net::Connector::Interfaces.new(device)
+      error = assert_raises(Net::Connector::ParsingError) { topology.plan { "proposed" } }
       assert_encoding_error(error, "\xFF".b)
       assert_equal [device.profile.topology_strategy.new(device).neighbor_command], commands
     ensure

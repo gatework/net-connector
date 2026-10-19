@@ -6,7 +6,7 @@ require_relative "quoted_text"
 
 module Net
   module Connector
-    class Topology
+    class Interfaces
       # 厂商拓扑规则；默认不提供任何设备能力。
       class Strategy
         # 保存设备供厂商规则查询档案和会话状态。

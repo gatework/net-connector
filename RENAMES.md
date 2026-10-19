@@ -187,3 +187,38 @@ Worker 接受并发范围两个端点。预算和钩子复用既有行为测试�
 
 当前接口统一使用 `parallel:` / YAML `parallel` / 环境变量 `NC_PARALLEL` / CLI `--parallel`。
 旧的 `concurrency` 参数和配置名称已移除，不保留兼容别名。GitHub Actions 的 `concurrency` 为平台规定字段，历史基准产物保留原始记录。
+
+## SSH 归档目录（未发布）
+
+- `Tftp::SshArchive` 改为 `SSH::Archive::Client`，位于 `netdisco/ssh/archive/client.rb`。
+- `Tftp::SshArchivePool` 改为 `SSH::Archive::Pool`，位于 `netdisco/ssh/archive/pool.rb`。
+- `Tftp::SshAuthentication` 改为 `SSH::Authentication`，位于 `netdisco/ssh/authentication.rb`。
+- 服务器事务脚本统一为 `netdisco/ssh/archive/worker.py`，`require "net/connector/netdisco/ssh/archive"` 加载归档实现。
+- 旧路径与常量移除，不保留别名。TFTP 入口仍按根目录选择本地或 SSH 归档，错误码、回执与不重放设备上传的规则保持一致。
+
+## 设备批次操作目录（未发布）
+
+`Netdisco::Operations` / `netdisco/operations.rb` / `netdisco/operations/` 统一改为单数 `Netdisco::Operation` / `netdisco/operation.rb` / `netdisco/operation/`。批次与逐台结果分别为 `Operation::Batch` 和 `Operation::Outcome`；Fleet 私有工厂同样使用 `operation`。旧名称不保留别名，设备执行、审批确认和回执语义保持一致。
+
+## 接口描述动作（未发布）
+
+单设备动作归入 `device.interfaces`，集合由 `Net::Connector::Interfaces` 实现；Fleet/Operation 的方法表示多设备批次，返回 `Operation::Batch`：
+
+| 原设备方法（含中间名称） | 当前设备入口 | Fleet/Operation | 用途 |
+| --- | --- | --- | --- |
+| `plan_interface_descriptions` / `plan_descriptions` | `device.interfaces.plan` | `plan_descriptions` | 只读生成描述变更计划 |
+| `audit_interface_descriptions` / `audit_descriptions` | `device.interfaces.audit` | 未提供 | 逐接口核实证据并构造可执行计划 |
+| `apply_interface_descriptions` / `apply_descriptions` | `device.interfaces.apply` | `apply_descriptions` | 明确确认后重验、下发、读回并保存 |
+| `sync_interface_descriptions` / `sync_descriptions` | `device.interfaces.sync` | `sync_descriptions` | 同一会话完成规划与应用 |
+| `neighbors` | `device.interfaces.neighbors` | 未提供 | 读取链路邻居 |
+| `interface_descriptions` | `device.interfaces.descriptions` | 未提供 | 读取当前接口描述 |
+
+旧设备方法全部移除，不提供兼容别名；批次的 `operation` 字段使用上表 Fleet/Operation 名称。`Topology` 类型命名空间和 `device/topology/` 路径迁移为 `Interfaces` 与 `device/interfaces/`，包括 `Plan`、`Audit`、`Neighbor`、`Change` 和公共策略。厂商 `topology_strategy` 档案字段、能力键和 Netdisco 拓扑 CLI/报告名称不变。
+
+集合对象绑定原设备会话，不单独连接或关闭，也不缓存现场证据。参数、返回值和确认要求沿用原有业务契约；`plan` 补齐全程会话租约，所有规划入口统一在设备 I/O 前拒绝非法格式选项。脚本批量执行仍使用 `execute_scripts`。
+
+SSH 命名空间统一使用协议缩写 `Netdisco::SSH`，移除 `Netdisco::Ssh`；小写 `ssh/` 加载路径不变。
+
+## 地址集合（未发布）
+
+`Netdisco::AddressFilter` / `netdisco/address_filter.rb` 改为 `Netdisco::AddressSet` / `netdisco/address_set.rb`。该值对象保存精确 IP、网段和范围，通过 `include?` 判断成员归属；设备筛选仍由 `Rules` 组合包含与排除策略。旧名称和路径移除，不保留兼容别名，地址规范化、范围合并及二分查询逻辑不变。

@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 require_relative "../../device/base"
-require_relative "../../device/topology/immediate_strategy"
+require_relative "../../device/interfaces/immediate_strategy"
 
 module Net
   module Connector
     module Vendor
       class Hillstone < Net::Connector::Base
         # 核对山石 LLDP 数据与总数，接口描述读回一致后才保存配置。
-        class Topology < Net::Connector::Topology::ImmediateStrategy
+        class Topology < Net::Connector::Interfaces::ImmediateStrategy
           # 山石提供 LLDP 邻居、配置描述读取和描述变更。
           def self.supports?(capability)
             %i[neighbors interface_descriptions interface_description_changes].include?(capability)
@@ -47,7 +47,7 @@ module Net
 
           # 复用公共接口描述命令。
           def change_commands(change)
-            Net::Connector::Topology::InterfaceDescription.commands(interface: change.interface, description: change.new_description)
+            Net::Connector::Interfaces::InterfaceDescription.commands(interface: change.interface, description: change.new_description)
           end
 
           private

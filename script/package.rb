@@ -19,7 +19,7 @@ module PackageCheck
     return false if path.start_with?("/") || path.split("/").include?("..")
 
     path.match?(%r{\Alib/.+\.rb\z}) ||
-      path == "lib/net/connector/netdisco/tftp/ssh_archive_worker.py" ||
+      path == "lib/net/connector/netdisco/ssh/archive/worker.py" ||
       path.match?(%r{\Alib/net/connector/textfsm/(?:(?:[a-z0-9_]+/)*[a-z0-9_]+\.textfsm|index)\z}) ||
       path.match?(%r{\Adocs/[^/]+\.md\z}) ||
       %w[bin/net-backup examples/backup.example.yml examples/inventory.yml README.md README.zh-CN.md

@@ -9,14 +9,14 @@ class NetdiscoTopologyBatchTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
   HOST = "192.0.2.1"
 
-  # 整条 Fleet -> Operations -> 真正设备门面在合成对话上贯通，不代替现场固件验收。
+  # 整条 Fleet -> Operation -> 真正设备门面在合成对话上贯通，不代替现场固件验收。
   def test_planning_and_application_preserve_change_readback_save_order
     each_fleet do |fleet, fixtures|
-      planned = fleet.plan_interface_descriptions(hosts: [HOST]) { "planned" }
+      planned = fleet.plan_descriptions(hosts: [HOST]) { "planned" }
       assert planned.success?
       assert fixtures.first.transport.closed?
       assert_equal(0, fixtures.first.observed.count { |command, _| command.start_with?("description ") })
-      batch = fleet.apply_interface_descriptions(plans: planned.plans, confirmed: true)
+      batch = fleet.apply_descriptions(plans: planned.plans, confirmed: true)
       assert batch.success?, batch.to_h.inspect
       fixture = fixtures.last
       sent = fixture.observed
@@ -36,8 +36,8 @@ class NetdiscoTopologyBatchTest < Minitest::Test
 
   def test_readback_mismatch_never_saves_and_keeps_completed_steps
     each_fleet(fault: :mismatch) do |fleet, fixtures|
-      planned = fleet.plan_interface_descriptions(hosts: [HOST]) { "planned" }
-      batch = fleet.apply_interface_descriptions(plans: planned.plans, confirmed: true)
+      planned = fleet.plan_descriptions(hosts: [HOST]) { "planned" }
+      batch = fleet.apply_descriptions(plans: planned.plans, confirmed: true)
       outcome = batch.outcomes.first
       assert outcome.partial?
       assert_equal :description_unconfirmed, outcome.error.code
@@ -51,8 +51,8 @@ class NetdiscoTopologyBatchTest < Minitest::Test
 
   def test_unconfirmed_save_is_not_retried_and_summary_keeps_only_diagnostic_metadata
     each_fleet(fault: :save_unconfirmed) do |fleet, fixtures|
-      planned = fleet.plan_interface_descriptions(hosts: [HOST]) { "planned" }
-      batch = fleet.apply_interface_descriptions(plans: planned.plans, confirmed: true)
+      planned = fleet.plan_descriptions(hosts: [HOST]) { "planned" }
+      batch = fleet.apply_descriptions(plans: planned.plans, confirmed: true)
       outcome = batch.outcomes.first
       assert outcome.partial?
       assert_equal :persistence_unconfirmed, outcome.error.code
@@ -69,8 +69,8 @@ class NetdiscoTopologyBatchTest < Minitest::Test
 
   def test_stale_evidence_rejects_before_writing_and_does_not_retry
     each_fleet(fault: :stale) do |fleet, fixtures|
-      planned = fleet.plan_interface_descriptions(hosts: [HOST]) { "planned" }
-      batch = fleet.apply_interface_descriptions(plans: planned.plans, confirmed: true)
+      planned = fleet.plan_descriptions(hosts: [HOST]) { "planned" }
+      batch = fleet.apply_descriptions(plans: planned.plans, confirmed: true)
       outcome = batch.outcomes.first
       assert_equal :failed, outcome.status
       assert_equal :stale_plan, outcome.error.code
@@ -86,9 +86,9 @@ class NetdiscoTopologyBatchTest < Minitest::Test
   def test_sync_uses_one_connection_and_publishes_one_final_result_per_device
     each_fleet do |fleet, fixtures|
       notified = []
-      batch = fleet.sync_interface_descriptions(hosts: [HOST], on_result: ->(outcome) { notified << outcome })
+      batch = fleet.sync_descriptions(hosts: [HOST], on_result: ->(outcome) { notified << outcome })
       assert batch.success?, batch.to_h.inspect
-      assert_equal :sync_interface_descriptions, batch.operation
+      assert_equal :sync_descriptions, batch.operation
       assert_equal({ total: 1, succeeded: 1, failed: 0, partial: 0, missing_credentials: 0, callback_errors: 0 }, batch.summary)
       assert_equal 1, fixtures.size
       assert fixtures.first.transport.closed?
@@ -100,7 +100,7 @@ class NetdiscoTopologyBatchTest < Minitest::Test
 
   def test_sync_readback_failure_does_not_save_or_reconnect
     each_fleet(fault: :mismatch, continuous: true) do |fleet, fixtures|
-      batch = fleet.sync_interface_descriptions(hosts: [HOST])
+      batch = fleet.sync_descriptions(hosts: [HOST])
       assert_equal 1, batch.summary.fetch(:failed)
       assert batch.outcomes.first.partial?
       assert_equal :description_unconfirmed, batch.outcomes.first.error.code
@@ -123,7 +123,7 @@ class NetdiscoTopologyBatchTest < Minitest::Test
                                  fixtures << fixture
                                  fixture.device
                                })
-    batch = fleet.sync_interface_descriptions(hosts: hosts)
+    batch = fleet.sync_descriptions(hosts: hosts)
     assert_equal(hosts, batch.outcomes.map { |outcome| outcome.device.host })
     assert_equal({ total: 2, succeeded: 1, failed: 1, partial: 1, missing_credentials: 0, callback_errors: 0 }, batch.summary)
     assert_equal :incomplete, batch.status

@@ -28,7 +28,7 @@ class CiscoNxosTemplatesTest < Minitest::Test
   def test_cdp_details_keep_neighbor_block_boundaries
     build("Device ID:leaf-b(SERIAL01)\nSystem Name: leaf-b\nInterface: Ethernet1/1, Port ID (outgoing port): Ethernet1/2\n" \
           "Device ID:core-c\nInterface: Ethernet1/3, Port ID (outgoing port): Ethernet2/1\n")
-    neighbors = @device.neighbors
+    neighbors = @device.interfaces.neighbors
     assert_equal ["leaf-b(SERIAL01)", "core-c"], neighbors.map(&:neighbor_name)
     assert_equal %w[Ethernet1/1 Ethernet1/3], neighbors.map(&:local_interface)
     assert_equal %w[Ethernet1/2 Ethernet2/1], neighbors.map(&:neighbor_interface)
@@ -39,7 +39,7 @@ class CiscoNxosTemplatesTest < Minitest::Test
     ["Device ID:incomplete\nDevice ID:complete\nInterface: Ethernet1/1, Port ID (outgoing port): Ethernet1/2\n",
      "Device ID:complete\nInterface: Ethernet1/1, Port ID (outgoing port): Ethernet1/2\nDevice ID:\n"].each do |output|
       build(output)
-      error = assert_raises(Net::Connector::ParsingError) { @device.neighbors }
+      error = assert_raises(Net::Connector::ParsingError) { @device.interfaces.neighbors }
       assert_equal :unrecognized_output, error.code
       @device.close
     end
@@ -61,7 +61,7 @@ class CiscoNxosTemplatesTest < Minitest::Test
     @device = Net::Connector.build(:cisco_nxos, host: "192.0.2.1", username: "audit",
                                     transport: ConnectorFake.new("switch#", "switch#", "#{config}switch#"))
     assert_equal({ "ethernet1/1" => "uplink", "ethernet1/2" => "", "port-channel10" => "aggregate" },
-                 @device.interface_descriptions)
+                 @device.interfaces.descriptions)
   end
 
   private

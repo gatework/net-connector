@@ -10,7 +10,7 @@ require_relative "../lib/net/connector/vendor/radware/topology"
 require_relative "support/fake_transport"
 
 class TopologyStrategyTest < Minitest::Test
-  Topology = Net::Connector::Topology
+  Topology = Net::Connector::Interfaces
 
   def test_strategy_capabilities_are_static_and_inherited
     [Net::Connector::Vendor::Cisco::Topology, Net::Connector::Vendor::H3c::Topology, Net::Connector::Vendor::Hillstone::Topology].each do |strategy|
@@ -78,7 +78,7 @@ class TopologyStrategyTest < Minitest::Test
     end
     device = connector.new(host: "192.0.2.1", username: "admin", transport: ConnectorFake.new)
     refute device.supports?(:interface_description_changes)
-    error = assert_raises(Net::Connector::UnsupportedOperation) { device.plan_interface_descriptions }
+    error = assert_raises(Net::Connector::UnsupportedOperation) { device.interfaces.plan }
     assert_equal :description_unsupported, error.code
     assert_equal 0, device.instance_variable_get(:@session).transport.opens
   end

@@ -5,20 +5,20 @@ require "minitest/mock"
 require "stringio"
 require "tmpdir"
 require_relative "../lib/net/connector/netdisco"
-require_relative "../lib/net/connector/netdisco/tftp/ssh_archive"
+require_relative "../lib/net/connector/netdisco/ssh/archive/client"
 
-class TftpSshAuthenticationTest < Minitest::Test
+class SshAuthenticationTest < Minitest::Test
   N = Net::Connector::Netdisco
 
   def test_password_dialogue_is_private_and_only_answers_once
     script = 'STDOUT.sync=true; print "Password: "; line=STDIN.gets; abort "Permission denied" unless line=="private-fixture\n"'
     stdout, stderr = capture_io do
-      assert N::Tftp::SshAuthentication.respond([Gem.ruby, "-e", script], password: "private-fixture")
+      assert N::SSH::Authentication.respond([Gem.ruby, "-e", script], password: "private-fixture")
     end
     assert_empty stdout
     assert_empty stderr
     repeated = 'STDOUT.sync=true; print "Password: "; STDIN.gets; print "Password: "; sleep 5'
-    refute N::Tftp::SshAuthentication.respond([Gem.ruby, "-e", repeated], password: "private-fixture")
+    refute N::SSH::Authentication.respond([Gem.ruby, "-e", repeated], password: "private-fixture")
   end
 
   def test_server_password_is_excluded_from_public_policy_and_snapshots
@@ -33,7 +33,7 @@ class TftpSshAuthenticationTest < Minitest::Test
 
   def test_configured_password_never_enters_ssh_arguments
     Dir.mktmpdir do |directory|
-      archive = N::Tftp::SshArchive.new(directory: directory, root: "ssh://archive@backup.example/srv/tftp", password: "private-fixture")
+      archive = N::SSH::Archive::Client.new(directory: directory, root: "ssh://archive@backup.example/srv/tftp", password: "private-fixture")
       responder = lambda do |args, password:|
         assert_equal "private-fixture", password
         refute_includes args.join(" "), password
@@ -41,7 +41,7 @@ class TftpSshAuthenticationTest < Minitest::Test
         assert_includes args, "BatchMode=no"
         true
       end
-      N::Tftp::SshAuthentication.stub(:respond, responder) do
+      N::SSH::Authentication.stub(:respond, responder) do
         archive.stub(:system, ->(*) { true }) do
           archive.stub(:prepare_archive, nil) { archive.prepare }
         end
@@ -53,10 +53,10 @@ class TftpSshAuthenticationTest < Minitest::Test
 
   def test_configured_password_failure_does_not_claim_password_is_missing
     Dir.mktmpdir do |directory|
-      archive = N::Tftp::SshArchive.new(directory: directory, root: "ssh://archive@backup.example/srv/tftp", password: "private-fixture")
-      N::Tftp::SshAuthentication.stub(:respond, false) do
+      archive = N::SSH::Archive::Client.new(directory: directory, root: "ssh://archive@backup.example/srv/tftp", password: "private-fixture")
+      N::SSH::Authentication.stub(:respond, false) do
         2.times do
-          error = assert_raises(N::Tftp::SshArchive::AuthenticationUnavailable) { archive.prepare }
+          error = assert_raises(N::SSH::Archive::Client::AuthenticationUnavailable) { archive.prepare }
           assert_includes error.message, "已读取 NC_TFTP_SSH_PASSWORD"
           refute_includes error.message, "请在项目根目录 .env 设置"
           refute_includes error.message, "private-fixture"
@@ -74,10 +74,10 @@ class TftpSshAuthenticationTest < Minitest::Test
         "server" => "192.0.2.10", "verification_roots" => { "192.0.2.10" => "ssh://archive@backup.example/srv/tftp" }
       } }.to_yaml)
       inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
-      archive = N::Tftp::SshArchive.new(directory: directory, root: "ssh://archive@backup.example/srv/tftp")
+      archive = N::SSH::Archive::Client.new(directory: directory, root: "ssh://archive@backup.example/srv/tftp")
       error = StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { flunk "device credentials must not be requested" }]) do
-        N::Tftp::SshArchive.stub(:new, archive) do
+        N::SSH::Archive::Client.stub(:new, archive) do
           archive.stub(:system, ->(*) { false }) do
             status = N::CLI::Backup.new(mode: :tftp, argv: ["--config", path, "--non-interactive"], env: {},
                                         output: StringIO.new, error: error).run
@@ -95,7 +95,7 @@ class TftpSshAuthenticationTest < Minitest::Test
 
   def test_cancelled_master_authentication_reclaims_its_private_directory
     Dir.mktmpdir do |reports|
-      archive = N::Tftp::SshArchive.new(directory: reports, root: "ssh://archive@backup.example/srv/tftp")
+      archive = N::SSH::Archive::Client.new(directory: reports, root: "ssh://archive@backup.example/srv/tftp")
       original = Dir.method(:mktmpdir)
       created = nil
       allocator = ->(*args) { created = original.call(*args) }
@@ -115,7 +115,7 @@ class TftpSshAuthenticationTest < Minitest::Test
 
   def test_master_cleanup_failure_does_not_replace_authentication_interruption
     Dir.mktmpdir do |reports|
-      archive = N::Tftp::SshArchive.new(directory: reports, root: "ssh://archive@backup.example/srv/tftp")
+      archive = N::SSH::Archive::Client.new(directory: reports, root: "ssh://archive@backup.example/srv/tftp")
       original = Dir.method(:mktmpdir)
       created = nil
       allocator = ->(*args) { created = original.call(*args) }

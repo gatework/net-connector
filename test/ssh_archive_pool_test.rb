@@ -3,10 +3,10 @@
 require "minitest/autorun"
 require "minitest/mock"
 require "timeout"
-require_relative "../lib/net/connector/netdisco/tftp/ssh_archive_pool"
+require_relative "../lib/net/connector/netdisco/ssh/archive/pool"
 
-class TftpSshArchivePoolTest < Minitest::Test
-  T = Net::Connector::Netdisco::Tftp
+class SshArchivePoolTest < Minitest::Test
+  T = Net::Connector::Netdisco::SSH::Archive
 
   def test_connection_preflight_is_parallel_but_bounded
     entered, release = Queue.new, Queue.new
@@ -25,8 +25,8 @@ class TftpSshArchivePoolTest < Minitest::Test
         archive.define_singleton_method(:close) {}
       end
     end
-    pool = T::SshArchive.stub(:new, factory) do
-      T::SshArchivePool.new(directory: "unused", root: "unused", password: nil, parallel: 20)
+    pool = T::Client.stub(:new, factory) do
+      T::Pool.new(directory: "unused", root: "unused", password: nil, parallel: 20)
     end
     runner = Thread.new { pool.prepare }
     Timeout.timeout(2) { 4.times { entered.pop } }
@@ -57,8 +57,8 @@ class TftpSshArchivePoolTest < Minitest::Test
         end
       end
     end
-    pool = T::SshArchive.stub(:new, factory) do
-      T::SshArchivePool.new(directory: "unused", root: "unused", password: nil, parallel: 5)
+    pool = T::Client.stub(:new, factory) do
+      T::Pool.new(directory: "unused", root: "unused", password: nil, parallel: 5)
     end
     assert_same failure, assert_raises(IOError) { pool.prepare }
     assert_equal [0, 1], (2.times.map { closed.pop(true) })
@@ -88,8 +88,8 @@ class TftpSshArchivePoolTest < Minitest::Test
       end
       archive
     end
-    pool = T::SshArchive.stub(:new, factory) do
-      T::SshArchivePool.new(directory: "unused", root: "unused", password: nil, parallel: 10)
+    pool = T::Client.stub(:new, factory) do
+      T::Pool.new(directory: "unused", root: "unused", password: nil, parallel: 10)
     end
     pool.prepare
     threads = 10.times.map { |index| Thread.new { pool.upload_and_archive(index, started_at: Time.now.utc) } }
@@ -111,8 +111,8 @@ class TftpSshArchivePoolTest < Minitest::Test
     archives.first.define_singleton_method(:close) { raise failure }
     closed = false
     archives.last.define_singleton_method(:close) { closed = true }
-    pool = T::SshArchive.stub(:new, ->(**) { archives.shift }) do
-      T::SshArchivePool.new(directory: "unused", root: "unused", password: nil, parallel: 5)
+    pool = T::Client.stub(:new, ->(**) { archives.shift }) do
+      T::Pool.new(directory: "unused", root: "unused", password: nil, parallel: 5)
     end
     assert_same failure, assert_raises(IOError) { pool.close }
     assert closed

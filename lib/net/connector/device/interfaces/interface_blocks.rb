@@ -2,7 +2,7 @@
 
 module Net
   module Connector
-    class Topology
+    class Interfaces
       # interface 块方言共用完整性校验；解析器不能静默遗漏未知接口头。
       module InterfaceBlocks
         # 比较原配置接口头与解析记录，拒绝静默遗漏接口的解析结果。

@@ -8,7 +8,7 @@ require_relative "settings"
 require_relative "device"
 require_relative "device/access"
 require_relative "worker"
-require_relative "operations"
+require_relative "operation"
 require_relative "report/store"
 require_relative "planner"
 require_relative "report"
@@ -24,6 +24,9 @@ module Net
       class Fleet
         # 读取清单来源诊断及最近一次可用批次报告，包括中断后的部分结果。
         attr_reader :inventory_status, :last_report
+
+        # 配置与描述操作的最新回执独立于备份报告，中断后仍保留当前操作的完成证据。
+        def last_operation_batch = @operation&.last_batch
 
         DEFAULT_SETTING = Object.new.freeze
         private_constant :DEFAULT_SETTING
@@ -126,22 +129,22 @@ module Net
 
         # 配置批次在任何连接之前验证全部脚本与目标，写操作须显式确认。
         def execute_scripts(**options)
-          operations.execute_scripts(**options)
+          operation.execute_scripts(**options)
         end
 
         # 默认连贯同步，不要求调用方管理计划或重新建立设备连接。
-        def sync_interface_descriptions(**options, &)
-          operations.sync_interface_descriptions(**options, &)
+        def sync_descriptions(**options, &)
+          operation.sync_descriptions(**options, &)
         end
 
         # 并发生成接口描述计划，不执行配置变更。
-        def plan_interface_descriptions(**options, &)
-          operations.plan_interface_descriptions(**options, &)
+        def plan_descriptions(**options, &)
+          operation.plan_descriptions(**options, &)
         end
 
         # 每台设备独立重验审批证据、回读并保存，不将计划当作普通脚本执行。
-        def apply_interface_descriptions(**options)
-          operations.apply_interface_descriptions(**options)
+        def apply_descriptions(**options)
+          operation.apply_descriptions(**options)
         end
 
         private
@@ -166,8 +169,8 @@ module Net
         end
 
         # 组合配置执行与接口描述操作入口，复用当前清单和接入依赖。
-        def operations
-          Operations.new(settings: @settings, inventory: method(:inventory), credentials: @credentials,
+        def operation
+          @operation = Operation.new(settings: @settings, inventory: method(:inventory), credentials: @credentials,
                          connector_factory: @connector_factory)
         end
 

@@ -17,7 +17,7 @@ class ModuleLoadingTest < Minitest::Test
                net/connector/device/running_config net/connector/device/local_backup net/connector/device/remote_backup/target
                net/connector/device/remote_backup/receipt net/connector/device/remote_backup
                net/connector/device/tftp/strategy net/connector/device/tftp
-               net/connector/device/topology/strategy net/connector/device/topology/interface_blocks net/connector/device/topology/quoted_text net/connector/device/topology
+               net/connector/device/interfaces/strategy net/connector/device/interfaces/interface_blocks net/connector/device/interfaces/quoted_text net/connector/device/interfaces
                net/connector/device/save_config net/connector/textfsm net/connector/device/base net/connector]
     [paths, paths.reverse].each do |order|
       result = isolated(<<~RUBY)
@@ -174,8 +174,8 @@ class ModuleLoadingTest < Minitest::Test
       "report/store" => "N::Report::Store::Json.new.respond_to?(:write)",
       "tftp/verifier" => "N::Tftp::Verifier.new.respond_to?(:upload_and_verify)",
       "tftp/archive" => "N::Tftp::Archive.instance_methods.include?(:upload_filename)",
-      "operations" => 'N::Operations.new(settings: N::Settings.new(env: {}), inventory: ->(_) { raise "empty batch must not read inventory" }).execute_scripts(scripts: {}, confirmed: true).status == :no_devices',
-      "operations/batch" => "now = Time.now.utc; N::Operations::Batch.new(operation: :execute_scripts, outcomes: [], callback_errors: [], started_at: now, finished_at: now).to_h.fetch(:status) == :no_devices",
+      "operation" => 'N::Operation.new(settings: N::Settings.new(env: {}), inventory: ->(_) { raise "empty batch must not read inventory" }).execute_scripts(scripts: {}, confirmed: true).status == :no_devices',
+      "operation/batch" => "now = Time.now.utc; N::Operation::Batch.new(operation: :execute_scripts, outcomes: [], callback_errors: [], started_at: now, finished_at: now).to_h.fetch(:status) == :no_devices",
       "planner" => "N::Planner.new([]).call(mode: :backup, limit_per_vendor: nil).validate!.selected.empty?",
       "fleet" => "inventory = Object.new; def inventory.devices = []; N::Fleet.new(inventory: inventory, settings: N::Settings.new(env: {})).plan_backup.selected.empty?",
       "progress" => 'require "stringio"; N::Progress.new(io: StringIO.new).event(nil).nil?',
@@ -299,11 +299,11 @@ class ModuleLoadingTest < Minitest::Test
           profile = klass.profile
           raise "missing collection strategy" unless profile.running_config_strategy
           raise "wrong transfer capability" unless !!profile.tftp_strategy == #{!%w[topsec juniper].include?(vendor)}
-          raise "topology workflow missing" unless Net::Connector::Topology.instance_methods.include?(:plan_interface_descriptions)
+          raise "interface workflow missing" unless Net::Connector::Interfaces.instance_methods.include?(:plan)
           raise "legacy operations namespace" if Net::Connector.const_defined?(:Operations, false)
           raise "legacy collection strategy" if (Net::Connector::RunningConfig.constants(false) & %i[Cisco CiscoNxos Hillstone PaloAlto]).any?
           raise "legacy transfer strategy" if (Net::Connector::Tftp.constants(false) & #{VENDORS.values.map(&:to_sym).inspect}).any?
-          raise "legacy topology strategy" if (Net::Connector::Topology.constants(false) & %i[Cisco H3c Hillstone PaloAlto Radware]).any?
+          raise "legacy topology strategy" if (Net::Connector::Interfaces.constants(false) & %i[Cisco H3c Hillstone PaloAlto Radware]).any?
           puts JSON.generate(connector: klass.name, strategy: profile.tftp_strategy&.name,
                              filename: profile.tftp_strategy&.filename("192.0.2.1"), features: $LOADED_FEATURES)
         RUBY
@@ -328,7 +328,7 @@ class ModuleLoadingTest < Minitest::Test
     result = isolated(<<~'RUBY')
       require "net/connector/netdisco/tftp/archive"
       require "tmpdir"
-      loaded = -> { $LOADED_FEATURES.any? { |path| path.end_with?("/tftp/ssh_archive.rb") } }
+      loaded = -> { $LOADED_FEATURES.any? { |path| path.end_with?("/ssh/archive/client.rb") } }
       before = loaded.call
       Dir.mktmpdir do |directory|
         archive = Net::Connector::Netdisco::Tftp::Archive.new(directory: directory, root: "ssh://reader@192.0.2.10/srv")
@@ -338,20 +338,20 @@ class ModuleLoadingTest < Minitest::Test
     RUBY
     refute result.fetch("before")
     assert result.fetch("after")
-    assert_equal "Net::Connector::Netdisco::Tftp::SshArchivePool", result.fetch("type")
+    assert_equal "Net::Connector::Netdisco::SSH::Archive::Pool", result.fetch("type")
   end
 
   # 独立加载 SSH 归档后仍须具备完整错误边界，启动失败不能退化为 NameError。
   def test_ssh_archive_declares_its_failure_dependencies_without_loading_the_netdisco_entry
     result = isolated(<<~'RUBY')
-      require "net/connector/netdisco/tftp/ssh_archive"
+      require "net/connector/netdisco/ssh/archive/client"
       require "tmpdir"
       device = Object.new
       def device.host = "192.0.2.1"
       def device.tftp_filename = "fixture.cfg"
       def device.backup_filename(**) = "fixture.txt"
       Dir.mktmpdir do |directory|
-        archive = Net::Connector::Netdisco::Tftp::SshArchive.new(
+        archive = Net::Connector::Netdisco::SSH::Archive::Client.new(
           directory: directory, root: "ssh://reader@192.0.2.10/srv",
           launcher: ->(&_) { raise IOError, "fixture launch failed" }
         )
@@ -366,6 +366,59 @@ class ModuleLoadingTest < Minitest::Test
     assert_equal "Net::Connector::Netdisco::Tftp::Archive::Failure", result.fetch("error")
     assert_equal "tftp_archive_failed", result.fetch("code")
     refute result.fetch("facade_loaded")
+  end
+
+  # 认证可以独立使用；归档统一入口公开新命名空间，旧常量不保留别名。
+  def test_ssh_archive_entry_and_authentication_have_explicit_loading_boundaries
+    result = isolated(<<~'RUBY')
+      require "net/connector/netdisco/ssh/authentication"
+      authentication_loaded_tftp = $LOADED_FEATURES.any? { |path| path.include?("/netdisco/tftp/") }
+      require "net/connector/netdisco/ssh/archive"
+      namespace = Net::Connector::Netdisco
+      puts JSON.generate(authentication_loaded_tftp: authentication_loaded_tftp,
+                         types: [namespace::SSH::Authentication.name, namespace::SSH::Archive::Client.name,
+                                 namespace::SSH::Archive::Pool.name],
+                         legacy_namespace: namespace.const_defined?(:Ssh, false),
+                         old_aliases: %i[SshArchive SshArchivePool SshAuthentication].any? { |name| namespace::Tftp.const_defined?(name, false) })
+    RUBY
+    refute result.fetch("authentication_loaded_tftp")
+    refute result.fetch("legacy_namespace")
+    refute result.fetch("old_aliases")
+    assert_equal %w[Net::Connector::Netdisco::SSH::Authentication Net::Connector::Netdisco::SSH::Archive::Client
+                    Net::Connector::Netdisco::SSH::Archive::Pool], result.fetch("types")
+  end
+
+  # 单数入口独立声明依赖，复数旧常量不再作为兼容入口出现。
+  def test_operation_uses_singular_namespace_without_legacy_alias
+    result = isolated(<<~'RUBY')
+      require "net/connector/netdisco/operation"
+      namespace = Net::Connector::Netdisco
+      puts JSON.generate(type: namespace::Operation.name,
+                         outcome: namespace::Operation::Outcome.name,
+                         legacy: namespace.const_defined?(:Operations, false))
+    RUBY
+    assert_equal "Net::Connector::Netdisco::Operation", result.fetch("type")
+    assert_equal "Net::Connector::Netdisco::Operation::Outcome", result.fetch("outcome")
+    refute result.fetch("legacy")
+  end
+
+  # 单设备资源提供短动作，批量入口继续返回批次；获取资源不能隐式访问设备。
+  def test_interface_resource_and_batch_operations_expose_their_own_contracts
+    result = isolated(<<~'RUBY')
+      require "net/connector"
+      require "net/connector/netdisco/fleet"
+      device = Net::Connector.build(:h3c, host: "192.0.2.1", username: "audit")
+      resource = device.interfaces
+      batch_types = [Net::Connector::Netdisco::Fleet, Net::Connector::Netdisco::Operation]
+      batch_actions = %i[plan_descriptions apply_descriptions sync_descriptions]
+      puts JSON.generate(batch: batch_types.all? { |type| (batch_actions - type.public_instance_methods).empty? },
+                         resource: %i[neighbors descriptions plan audit apply sync].all? { |name| resource.respond_to?(name) },
+                         offline: !device.connected?, type: resource.class.name)
+    RUBY
+    assert result.fetch("batch")
+    assert result.fetch("resource")
+    assert result.fetch("offline")
+    assert_equal "Net::Connector::Interfaces", result.fetch("type")
   end
 
   private

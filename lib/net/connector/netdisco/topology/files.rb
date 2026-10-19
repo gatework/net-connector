@@ -3,7 +3,7 @@
 require "digest"
 require "fileutils"
 require_relative "../../storage/atomic_file"
-require_relative "../../device/topology"
+require_relative "../../device/interfaces"
 require_relative "presentation"
 
 module Net
@@ -19,7 +19,7 @@ module Net
             outcome[:device_report] = File.join(directory, "devices", stem + ".txt")
             plan = outcome[:plan]
             if plan && !plan.commands.empty?
-              Net::Connector::Topology.validate_plan!(plan, host: device.host, vendor: device.vendor)
+              Net::Connector::Interfaces.validate_plan!(plan, host: device.host, vendor: device.vendor)
               contents = plan.commands.join("\n") + "\n"
               path = File.join(directory, "scripts", stem + ".cfg")
               FileUtils.mkdir_p(File.dirname(path), mode: 0o700)

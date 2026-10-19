@@ -23,8 +23,9 @@ class ParallelPoolTerminationTest < Minitest::Test
     blocked = Queue.new
     runner = Thread.new do
       Net::Connector::Parallel::Pool.new(parallel: 2).map([1, 2]) do
-        started << Thread.current
         begin
+          # 先进入清理保护再通知主线程，防止通知后立即取消时尚未登记 ensure。
+          started << Thread.current
           blocked.pop
         ensure
           cleaned << Thread.current

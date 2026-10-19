@@ -18,8 +18,8 @@ module Net
           # 按根目录类型选择本地或 SSH 归档器，上传流程保持相同回执契约。
           def self.new(directory:, root: nil, ssh_password: nil, parallel: 4)
             if Root.remote?(root)
-              require_relative "ssh_archive_pool"
-              return SshArchivePool.new(directory: directory, root: root, password: ssh_password, parallel: parallel)
+              require_relative "../ssh/archive"
+              return SSH::Archive::Pool.new(directory: directory, root: root, password: ssh_password, parallel: parallel)
             end
 
             super(directory: directory, root: root)

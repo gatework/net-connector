@@ -56,4 +56,4 @@ NX-OS 模板独立放在 `cisco_nxos/`，CDP 按邻居块清理状态并与设�
 
 ## 描述字段的词法与业务值
 
-带引号的描述字段在模板中保留完整词法文本，`Topology::QuotedText` 负责还原引号与转义，并将不完整字段转为不含原文的领域错误。Junos、FortiOS、PAN-OS 与 Radware 使用同一解码边界；是否拆分无引号文本由厂商策略明确指定。接口不存在描述语句时可返回空描述，`description ""` 等显式空字符串也有明确含义；缺少值的 description/comment/name 语句则是残缺输入，不能被默认空字段掩盖。
+带引号的描述字段在模板中保留完整词法文本，`Interfaces::QuotedText` 负责还原引号与转义，并将不完整字段转为不含原文的领域错误。Junos、FortiOS、PAN-OS 与 Radware 使用同一解码边界；是否拆分无引号文本由厂商策略明确指定。接口不存在描述语句时可返回空描述，`description ""` 等显式空字符串也有明确含义；缺少值的 description/comment/name 语句则是残缺输入，不能被默认空字段掩盖。

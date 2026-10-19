@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 require_relative "../../device/base"
-require_relative "../../device/topology/strategy"
+require_relative "../../device/interfaces/strategy"
 
 module Net
   module Connector
     module Vendor
       class Fortinet < Net::Connector::Base
         # LLDP 命令自 7.6.3 改名；先核对只读版本信息，不通过失败重试猜测方言。
-        class Topology < Net::Connector::Topology::Strategy
+        class Topology < Net::Connector::Interfaces::Strategy
           # 声明本策略仅支持邻居发现和描述读取，不允许描述配置变更。
           def self.supports?(capability) = %i[neighbors interface_descriptions].include?(capability)
 
@@ -34,7 +34,7 @@ module Net
           def configuration_interface(name) = name
 
           # 按 FortiOS 引号和分词规则解码接口描述。
-          def decode_description(value) = Net::Connector::Topology::QuotedText.decode(value, host: @device.host, split_unquoted: true)
+          def decode_description(value) = Net::Connector::Interfaces::QuotedText.decode(value, host: @device.host, split_unquoted: true)
 
           # 模板只接受当前视图的顶层接口表，嵌套 VDOM 或残缺配置不能冒充完整结果。
           def validate_descriptions!(config, rows)

@@ -46,7 +46,7 @@ class TopologyOptionsTest < Minitest::Test
 
   def test_name_prefixes_are_explicit_and_do_not_hide_real_neighbor_changes
     options = N::Settings.new(env: {}, defaults: N::Config.parse("topology" => { "neighbor_name_prefixes" => ["AP-"] })).topology_options
-    neighbor = Net::Connector::Topology::Neighbor.new(local_interface: "GE1/0/1", neighbor_name: "room_01",
+    neighbor = Net::Connector::Interfaces::Neighbor.new(local_interface: "GE1/0/1", neighbor_name: "room_01",
                                                       neighbor_interface: "Smartrate-Ethernet1/0/1", chassis_id: "chassis", protocol: :lldp)
     assert options.description_matches?("TO_AP-room_01_SE1/0/1", "To_room_01_SE1/0/1", neighbor)
     refute N::Topology::Options.new.description_matches?("TO_AP-room_01_SE1/0/1", "To_room_01_SE1/0/1", neighbor)

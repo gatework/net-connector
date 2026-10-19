@@ -6,7 +6,7 @@ require_relative "../../engine/terminal/renderer"
 
 module Net
   module Connector
-    class Topology
+    class Interfaces
       # 接口描述立即生效的设备：退出视图、读回、保存是不同阶段，不能在 finish 中提前保存。
       class ImmediateStrategy < Strategy
         include InterfaceBlocks

@@ -5,7 +5,7 @@ require_relative "../../engine/errors"
 
 module Net
   module Connector
-    class Topology
+    class Interfaces
       # 配置字段的引号解码是纯文本边界，不执行 shell，也不把原文写入错误。
       module QuotedText
         # 按设备配置的引号规则还原描述文本，格式不完整时返回受控解析错误。

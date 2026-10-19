@@ -1,14 +1,14 @@
 # frozen_string_literal: true
 
 require_relative "../../device/base"
-require_relative "../../device/topology/strategy"
+require_relative "../../device/interfaces/strategy"
 
 module Net
   module Connector
     module Vendor
       class Juniper < Net::Connector::Base
         # 只读 LLDP 和已提交的接口描述；写入需要独立验证候选配置所有权。
-        class Topology < Net::Connector::Topology::Strategy
+        class Topology < Net::Connector::Interfaces::Strategy
           # 声明 Junos 策略当前只提供邻居和描述读取能力。
           def self.supports?(capability) = %i[neighbors interface_descriptions].include?(capability)
 
@@ -40,7 +40,7 @@ module Net
           end
 
           # 不闭合的描述必须报错，不能把截断的首行当作完整描述。
-          def decode_description(value) = Net::Connector::Topology::QuotedText.decode(value, host: @device.host, split_unquoted: true)
+          def decode_description(value) = Net::Connector::Interfaces::QuotedText.decode(value, host: @device.host, split_unquoted: true)
         end
       end
     end

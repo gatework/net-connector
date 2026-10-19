@@ -9,7 +9,7 @@ require_relative "save_config"
 require_relative "local_backup"
 require_relative "remote_backup"
 require_relative "tftp"
-require_relative "topology"
+require_relative "interfaces"
 require_relative "../textfsm"
 
 module Net
@@ -22,7 +22,7 @@ module Net
       include LocalBackup::Capability
       include RemoteBackup::Capability
       include Tftp::Capability
-      include Topology::Capability
+      include Interfaces::Capability
       include TextFSM::Capability
 
       # 读取当前设备的固定连接配置与有效命令超时。
@@ -238,7 +238,7 @@ module Net
         execution.enable(enable_command, enable_prompt)
       end
 
-      # 调整单条命令或返回 nil 跳过该命令。
+      # 返回调整后的 Command 或 nil 跳过该命令；其他类型在发送前拒绝。
       def prepare_command(command, _execution) = command
 
       # 单条命令完成后执行厂商后处理钩子。

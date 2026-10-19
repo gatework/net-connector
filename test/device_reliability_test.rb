@@ -56,18 +56,18 @@ class DeviceReliabilityTest < Minitest::Test
 
   def test_nxos_indentation_preserves_old_description_and_confirms_readback
     device = Device.new(:cisco_nxos)
-    topology = Net::Connector::Topology.new(device)
-    plan = topology.plan_interface_descriptions
+    topology = Net::Connector::Interfaces.new(device)
+    plan = topology.plan
 
     assert_equal "existing uplink", plan.changes.fetch(0).old_description
-    assert topology.apply_interface_descriptions(plan, confirmed: true).success?
+    assert topology.apply(plan, confirmed: true).success?
     assert_equal "To_peer_Eth1/2", device.description
   end
 
   def test_panos_requires_verified_candidate_ownership_instead_of_unconditionally_committing
     device = Device.new(:palo_alto)
-    topology = Net::Connector::Topology.new(device)
-    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.plan_interface_descriptions }
+    topology = Net::Connector::Interfaces.new(device)
+    error = assert_raises(Net::Connector::UnsupportedOperation) { topology.plan }
     assert_equal :candidate_isolation_unavailable, error.code
     assert_equal "existing uplink", device.description
     assert_nil device.script
@@ -95,7 +95,7 @@ class DeviceReliabilityTest < Minitest::Test
   end
 
   def test_topology_plan_freezes_reviewed_values
-    plan = Net::Connector::Topology.new(Device.new(:cisco_nxos)).plan_interface_descriptions
+    plan = Net::Connector::Interfaces.new(Device.new(:cisco_nxos)).plan
 
     assert_raises(FrozenError) { plan.commands.first.replace("reload") }
     assert_raises(FrozenError) { plan.changes.first.new_description.replace("changed") }
@@ -130,10 +130,10 @@ class DeviceReliabilityTest < Minitest::Test
 
   def test_topology_apply_rebuilds_commands_before_execution
     device = Device.new(:cisco_nxos)
-    topology = Net::Connector::Topology.new(device)
-    tampered = topology.plan_interface_descriptions.with(commands: ["reload"])
+    topology = Net::Connector::Interfaces.new(device)
+    tampered = topology.plan.with(commands: ["reload"])
 
-    assert_raises(ArgumentError) { topology.apply_interface_descriptions(tampered, confirmed: true) }
+    assert_raises(ArgumentError) { topology.apply(tampered, confirmed: true) }
     assert_nil device.script
   end
 end

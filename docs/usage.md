@@ -2,6 +2,8 @@
 
 [简体中文](usage.zh-CN.md) | [Home](../README.md) | [Netdisco and fleet backups](netdisco.md)
 
+Requires Ruby 3.4+, expect-pty 0.9.4+ and a POSIX system.
+
 ## Supported devices
 
 Use these vendor keys with `Net::Connector.open` or `Net::Connector.build`:
@@ -81,10 +83,21 @@ Parsing validates UTF-8 before and after terminal rendering. Invalid bytes raise
 ## Topology and interface descriptions
 
 ```ruby
-device.sync_interface_descriptions.value!
+interfaces = device.interfaces
+neighbors = interfaces.neighbors
+descriptions = interfaces.descriptions
+plan = interfaces.plan
+audit = interfaces.audit
+
+# Apply the reviewed plan, or use interfaces.sync for a direct update.
+interfaces.apply(plan, confirmed: true).value!
 ```
 
-This explicit update completes neighbor discovery, description changes, readback and save in one session. Matching descriptions cause no writes or saves. Callers do not manage a plan or a second confirmation step. For a separate preview and approval workflow, use `plan_interface_descriptions`, then `apply_interface_descriptions(plan, confirmed: true)`.
+`device.interfaces` returns a reusable `Net::Connector::Interfaces` collection without accessing the device. It uses the device's session; each operation reads fresh evidence. `plan` and `audit` are read-only and return an immutable `Interfaces::Plan` and `Interfaces::Audit`. The audit also records interfaces whose evidence cannot be verified.
+
+`interfaces.sync.value!` explicitly completes neighbor discovery, description changes, readback and save in one session. Matching descriptions cause no writes or saves. Callers do not manage a plan or a second confirmation step. Separate preview and approval uses `interfaces.plan`, then `interfaces.apply(plan, confirmed: true)`.
+
+All three planning entries validate `abbreviate:` and `lowercase:` as booleans before device access. Planning holds the device session lease across neighbor and configuration reads; other threads or fibers cannot insert commands between them. The lease does not isolate administrators or other device sessions.
 
 IOS/NX-OS use CDP; H3C, H3C wireless, Hillstone, and PAN-OS use LLDP. Neighbor records contain local interface, peer name/interface, chassis ID, and protocol. Unknown or partial output raises an error rather than becoming an empty table. Radware can read port names but cannot discover neighbors or apply descriptions.
 
@@ -148,6 +161,6 @@ Per-command prompts use `interactions: [Net::Connector::Interaction.new(/Token:\
 
 ## Dependencies and extensions
 
-Load device APIs with `require "net/connector"`; Netdisco has a separate entrypoint. Vendor implementations and TextFSM load on demand. Runtime dependencies have no version constraints; the host application's lockfile selects compatible versions. Published TextFSM 0.2.0 constrains JSON to 2.x. The explicit JSON 3 source-patch matrix does not establish compatibility of the published dependency.
+Load device APIs with `require "net/connector"`; Netdisco has a separate entrypoint. Vendor implementations and TextFSM load on demand. The gemspec requires expect-pty 0.9.4+; the host application's lockfile selects concrete dependency versions. The minimum dependency matrix uses TextFSM 0.2.0 and JSON 2, with a separate fixed-source TextFSM patch matrix for JSON 3.
 
 Examples use the development dependency `dotenv` to read the project `.env`; the library and CLI do not. Follow the [loading and migration reference](architecture.md#加载入口与厂商策略) (Chinese) for custom profiles, strategies, and protected hooks.

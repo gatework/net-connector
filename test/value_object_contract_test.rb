@@ -158,7 +158,7 @@ class ValueObjectContractTest < Minitest::Test
     evidence = {}
     changes = []
     commands = []
-    plan = Connector::Topology::Plan.new(host: host, vendor: :cisco_ios, evidence: evidence,
+    plan = Connector::Interfaces::Plan.new(host: host, vendor: :cisco_ios, evidence: evidence,
                                          changes: changes, commands: commands)
     host.replace("192.0.2.2")
     evidence["GigabitEthernet1/0/1"] = ["peer", "port", "description"]
@@ -176,7 +176,7 @@ class ValueObjectContractTest < Minitest::Test
 
   def test_topology_updates_own_nested_evidence_and_change_strings
     name = +"peer"
-    neighbor = Connector::Topology::Neighbor.new(local_interface: +"Ethernet1", neighbor_name: name,
+    neighbor = Connector::Interfaces::Neighbor.new(local_interface: +"Ethernet1", neighbor_name: name,
                                                  neighbor_interface: +"Ethernet2", chassis_id: +"chassis", protocol: :lldp)
     name.replace("changed")
     assert_equal "peer", neighbor.neighbor_name
@@ -185,11 +185,11 @@ class ValueObjectContractTest < Minitest::Test
     replacement.clear
     assert_equal "next-peer", updated_neighbor.neighbor_name
     description = +"approved"
-    change = Connector::Topology::Change.new(interface: +"Ethernet1", old_description: +"old",
+    change = Connector::Interfaces::Change.new(interface: +"Ethernet1", old_description: +"old",
                                               new_description: description, neighbor: neighbor)
     fields = [+"peer", +"Ethernet2", +"old"]
     commands = [+"show version"]
-    plan = Connector::Topology::Plan.new(host: +"192.0.2.1", vendor: :cisco_ios,
+    plan = Connector::Interfaces::Plan.new(host: +"192.0.2.1", vendor: :cisco_ios,
                                           evidence: { "ethernet1" => fields }, changes: [change], commands: commands)
     description.clear
     fields.first.clear

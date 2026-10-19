@@ -5,6 +5,7 @@ require "tmpdir"
 require "stringio"
 require "securerandom"
 require_relative "../lib/net/connector/netdisco"
+require_relative "../lib/net/connector/netdisco/report/files"
 
 class NetdiscoReportingTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
@@ -179,18 +180,89 @@ class NetdiscoReportingTest < Minitest::Test
     store = Object.new
     store.define_singleton_method(:write) { |_, **| raise failure }
     Dir.mktmpdir do |directory|
-      report = fleet(error: failure, rows: [row(1)], store: store)
-               .tftp_backup_all(server: "192.0.2.10", report_directory: directory, on_result: callback,
-                                success_policy: :selected)
+      value = fleet(error: failure, rows: [row(1)], store: store)
+      plan = value.plan_tftp_backup
+      report = value.tftp_backup_all(server: "192.0.2.10", report_directory: directory, on_result: callback,
+                                    success_policy: :selected, plan: plan)
       refute report.policy_success?
       document = report.summary
       assert_equal "StandardError", document.fetch(:devices).first.fetch(:error_type)
       assert_equal "StandardError", document.fetch(:callback_errors).first.fetch(:error_type)
       assert_equal "StandardError", document.fetch(:report_error)
       refute_includes JSON.generate(document), secret
+      Netdisco::Report::Files.write(report, directory: directory, plan: plan, parallel: 1)
+      refute_includes File.read(File.join(directory, "summary.txt")), secret
+      output = StringIO.new
+      Netdisco::Progress.new(io: output).finish(report)
+      refute_includes output.string, secret
+      assert_includes output.string, "报告错误 StandardError"
     end
   ensure
     self.class.send(:remove_const, secret) if secret && self.class.const_defined?(secret, false)
+  end
+
+  def test_file_reports_and_progress_filter_unknown_device_error_codes
+    secret = "fixture_#{SecureRandom.hex(12)}"
+    failure = Net::Connector::DeviceError.new("private error", code: secret.to_sym)
+    Dir.mktmpdir do |directory|
+      value = fleet(error: failure, rows: [row(1)], store: nil)
+      plan = value.plan_tftp_backup
+      output = StringIO.new
+      progress = Netdisco::Progress.new(io: output, verbose: true)
+      progress.plan(plan, parallel: 1)
+      report = value.tftp_backup_all(server: "192.0.2.10", report_directory: directory, plan: plan,
+                                    on_start: progress.method(:start), on_result: progress.method(:result))
+      progress.finish(report)
+      Netdisco::Report::Files.write(report, directory: directory, plan: plan, parallel: 1)
+
+      assert_equal secret.to_sym, report.outcomes.first.error_code
+      %w[summary.json summary.txt].each { |name| refute_includes File.read(File.join(directory, name)), secret }
+      refute_includes output.string, secret
+      assert_includes output.string, "未完成（failed）"
+      assert_includes output.string, "failed=1"
+    end
+  end
+
+  def test_file_reports_and_progress_filter_untrusted_report_error_types
+    secret = "Fixture#{SecureRandom.hex(12)}"
+    Dir.mktmpdir do |directory|
+      value = fleet(rows: [row(1)], store: nil)
+      plan = value.plan_tftp_backup
+      original = value.tftp_backup_all(server: "192.0.2.10", report_directory: directory, plan: plan)
+      report = original.with(report_error: secret)
+      Netdisco::Report::Files.write(report, directory: directory, plan: plan, parallel: 1)
+      output = StringIO.new
+      Netdisco::Progress.new(io: output).finish(report)
+
+      assert_equal secret, report.report_error
+      %w[summary.json summary.txt].each { |name| refute_includes File.read(File.join(directory, name)), secret }
+      refute_includes output.string, secret
+      assert_includes File.read(File.join(directory, "summary.txt")), "报告错误：StandardError"
+      assert_includes output.string, "报告错误 StandardError"
+    end
+  end
+
+  def test_text_and_progress_preserve_known_device_and_persistence_diagnostics
+    failure = Net::Connector::AuthenticationError.new("private authentication error")
+    store = Object.new
+    store.define_singleton_method(:write) { |*, **| raise IOError, "private persistence error" }
+    Dir.mktmpdir do |directory|
+      value = fleet(error: failure, rows: [row(1)], store: store)
+      plan = value.plan_tftp_backup
+      output = StringIO.new
+      progress = Netdisco::Progress.new(io: output)
+      report = value.tftp_backup_all(server: "192.0.2.10", report_directory: directory, plan: plan,
+                                    on_start: progress.method(:start), on_result: progress.method(:result))
+      progress.finish(report)
+      Netdisco::Report::Files.write(report, directory: directory, plan: plan, parallel: 1)
+
+      text = File.read(File.join(directory, "summary.txt"))
+      assert_includes text, "authentication_error=1"
+      assert_includes text, "报告错误：IOError"
+      assert_includes output.string, "未完成（authentication_error）"
+      assert_includes output.string, "报告错误 IOError"
+      refute_includes text + output.string, "private"
+    end
   end
 
   def test_custom_report_store_receives_the_current_report

@@ -4,7 +4,7 @@ require_relative "interface_name"
 
 module Net
   module Connector
-    class Topology
+    class Interfaces
       # 描述文本与常见接口视图命令的纯构造方法，不连接或修改设备。
       module InterfaceDescription
         # 将邻居名称和接口拼成默认描述；统一邻居接口简称，原始发现记录保持不变。

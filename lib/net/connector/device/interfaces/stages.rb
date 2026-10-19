@@ -5,7 +5,7 @@ require_relative "interface_description"
 
 module Net
   module Connector
-    class Topology
+    class Interfaces
       # 离线预检与现场执行共用确切阶段，不复制厂商命令或把保存合并到变更阶段。
       module Stages
         # 分别构造变更、读回和保存脚本，拒绝没有完整阶段声明的厂商策略。
@@ -31,7 +31,7 @@ module Net
 
         # 同一物理接口只能出现一次；缩写与全称也不能绕过离线和现场的共同预检。
         def self.validate_changes!(strategy, changes)
-          unless changes.is_a?(Array) && changes.all?(Topology::Change)
+          unless changes.is_a?(Array) && changes.all?(Interfaces::Change)
             raise ArgumentError, "topology changes must be an Array of Changes"
           end
 

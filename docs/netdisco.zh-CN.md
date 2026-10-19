@@ -12,6 +12,8 @@
 
 `Fleet#plan_backup` 和 `Fleet#plan_tftp_backup` 从同一份清单生成计划。把计划传给 `backup_all(plan:)` 或 `tftp_backup_all(plan:)`，可使预览与执行选择同一批设备；计划与清单不符时会拒绝执行。单台设备异常或结果回调失败不会阻止其他设备。`batch.summary` 包含总数、成功、失败、部分成功、跳过、具体状态和逐台结果。部分成功包括已保存但关闭失败，以及本地文件已替换但目录同步或收尾失败；后者保留 backup 并标为 `saved_with_error`。TFTP 的 `reported_uploaded` 仅代表设备报告上传，不代表服务器文件已核验。
 
+配置脚本与接口描述操作使用独立的 `Operation::Batch`。设备执行、关闭和结果登记均先于 `on_result` 通知；中断仍在回收线程后抛出原始 `Interrupt`，调用方可从 `Fleet#last_operation_batch` 或 `Operation#last_batch` 检查本次回执。已完成结果保留原状态，启动后未取得结果的任务为 `interrupted`，尚未启动的任务为 `not_started`；批次的 `interrupted` 为 true、状态为 `interrupted`，不会因设备恰好全部完成就报告整体成功。取消任务不补造耗时，未启动任务不补造起止时间。结果未知的设备可能已经发生变更，后续处理前应读回核实，不自动重放命令。每次新操作尝试都会清除旧操作回执，预检失败也不例外；备份报告仍独立保存在 `Fleet#last_report`。
+
 本地 `backup(path:)` 用 SHA-256 比较新旧配置，`backup.change` 返回 `:created`、`:changed` 或 `:unchanged`；内容未变且权限、文件身份正常时保留修改时间。这不补验历史写入的断电持久性。`backup_all` 的 `on_change:` 仅在新建或更改文件保存后触发；`on_start:` 和 `on_result:` 观察每台已尝试设备。回调异常记录在 `batch.callback_errors`，不丢弃设备结果。每项结果包含开始、结束和耗时。TFTP 无法比较服务器文件，因此没有 `change`，也不触发变更通知。
 
 每批默认由 `Report::Store::Json` 写入私有 JSON 报告，路径见 `batch.report_location`。调用方如有数据库仓储，可传 `Report::Store::Database.new(repository: YourModel)`；仓储需实现 `create!(attributes)`。`report_store: nil` 表示由调用方自行持久化。报告失败保留在 `batch.report_error`，同时使 `batch.success?` 为假。若报告已替换但目录同步失败，仍保留位置；离线 `--export --output` 遇到同类错误返回 2，并说明文件已经提交。
@@ -208,7 +210,7 @@ bundle install
 script/ci
 ```
 
-CI 在 Linux 和 macOS 上覆盖 Ruby 3.2、3.3、3.4、4.0。`script/ci` 扫描源码与可用 Git 历史中的敏感数据，执行 Ruby 与工作流 lint、完整测试，并验证已构建 gem 的隔离安装和本地 PTY 烟测；不连接真实网络设备。首次运行需下载固定校验和的 Gitleaks 与 actionlint。
+CI 在 Linux 和 macOS 上覆盖 Ruby 3.4、4.0。`script/ci` 扫描源码与可用 Git 历史中的敏感数据，执行 Ruby 与工作流 lint、完整测试，并验证已构建 gem 的隔离安装和本地 PTY 烟测；不连接真实网络设备。首次运行需下载固定校验和的 Gitleaks 与 actionlint。
 
 `bundle exec rake test` 报告当前测试进程的行、分支覆盖率和未加载文件清单。核心引擎、脱敏与错误处理（含 `Redactor`）、批量工作线程分别要求行和分支覆盖率均达到 80%，关键文件没有覆盖率数据也会失败；该门槛同时阻止 CI 和发布预检通过。`bundle exec rake lint` 检查 Ruby 代码，并对 `engine/`、`netdisco/` 限制方法长度（40）和 ABC 复杂度（60）。`bundle exec rake security:check` 扫描敏感数据，`bundle exec rake release:check` 执行完整预检。构建产物和脱敏扫描报告保存在被忽略的 `tmp/` 下。
 
@@ -288,17 +290,19 @@ batch = fleet.execute_scripts(
 puts JSON.pretty_generate(batch.to_h)
 puts "总数=#{batch.summary[:total]} 成功=#{batch.summary[:succeeded]} 失败=#{batch.summary[:failed]}"
 
-batch = fleet.sync_interface_descriptions(hosts: ["192.0.2.1"])
+batch = fleet.sync_descriptions(hosts: ["192.0.2.1"])
 puts "清单 #{batch.summary[:total]}，成功 #{batch.summary[:succeeded]}，失败 #{batch.summary[:failed]}"
 ```
 
 脚本接受 `Script`、命令数组或多行文本。全批先解析并固定脚本、规范化地址，再读取凭据或连接设备；重复、未知、过滤和不支持的目标提前拒绝。脚本须包含对应厂商的完整命令，包括进入/退出配置视图及需要的保存命令。空批次为 `:no_devices`，不判为成功。
 
-默认使用 `sync_interface_descriptions` 一次完成发现、修改、读回与保存，每台设备只建立一个连接，描述一致时不修改、不保存。默认格式为 `To_<邻居名称>_<接口简称>`，各厂商规则见[设备指南](usage.zh-CN.md#邻居发现与接口描述)；定制规则留给后端参数或代码块。无变化成功不证明先前已保存。需要单独预览审批时，后端仍可使用 `plan_interface_descriptions` 与 `apply_interface_descriptions(plans: planned.plans, confirmed: true)`。
+这些是多设备批次 API，返回 `Operation::Batch`；内部通过每台设备的 `device.interfaces.plan/apply/sync` 执行。单设备的读取、审计与变更入口见[设备指南](usage.zh-CN.md#邻居发现与接口描述)。
+
+默认使用 `sync_descriptions` 一次完成发现、修改、读回与保存，每台设备只建立一个连接，描述一致时不修改、不保存。默认格式为 `To_<邻居名称>_<接口简称>`，各厂商规则见[设备指南](usage.zh-CN.md#邻居发现与接口描述)；定制规则留给后端参数或代码块。无变化成功不证明先前已保存。需要单独预览审批时，后端仍可使用 `plan_descriptions` 与 `apply_descriptions(plans: planned.plans, confirmed: true)`。
 
 接口应用复用单设备拓扑操作，保留证据重验、配置回读和持久化确认，不将审批计划当作普通脚本执行。脚本与独立计划应用要求 `confirmed: true`；显式同步调用本身表达修改意图，不自动重放命令。每台任务独占并关闭连接器；普通失败隔离为设备结果，中断停止并等待全部工作线程。跨设备已完成的变更不会自动回滚。
 
-`Operations::Batch` 独立于备份报告，`outcomes` 保留原 `Result` 或计划、完成步骤和第一故障；`:partial` 表示已有工作后出错，缺少凭据也使批次不成功。`plans` 只选完整成功的规划结果。`to_h` 仅输出安全诊断和数量，不展开命令、回显、凭据或证据。`on_start` 和 `on_result` 在工作线程执行，回调须线程安全；普通回调故障记录后继续，不重复设备操作。日志使用 `ssh.log_directory`。
+`Operation::Batch` 独立于备份报告，`outcomes` 保留原 `Result` 或计划、完成步骤和第一故障；`:partial` 表示已有工作后出错，缺少凭据也使批次不成功。`plans` 只选完整成功的规划结果。`to_h` 仅输出安全诊断和数量，不展开命令、回显、凭据或证据。`on_start` 和 `on_result` 在工作线程执行，回调须线程安全；普通回调故障记录后继续，不重复设备操作。日志使用 `ssh.log_directory`。
 
 每台设备独占会话，在操作和关闭完成后发布一个不可变终态。连接、凭据、执行和关闭的普通故障只影响该设备，其他运行中或排队任务继续。整批调度结束后返回完整结果；`summary` 和 `to_h[:summary]` 提供 `total`、`succeeded`、`failed`，满足总数 = 成功 + 失败，并细分 `partial`、`missing_credentials` 和 `callback_errors`。总数是本次请求并调度的设备数量；部分完成与缺少凭据计入失败，回调故障单列，不改写设备执行结果。空批次各项为零且状态为 `no_devices`。库不直接输出终端内容，调用方可将 `to_h` 导出 JSON 报告。设备上的已完成变更不能回滚；全批审批预检和显式中断仍维持原有失败边界。
 

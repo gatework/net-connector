@@ -98,7 +98,7 @@ class VendorPlatformsTest < Minitest::Test
     end
     %i[topsec fortinet juniper].each do |vendor|
       build(vendor)
-      assert_raises(Net::Connector::UnsupportedOperation) { @device.sync_interface_descriptions }
+      assert_raises(Net::Connector::UnsupportedOperation) { @device.interfaces.sync }
       assert_equal 0, @transport.opens
       @device.close
     end
@@ -141,18 +141,18 @@ class VendorPlatformsTest < Minitest::Test
       prompt = PROMPTS.fetch(:fortinet)
       build(:fortinet, "Version: FortiGate-100F v#{version},build1234\n#{prompt}",
             "1 port 'wan1' 5 mac 00:11:22:33:44:55 chassis 00:11:22:33:44:66 port 'Te1/0/1' system 'core01'\n#{prompt}")
-      neighbor = @device.neighbors.fetch(0)
+      neighbor = @device.interfaces.neighbors.fetch(0)
       assert_equal ["wan1", "core01", "Te1/0/1", "00:11:22:33:44:66", :lldp], neighbor.to_h.values
       assert_equal ["get system status\n", "#{command}\n"], @transport.writes
       @device.close
     end
     build(:fortinet, "Version: unknown\n#{PROMPTS.fetch(:fortinet)}")
-    assert_raises(Net::Connector::ParsingError) { @device.neighbors }
+    assert_raises(Net::Connector::ParsingError) { @device.interfaces.neighbors }
     assert_equal ["get system status\n"], @transport.writes
     @device.close
     build(:fortinet, "Version: FortiGate v7.6.3,build1234\n#{PROMPTS.fetch(:fortinet)}",
           "1 port 'wan1' incomplete\n#{PROMPTS.fetch(:fortinet)}")
-    assert_raises(Net::Connector::ParsingError) { @device.neighbors }
+    assert_raises(Net::Connector::ParsingError) { @device.interfaces.neighbors }
   end
 
   def test_juniper_lldp_records_keep_interfaces_and_detect_missing_neighbors
@@ -169,10 +169,10 @@ class VendorPlatformsTest < Minitest::Test
       System name : core02.example
     TEXT
     build(:juniper, "#{detail}#{PROMPTS.fetch(:juniper)}")
-    assert_equal %w[ge-0/0/0 xe-0/0/1], @device.neighbors.map(&:local_interface)
+    assert_equal %w[ge-0/0/0 xe-0/0/1], @device.interfaces.neighbors.map(&:local_interface)
     @device.close
     build(:juniper, "#{detail}Local Interface : ge-0/0/3\n#{PROMPTS.fetch(:juniper)}")
-    assert_raises(Net::Connector::ParsingError) { @device.neighbors }
+    assert_raises(Net::Connector::ParsingError) { @device.interfaces.neighbors }
   end
 
   def test_juniper_management_port_does_not_replace_neighbor_port
@@ -180,32 +180,32 @@ class VendorPlatformsTest < Minitest::Test
              "Port ID : ge-0/0/1\nSystem name : edge01\nManagement Info\n  Port ID : 1\n" \
              "Local Interface : ge-0/0/2\nPort ID : xe-0/0/3\nSystem name : edge02\n"
     build(:juniper, "#{detail}#{PROMPTS.fetch(:juniper)}")
-    assert_equal %w[ge-0/0/1 xe-0/0/3], @device.neighbors.map(&:neighbor_interface)
+    assert_equal %w[ge-0/0/1 xe-0/0/3], @device.interfaces.neighbors.map(&:neighbor_interface)
   end
 
   def test_juniper_management_port_cannot_complete_a_partial_neighbor
     detail = "Local Interface : ge-0/0/0\nSystem name : edge01\nManagement Info\n  Port ID : 1\n"
     build(:juniper, "#{detail}#{PROMPTS.fetch(:juniper)}")
-    assert_raises(Net::Connector::ParsingError) { @device.neighbors }
+    assert_raises(Net::Connector::ParsingError) { @device.interfaces.neighbors }
   end
 
   def test_juniper_empty_neighbor_evidence_is_required
     ["", "LLDP Neighbor Information:\n"].each do |output|
       build(:juniper, "#{output}#{PROMPTS.fetch(:juniper)}")
-      assert_raises(Net::Connector::ParsingError) { @device.neighbors }
+      assert_raises(Net::Connector::ParsingError) { @device.interfaces.neighbors }
       @device.close
     end
     build(:juniper, "No LLDP neighbors\n#{PROMPTS.fetch(:juniper)}")
-    assert_empty @device.neighbors
+    assert_empty @device.interfaces.neighbors
   end
 
   def test_juniper_reads_physical_interface_descriptions_from_committed_set_configuration
     config = CONFIGS.fetch(:juniper) + "set interfaces xe-0/0/1 unit 0 family inet address 192.0.2.1/24\n"
     build(:juniper, "#{config}#{PROMPTS.fetch(:juniper)}")
-    assert_equal({ "ge-0/0/0" => "uplink core", "xe-0/0/1" => "", "xe-0/0/1.0" => "" }, @device.interface_descriptions)
+    assert_equal({ "ge-0/0/0" => "uplink core", "xe-0/0/1" => "", "xe-0/0/1.0" => "" }, @device.interfaces.descriptions)
     @device.close
     build(:juniper, "set interfaces ge-0/0/0 description \"truncated\n#{PROMPTS.fetch(:juniper)}")
-    assert_raises(Net::Connector::ParsingError) { @device.interface_descriptions }
+    assert_raises(Net::Connector::ParsingError) { @device.interfaces.descriptions }
   end
 
   def test_netdisco_resolves_supported_operating_systems_and_rejects_other_product_families

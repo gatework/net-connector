@@ -36,8 +36,8 @@ module Net
         copy
       end
 
-      # 返回不展开命令和输出的错误摘要。
-      def inspect = "#<#{self.class} code=#{code.inspect} phase=#{phase.inspect} host=#{host.inspect}>"
+      # 摘要复用日志诊断词表；扩展钩子可提供原始元数据，但不能借摘要输出配置正文。
+      def inspect = "#<#{self.class} code=#{Metadata.code(code).inspect} phase=#{Metadata.phase(phase).inspect}>"
     end
 
     class ConnectionError < Error; end
@@ -89,8 +89,8 @@ module Net
         freeze
       end
 
-      # 返回底层异常类型摘要。
-      def inspect = "#<#{self.class} type=#{type}>"
+      # 类型名称可能由外部异常类提供，摘要只展示共享词表接受的名称。
+      def inspect = "#<#{self.class} type=#{Error::Metadata.type(type)}>"
     end
   end
 end

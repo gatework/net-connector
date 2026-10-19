@@ -62,6 +62,37 @@ class ResultTest < Minitest::Test
     assert_predicate result, :frozen?
   end
 
+  def test_error_diagnostics_do_not_invoke_arbitrary_metadata_inspection
+    metadata = Object.new
+    calls = []
+    metadata.define_singleton_method(:inspect) { calls << :inspect; "private-metadata" }
+    metadata.define_singleton_method(:to_s) { calls << :to_s; "private-metadata" }
+    error = Connector::DeviceError.new("rejected", code: metadata, phase: metadata, host: metadata)
+
+    assert_includes error.inspect, "DeviceError"
+    assert_includes Connector::Result.new(error: error).inspect, "success=false"
+    assert_empty calls
+    assert_same metadata, error.code
+    assert_same metadata, error.phase
+    assert_same metadata, error.host
+  end
+
+  def test_error_diagnostics_retain_known_code_and_phase
+    error = Connector::DeviceError.new("rejected", code: :incomplete_configuration, phase: :collect)
+    assert_includes error.inspect, "code=:incomplete_configuration"
+    assert_includes error.inspect, "phase=:collect"
+    assert_includes Connector::Result.new(error: error).inspect, "code=:incomplete_configuration"
+  end
+
+  def test_underlying_error_diagnostics_filter_unknown_type_names
+    type = Class.new(StandardError)
+    type.define_singleton_method(:name) { "private-config-value" }
+    error = Connector::UnderlyingError.new(type.new("rejected"), Connector::Redactor.new, sensitive: true)
+    refute_includes error.inspect, "private-config-value"
+    assert_includes error.inspect, "StandardError"
+    assert_equal "private-config-value", error.type
+  end
+
   private
 
   def step(**fields)

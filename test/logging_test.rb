@@ -6,6 +6,7 @@ require "stringio"
 require "json"
 require "tmpdir"
 require "timeout"
+require "pp"
 require_relative "../lib/net/connector"
 require_relative "support/fake_transport"
 
@@ -179,7 +180,7 @@ class LoggingTest < Minitest::Test
   end
 
   def test_sensitive_cleaner_error_metadata_cannot_leak_configuration
-    %i[code phase].product(%i[string symbol]).each do |field, type|
+    %i[code phase host].product(%i[string symbol]).each do |field, type|
       secret = "private-config-value"
       device = Net::Connector.build(:cisco_ios, host: "192.0.2.1", username: "operator", logger: @logger,
                                     transport: ConnectorFake.new("router#", "router#", "hostname #{secret}\nrouter#"))
@@ -193,6 +194,11 @@ class LoggingTest < Minitest::Test
       assert_includes result.output, secret
       assert_equal "[REDACTED]", result.error.message
       refute_includes @output.string, secret
+      [result, result.error].each do |value|
+        [value.inspect, value.to_s, PP.pp(value, +"")].each do |diagnostic|
+          refute_includes diagnostic, secret
+        end
+      end
       completion = records("operation_complete").last
       assert_equal "failed", completion[:status]
       assert_equal "Net::Connector::DeviceError", completion[:error]

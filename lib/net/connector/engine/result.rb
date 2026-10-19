@@ -52,8 +52,8 @@ module Net
         config || output
       end
 
-      # 返回结果成功状态、步骤数量和错误码摘要。
-      def inspect = "#<#{self.class} success=#{success?} steps=#{steps.size} code=#{error&.code.inspect}>"
+      # 摘要只展示受控错误码，不展开扩展钩子提供的原始元数据。
+      def inspect = "#<#{self.class} success=#{success?} steps=#{steps.size} code=#{Error::Metadata.code(error&.code).inspect}>"
     end
   end
 end

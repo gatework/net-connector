@@ -23,7 +23,7 @@ class CLISetupTest < Minitest::Test
         FileUtils.mkdir_p(examples)
         %W[boot.rb #{name}.rb].each { |file| FileUtils.cp(File.join(source, file), examples) }
         environment = ENV.keys.grep(/\A(?:NC_|ND_|NETDISCO_)/).to_h { |key| [key, nil] }
-        environment.merge!("BUNDLE_GEMFILE" => File.expand_path("../Gemfile", __dir__),
+        environment.merge!("BUNDLE_GEMFILE" => File.expand_path(ENV.fetch("BUNDLE_GEMFILE", File.expand_path("../Gemfile", __dir__))),
                            "NC_CONFIG" => "", "ND_URL" => "https://inventory.example.invalid", "NC_PARALLEL" => "6")
         _output, error, status = Open3.capture3(environment, RbConfig.ruby, "-rbundler/setup",
                                               File.join(examples, "#{name}.rb"), "--init", "--non-interactive", chdir: root)

@@ -95,4 +95,99 @@ class TopologyAuditTest < Minitest::Test
     assert_equal "To_peer_Eth1/2", audit.comparisons.first.fetch(:expected)
   end
 
+  def test_unknown_neighbor_names_and_ports_are_reported_without_commands
+    ["-", "--", "n/a", "N/A", "unknown", "Unknown", "null", "none", " "].each do |value|
+      [:neighbor_name, :neighbor_interface].each do |field|
+        fixture = TopologyFixture.new(:h3c)
+        topology = C::Topology.new(fixture.device)
+        peer = C::Topology::Neighbor.new(local_interface: "GE1/0/1", neighbor_name: "peer", neighbor_interface: "GE1/0/2",
+                                        chassis_id: "000f-e25d-ee91", protocol: :lldp).with(**{ field => value })
+        audit = topology.stub(:neighbors, [peer]) do
+          topology.stub(:interface_descriptions, { "gigabitethernet1/0/1" => "existing description" }) do
+            topology.audit_interface_descriptions
+          end
+        end
+        assert_equal :unverified, audit.comparisons.first.fetch(:status), "#{field}=#{value.inspect}"
+        assert_nil audit.comparisons.first.fetch(:expected)
+        assert_equal([field == :neighbor_name ? :unknown_neighbor_name : :unknown_neighbor_interface], audit.issues.map { |issue| issue.fetch(:code) })
+        assert_empty audit.plan.changes
+        assert_empty audit.plan.commands
+        assert_empty audit.plan.evidence
+      ensure
+        fixture&.close
+      end
+    end
+  end
+
+  def test_unknown_interface_does_not_block_a_verified_uplink
+    sample = TopologyFixture::SAMPLES.fetch(:h3c)
+    fixture = TopologyFixture.new(:h3c, neighbor: sample.fetch(:neighbor) + "GE1/0/2 000f-e25d-ee92 000f-e25d-ee92 -\n")
+    audit = fixture.device.audit_interface_descriptions
+    assert_equal([:unknown_neighbor_name], audit.issues.map { |issue| issue.fetch(:code) })
+    assert_equal [sample.fetch(:interface)], audit.plan.changes.map(&:interface)
+    result = fixture.device.apply_interface_descriptions(audit.plan, confirmed: true)
+    assert result.success?, result.error.inspect
+    assert_equal "To_peer_Gi1/0/2", fixture.description
+    refute(fixture.observed.any? { |command, _| command.include?("To_-_") })
+  ensure
+    fixture&.close
+  end
+
+  def test_direct_planning_sync_and_apply_cannot_bypass_unknown_neighbor_identity
+    neighbor = "Local Interface Chassis ID Port ID System Name\nGE1/0/1 000f-e25d-ee91 000f-e25d-ee91 -\n"
+    [:plan_interface_descriptions, :sync_interface_descriptions].each do |operation|
+      fixture = TopologyFixture.new(:h3c, neighbor: neighbor)
+      error = assert_raises(C::ParsingError) { fixture.device.public_send(operation) }
+      assert_equal :unknown_neighbor_name, error.code
+      refute(fixture.observed.any? { |command, _| command == fixture.sample.fetch(:enter) })
+    ensure
+      fixture&.close
+    end
+    fixture = TopologyFixture.new(:h3c)
+    plan = fixture.device.plan_interface_descriptions
+    fixture.sample[:neighbor] = neighbor
+    error = assert_raises(C::ParsingError) { fixture.device.apply_interface_descriptions(plan, confirmed: true) }
+    assert_equal :unknown_neighbor_name, error.code
+    refute(fixture.observed.any? { |command, _| command == fixture.sample.fetch(:enter) })
+  ensure
+    fixture&.close
+  end
+
+  def test_known_endpoint_with_mac_port_id_remains_valid_discovery_evidence
+    fixture = TopologyFixture.new(:h3c, neighbor: "Local Interface Chassis ID Port ID System Name\nGE1/0/1 000f-e25d-ee91 000f-e25d-ee92 phone\n")
+    audit = fixture.device.audit_interface_descriptions
+    assert audit.complete?
+    assert_equal "To_phone_000f-e25d-ee92", audit.plan.changes.first.new_description
+  ensure
+    fixture&.close
+  end
+
+  def test_semantically_equal_descriptions_are_preserved_by_audit_plan_and_sync
+    ["TO_peer_G1/0/2", "to_PEER_GE1/0/2", "To_peer_GigabitEthernet1/0/2"].each do |description|
+      fixture = TopologyFixture.new(:h3c)
+      fixture.description = description
+      audit = fixture.device.audit_interface_descriptions
+      assert_equal :matches, audit.comparisons.first.fetch(:status)
+      assert_empty audit.plan.changes
+      assert_empty fixture.device.plan_interface_descriptions.changes
+      assert fixture.device.sync_interface_descriptions.success?
+      assert_equal description, fixture.description
+      refute(fixture.observed.any? { |command, _| command == fixture.sample.fetch(:enter) })
+    ensure
+      fixture&.close
+    end
+  end
+
+  def test_changed_peer_port_and_speed_are_not_treated_as_cosmetic_differences
+    ["TO_other_G1/0/2", "TO_peer_G1/0/3", "TO_peer_XGE1/0/2", "TO_peer_G1/0/2.1"].each do |description|
+      fixture = TopologyFixture.new(:h3c)
+      fixture.description = description
+      audit = fixture.device.audit_interface_descriptions
+      assert_equal :content_mismatch, audit.comparisons.first.fetch(:status)
+      assert_equal 1, audit.plan.changes.size
+    ensure
+      fixture&.close
+    end
+  end
+
 end

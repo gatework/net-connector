@@ -9,6 +9,7 @@ module Net
       class CLI
         # 将调用方提供的输入解析为清单来源和设备凭据 resolver。
         module Credentials
+          # 解析环境或标准输入凭据，返回清单来源与逐设备凭据回调。
           def self.resolve(settings, stdin_credentials: false, input: $stdin)
             unless stdin_credentials
               return [settings.inventory, settings.method(:device_credentials_for)]

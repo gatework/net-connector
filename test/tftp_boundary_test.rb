@@ -133,7 +133,7 @@ class TftpBoundaryTest < Minitest::Test
   def test_single_receipt_contains_the_real_configuration_kind_and_frozen_target
     expected = { cisco_ios: [:running, :cfg], cisco_nxos: [:running, :cfg], h3c: [:saved_file, :unknown],
                  huawei: [:saved_file, :unknown], hillstone: [:startup, :dat], palo_alto: [:running, :xml],
-                 radware: [:native_archive, :tgz] }
+                 radware: [:native_archive, :tgz], centec: [:running, :cfg] }
     TftpFixture::CASES.each do |vendor, (prompt, command, output, path)|
       device = build(vendor, prompt, "#{command}\n#{output}\n#{prompt}")
       options = { host: "192.0.2.10", path: path }

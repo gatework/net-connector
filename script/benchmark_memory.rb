@@ -12,20 +12,20 @@ require "digest"
 module MemoryBenchmark
   MIB = 1024 * 1024
   DEFAULTS = { "transport" => "fake", "phase" => "retain", "response_bytes" => MIB,
-               "commands" => 1, "concurrency" => 1, "output_calls" => 5, "logging" => "default" }.freeze
+               "commands" => 1, "parallel" => 1, "output_calls" => 5, "logging" => "default" }.freeze
 
   def self.validate!(spec)
     { "transport" => %w[fake pty], "phase" => %w[retain response render clean parse collect], "logging" => %w[default debug] }.each do |key, values|
       raise ArgumentError, "invalid #{key}" unless values.include?(spec.fetch(key))
     end
-    { "response_bytes" => (1024..(32 * MIB)), "commands" => (1..100), "concurrency" => (1..16), "output_calls" => (1..20) }.each do |key, range|
+    { "response_bytes" => (1024..(32 * MIB)), "commands" => (1..100), "parallel" => (1..16), "output_calls" => (1..20) }.each do |key, range|
       value = spec.fetch(key)
       raise ArgumentError, "invalid #{key}" unless value.is_a?(Integer) && range.cover?(value)
     end
-    unless spec.fetch("phase") == "retain" || (spec.fetch("commands") == 1 && spec.fetch("concurrency") == 1)
+    unless spec.fetch("phase") == "retain" || (spec.fetch("commands") == 1 && spec.fetch("parallel") == 1)
       raise ArgumentError, "component samples use one response and one worker"
     end
-    bytes = spec.fetch("response_bytes") * spec.fetch("commands") * spec.fetch("concurrency")
+    bytes = spec.fetch("response_bytes") * spec.fetch("commands") * spec.fetch("parallel")
     raise ArgumentError, "sample exceeds 128 MiB planned response payload" if bytes > 128 * MIB
     if spec["script_budget_bytes"] && (!spec["script_budget_bytes"].is_a?(Integer) || !spec["script_budget_bytes"].positive?)
       raise ArgumentError, "invalid script_budget_bytes"
@@ -35,11 +35,11 @@ module MemoryBenchmark
   end
 
   def self.samples(suite)
-    retain = [[1, 1, 1], [8, 1, 1], [32, 1, 1], [1, 10, 1], [1, 100, 1], [1, 1, 4], [1, 1, 16]].map do |mib, commands, concurrency|
-      DEFAULTS.merge("response_bytes" => mib * MIB, "commands" => commands, "concurrency" => concurrency)
+    retain = [[1, 1, 1], [8, 1, 1], [32, 1, 1], [1, 10, 1], [1, 100, 1], [1, 1, 4], [1, 1, 16]].map do |mib, commands, parallel|
+      DEFAULTS.merge("response_bytes" => mib * MIB, "commands" => commands, "parallel" => parallel)
     end
-    pty = [[1, 1, 1], [8, 1, 1], [1, 10, 1], [1, 1, 4]].map do |mib, commands, concurrency|
-      DEFAULTS.merge("transport" => "pty", "response_bytes" => mib * MIB, "commands" => commands, "concurrency" => concurrency)
+    pty = [[1, 1, 1], [8, 1, 1], [1, 10, 1], [1, 1, 4]].map do |mib, commands, parallel|
+      DEFAULTS.merge("transport" => "pty", "response_bytes" => mib * MIB, "commands" => commands, "parallel" => parallel)
     end
     components = %w[response render clean parse collect].product([1, 8]).map do |phase, mib|
       DEFAULTS.merge("phase" => phase, "response_bytes" => mib * MIB)
@@ -101,7 +101,7 @@ module MemoryBenchmark
       options.on("--directory PATH") { |value| directory = value }
       options.on("--transport NAME", %w[fake pty]) { |value| custom["transport"] = value }
       options.on("--phase NAME", %w[retain response render clean parse collect]) { |value| custom["phase"] = value }
-      %w[response_bytes commands concurrency output_calls script_budget_bytes].each do |key|
+      %w[response_bytes commands parallel output_calls script_budget_bytes].each do |key|
         options.on("--#{key.tr("_", "-")} N", Integer) { |value| custom[key] = value }
       end
       options.on("--logging NAME", %w[default debug]) { |value| custom["logging"] = value }
@@ -133,7 +133,7 @@ module MemoryBenchmark
       result = run_case(spec, directory, index)
       report[:samples] << result
       File.write(path, JSON.pretty_generate(report) + "\n")
-      puts "#{index + 1}/#{cases.size} #{spec.fetch("transport")} #{spec.fetch("phase")} bytes=#{spec.fetch("response_bytes")} commands=#{spec.fetch("commands")} workers=#{spec.fetch("concurrency")} peak_rss=#{result.fetch("peak_rss_bytes")}"
+      puts "#{index + 1}/#{cases.size} #{spec.fetch("transport")} #{spec.fetch("phase")} bytes=#{spec.fetch("response_bytes")} commands=#{spec.fetch("commands")} workers=#{spec.fetch("parallel")} peak_rss=#{result.fetch("peak_rss_bytes")}"
     end
     report[:finished_at] = Time.now.utc.iso8601
     File.write(path, JSON.pretty_generate(report) + "\n")

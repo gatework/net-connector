@@ -16,11 +16,11 @@ class ConfigInitializerTest < Minitest::Test
       input = Object.new
       input.define_singleton_method(:gets) { raise "must not read stdin" }
       initializer = N::Config::Initializer.new(input: input, output: StringIO.new)
-      document = { "backup" => { "concurrency" => 4 } }
+      document = { "backup" => { "parallel" => 4 } }
       assert_equal :created, initializer.create(path: path, document: document, interactive: false)
       assert_equal 0o600, File.stat(path).mode & 0o777
-      assert_equal 4, N::Settings.from_file(path, env: {}).concurrency
-      assert_equal :exists, initializer.create(path: path, document: { "backup" => { "concurrency" => 8 } }, interactive: true)
+      assert_equal 4, N::Settings.from_file(path, env: {}).parallel
+      assert_equal :exists, initializer.create(path: path, document: { "backup" => { "parallel" => 8 } }, interactive: true)
       assert_equal document, YAML.safe_load_file(path)
       assert_equal ["backup.yml"], Dir.children(root)
     end
@@ -52,11 +52,11 @@ class ConfigInitializerTest < Minitest::Test
   def test_interactive_answers_are_validated_and_invalid_values_reprompt
     Dir.mktmpdir do |root|
       path = File.join(root, "backup.yml")
-      answers = ["y", "http", "https://inventory.example.invalid", "192.0.2.1-20", "", "edge", "wlc", "contains", "h3c", "", "51", "8", "./backups", "192.0.2.10"]
+      answers = ["y", "http", "https://inventory.example.invalid", "192.0.2.1-20", "", "edge", "wlc", "contains", "h3c", "", "501", "8", "./backups", "192.0.2.10"]
       initializer = N::Config::Initializer.new(input: StringIO.new(answers.join("\n") + "\n"), output: StringIO.new)
       assert_equal :created, initializer.create(path: path, document: {}, interactive: true)
       settings = N::Settings.from_file(path, env: {})
-      assert_equal 8, settings.concurrency
+      assert_equal 8, settings.parallel
       assert_equal "192.0.2.10", settings.tftp_server
       assert_equal ["edge"], settings.public_config.fetch(:inventory).fetch(:include_names)
     end
@@ -112,10 +112,10 @@ class ConfigInitializerTest < Minitest::Test
       path = File.join(root, "topology.yml")
       answers = ["y", "http", "https://inventory.example.invalid", "", "", "edge", "", "contains", "", "", "6", "./topology"]
       initializer = N::Config::Initializer.new(input: StringIO.new(answers.join("\n") + "\n"), output: StringIO.new)
-      document = { "topology" => { "mode" => "plan", "concurrency" => 4 } }
+      document = { "topology" => { "mode" => "plan", "parallel" => 4 } }
       assert_equal :created, initializer.create(path: path, document: document, interactive: true)
       values = YAML.safe_load_file(path)
-      assert_equal 6, values.fetch("topology").fetch("concurrency")
+      assert_equal 6, values.fetch("topology").fetch("parallel")
       assert_equal "./topology", values.fetch("topology").fetch("directory")
       refute values.key?("backup")
       refute values.key?("tftp")
@@ -133,9 +133,9 @@ class ConfigInitializerTest < Minitest::Test
       end
       initializer = N::Config::Initializer.new(input: StringIO.new, output: StringIO.new)
       File.stub(:open, failing) do
-        assert_raises(IOError) { initializer.create(path: path, document: { "backup" => { "concurrency" => 4 } }, interactive: false) }
+        assert_raises(IOError) { initializer.create(path: path, document: { "backup" => { "parallel" => 4 } }, interactive: false) }
       end
-      assert_equal 4, YAML.safe_load_file(path).fetch("backup").fetch("concurrency")
+      assert_equal 4, YAML.safe_load_file(path).fetch("backup").fetch("parallel")
       assert_equal ["backup.yml"], Dir.children(root)
     end
   end

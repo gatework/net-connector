@@ -13,7 +13,8 @@ module Net
           [/\A(?:fortygigabitethernet|fortygige|fge|40ge|fo)(?=\d)/i, "fortygigabitethernet", "Fo"],
           [/\A(?:twenty-?fivegigabitethernet|twenty-?fivegige|wge|25ge|twe)(?=\d)/i, "twentyfivegigabitethernet", "Twe"],
           [/\A(?:xge|10ge|xgigabitethernet|ten-gigabitethernet|tengigabitethernet|ten-?gige|xethernet|xe|te)(?=\d)/i, "tengigabitethernet", "Te"],
-          [/\A(?:gigabitethernet|ge|gi)(?=\d)/i, "gigabitethernet", "Gi"],
+          [/\A(?:smartrate-ethernet|se)(?=\d)/i, "smartrate-ethernet", "SE"],
+          [/\A(?:gigabitethernet|ge|gi|g)(?=\d)/i, "gigabitethernet", "Gi"],
           [/\A(?:fastethernet|fa)(?=\d)/i, "fastethernet", "Fa"],
           [/\A(?:ethernet|eth)(?=\d)/i, "ethernet", "Eth"],
           [/\A(?:port-channel|po)(?=\d)/i, "port-channel", "Po"]
@@ -35,9 +36,10 @@ module Net
 
         # 保留现有配置视图展开规则；厂商策略可覆盖不适用的名称。
         def self.configuration(name)
-          name.sub(/\AXGE(?=\d)/i, "Ten-GigabitEthernet")
+          name.sub(/\ASE(?=\d)/i, "Smartrate-Ethernet")
+              .sub(/\AXGE(?=\d)/i, "Ten-GigabitEthernet")
               .sub(/\AGE(?=\d)/i, "GigabitEthernet")
-              .sub(/\AGi(?=\d)/i, "GigabitEthernet")
+              .sub(/\A(?:Gi|G)(?=\d)/i, "GigabitEthernet")
               .sub(/\ATe(?=\d)/i, "TenGigabitEthernet")
               .sub(/\AFa(?=\d)/i, "FastEthernet")
               .sub(/\AEth(?=\d)/i, "Ethernet")

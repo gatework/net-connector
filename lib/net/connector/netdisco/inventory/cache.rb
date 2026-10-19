@@ -20,12 +20,14 @@ module Net
 
           # 离线包装器不持有远端传输或凭据；即使误调用也不访问网络。
           class OfflineSource
+            # 离线清单来源始终拒绝远端请求，防止缓存专用模式意外联网。
             def devices
               raise Inventory::Error.new("remote inventory is disabled in cache-only mode", code: :cache_unavailable), cause: nil
             end
           end
           private_constant :OfflineSource
 
+          # 构造不持有远端凭据或传输的只读缓存来源。
           def self.offline(**options) = new(inventory: OfflineSource.new.freeze, cache_mode: :only, **options)
 
           DEFAULT_TTL = 3 * 24 * 60 * 60
@@ -33,8 +35,10 @@ module Net
                            pagination_stalled max_pages max_response_bytes max_inventory_bytes max_devices
                            invalid_inventory query_failed].freeze
           private_constant :ERROR_CODES
+          # 读取缓存命中状态、刷新诊断、落盘诊断和获取时间。
           attr_reader :status, :refresh_error_code, :write_error_type, :fetched_at
 
+          # 固定缓存身份、路径、时效与资源上限，不在构造时请求清单。
           def initialize(inventory:, directory:, identity:, ttl: DEFAULT_TTL, cache_mode: :prefer,
                          max_inventory_bytes: Inventory::DEFAULTS.fetch(:max_inventory_bytes),
                          max_devices: Inventory::DEFAULTS.fetch(:max_devices), clock: -> { Time.now.utc }, lock_timeout: 5)
@@ -94,10 +98,12 @@ module Net
             end
           end
 
+          # 返回对象的安全摘要，不展开正文或认证凭据。
           def inspect = "#<#{self.class} status=#{@status.inspect}>"
 
           private
 
+          # 读取并校验已有缓存，缺失或不可信时明确拒绝而不访问远端。
           def cached_only
             with_directory(create: false) do
               entry = read_cache
@@ -126,6 +132,7 @@ module Net
             raise Error, "inventory cache directory must not be a symlink", cause: nil
           end
 
+          # 在有限时间内取得私有刷新锁，并重新核对锁文件身份。
           def with_lock
             File.open(@lock_path, File::RDWR | File::CREAT | File::NOFOLLOW | File::NONBLOCK, 0o600) do |lock|
               verify_private_file!(lock, @lock_path)
@@ -218,6 +225,7 @@ module Net
             end.freeze
           end
 
+          # 核对文件为当前用户所有的单链接 0600 普通文件，并验证路径身份。
           def verify_private_file!(file, path)
             stat = file.stat
             unless stat.file? && stat.uid == Process.euid && stat.nlink == 1 && (stat.mode & 0o7777) == 0o600
@@ -227,6 +235,7 @@ module Net
             stat
           end
 
+          # 核对当前目录项仍指向已打开对象，拒绝访问期间被替换的路径。
           def verify_entry!(path, stat)
             current = File.lstat(path)
             return if current.dev == stat.dev && current.ino == stat.ino && !current.symlink?
@@ -234,18 +243,22 @@ module Net
             raise Error, "inventory cache path changed during access"
           end
 
+          # 确认缓存时间戳合法且不晚于当前时刻，防止未来缓存长期有效。
           def valid_time?(value)
             value.is_a?(Numeric) && value.real? && value.finite? && value >= 0 && value <= now
           end
 
+          # 按缓存获取时间和配置时效判断是否可直接使用。
           def fresh?(entry) = entry && now - entry.fetch("fetched_at") < @ttl
 
+          # 记录本次缓存来源和时间，并交付已经验证的不可变清单。
           def deliver(entry, status)
             @status = status
             @fetched_at = Time.at(entry.fetch("fetched_at")).utc.freeze
             entry.fetch("rows")
           end
 
+          # 从注入时钟取得有限非负时间戳，用于缓存时效判断。
           def now
             input = @clock.call
             value = input.is_a?(Time) ? input.to_f : input
@@ -256,6 +269,7 @@ module Net
             value.to_f
           end
 
+          # 读取单调时钟秒数，避免系统校时影响期限与耗时计算。
           def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         end
       end

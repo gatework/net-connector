@@ -143,6 +143,7 @@ module Net
           when /palo\s*alto|paloalto/ then :palo_alto
           when /\bhuawei\b/ then :huawei
           when /\bhillstone\b/ then :hillstone
+          when /\bcentec\b/ then :centec
           when /\btopsec\b/ then :topsec
           when /\bfortinet\b|\bfortigate\b/
             :fortinet if os == "fortios" || label.match?(/\bfortigate\b/) || model.match?(/\A(?:fortigate|fgt)[\s-]*\d/i)
@@ -169,11 +170,13 @@ module Net
 
         private
 
+        # 结合操作系统和型号识别 H3C 交换机或无线控制器。
         def h3c_connector(os, model)
           wireless = os.match?(/wireless|wlan/) || model.match?(/\A(?:h3c\s+)?(?:wx|ac)\s*\d/)
           wireless ? :h3c_wireless : :h3c
         end
 
+        # 校验名称过滤项为有效非空文本，统一小写并去重冻结。
         def name_list(values)
           unless values.is_a?(Array) && values.all? { |value| value.is_a?(String) && !value.strip.empty? && value.valid_encoding? }
             raise ArgumentError, "name filters must be arrays of nonempty strings"
@@ -181,6 +184,7 @@ module Net
           values.map { |value| value.downcase.freeze }.uniq.freeze
         end
 
+        # 按包含、前缀或通配符模式匹配已规范化的设备名称。
         def name_matches?(pattern, value)
           case @name_match
           when :contains then value.include?(pattern)

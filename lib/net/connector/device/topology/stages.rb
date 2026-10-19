@@ -8,6 +8,7 @@ module Net
     class Topology
       # 离线预检与现场执行共用确切阶段，不复制厂商命令或把保存合并到变更阶段。
       module Stages
+        # 分别构造变更、读回和保存脚本，拒绝没有完整阶段声明的厂商策略。
         def self.build(strategy:, host:, changes:)
           validate_changes!(strategy, changes)
           phases = %i[leave_configuration_commands verification_commands persistence_commands].map do |method|

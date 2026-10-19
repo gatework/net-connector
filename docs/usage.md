@@ -14,6 +14,7 @@ Use these vendor keys with `Net::Connector.open` or `Net::Connector.build`:
 | `:cisco_nxos` | Cisco NX-OS | `show running-config` | `copy run start` |
 | `:huawei` | Huawei | `dis cur` | `save force` |
 | `:hillstone` | Hillstone StoneOS | `show configuration running` | `save all` |
+| `:centec` | Centec / DclingCloudOS | `show running-config` | `copy running-config startup-config` |
 | `:radware` | Radware Alteon | `/cfg/dump` | `/cfg/save` |
 | `:palo_alto` | Palo Alto PAN-OS | Set-format export from configuration view | Unsupported |
 | `:topsec` | Topsec TopOS firewall | `show-running nostop` | Unsupported |
@@ -86,6 +87,8 @@ device.sync_interface_descriptions.value!
 This explicit update completes neighbor discovery, description changes, readback and save in one session. Matching descriptions cause no writes or saves. Callers do not manage a plan or a second confirmation step. For a separate preview and approval workflow, use `plan_interface_descriptions`, then `apply_interface_descriptions(plan, confirmed: true)`.
 
 IOS/NX-OS use CDP; H3C, H3C wireless, Hillstone, and PAN-OS use LLDP. Neighbor records contain local interface, peer name/interface, chassis ID, and protocol. Unknown or partial output raises an error rather than becoming an empty table. Radware can read port names but cannot discover neighbors or apply descriptions.
+
+Planning, audit and sync preserve semantically equal existing descriptions: case and equivalent port aliases (G/GE/Gi or SE/Smartrate-Ethernet) do not trigger writes. Different peer names, port numbers or speeds still require changes. Placeholder names or ports such as `-` and `unknown` cannot produce changes: audits retain unresolved issues, while direct planning/sync and application revalidation reject unknown identities.
 
 The default description is `To_<peer name>_<interface abbreviation>`, for example `To_Core-SW_Gi1/0/1`. Known vendor spellings and case normalize to the same abbreviation; spaces in displayed names become underscores. Use `abbreviate: false`, `lowercase: true`, or a formatter block to customize them. Raw identities and evidence are unchanged.
 

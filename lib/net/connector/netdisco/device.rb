@@ -17,6 +17,7 @@ module Net
           super(*frozen_values, **frozen_attributes)
         end
 
+        # 返回经校验的更新快照，未更新时沿用当前对象。
         def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
 
         # 将 Netdisco 清单记录转换为可规划的设备对象。

@@ -9,6 +9,7 @@ module Net
       # 设备/文件提供的是字节，不受 Ruby 源文件编码控制。解析边界只接受 UTF-8，
       # 不猜测编码、不改写原文，也不让终端编辑把非法字节抹掉后变成可信证据。
       module Text
+        # 将输入字节解释为 UTF-8 并严格校验，拒绝猜测或修补设备编码。
         def self.utf8(bytes, host: nil)
           raise ArgumentError, "text must be a String" unless bytes.is_a?(String)
 
@@ -17,12 +18,14 @@ module Net
           text
         end
 
+        # 严格检查 UTF-8 后还原终端画面，拒绝控制操作产生的损坏字符。
         def self.render(bytes, host: nil)
           Terminal::Renderer.render(utf8(bytes, host: host), strict_utf8: true).force_encoding(Encoding::UTF_8)
         rescue Encoding::InvalidByteSequenceError
           invalid_encoding!(host)
         end
 
+        # 抛出不含设备原文的统一编码错误，阻止不可信文本进入解析。
         def self.invalid_encoding!(host)
           raise ParsingError.new("device output is not valid UTF-8", code: :invalid_output_encoding,
                                  host: host, phase: :parse), cause: nil

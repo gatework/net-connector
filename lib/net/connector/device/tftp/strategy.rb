@@ -47,16 +47,19 @@ module Net
           end
         end
 
+        # 公共策略拒绝未声明支持的源接口，防止忽略调用方的路由选择。
         def validate_source_interface!(_target, source_interface:)
           raise ArgumentError, "source_interface is not supported by this TFTP strategy" unless source_interface.nil?
         end
 
         private
 
+        # 要求厂商提供实际上传命令，公共策略不猜测设备语法。
         def transfer_command(_target, **)
           raise ConfigurationError, "TFTP strategy must provide a transfer command"
         end
 
+        # 返回默认空确认列表，厂商可声明本次上传需要的交互。
         def transfer_interactions(_target, **) = []
 
         # 静态交互不进入业务输出，证据过滤从完成步骤读取原始声明。

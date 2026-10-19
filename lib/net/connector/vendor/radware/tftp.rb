@@ -9,6 +9,9 @@ module Net
       class Radware < Net::Connector::Base
         # 交互导出 Alteon 原生 tgz 归档；回执不将归档推断为文本运行配置。
         class Tftp < Net::Connector::Tftp::Strategy
+          REPORTED_DESTINATION = /\ACurrent\s+config\s+successfully\s+transferred\s+to\s+([^\s:]+):(\S+)\z/i
+          private_constant :REPORTED_DESTINATION
+
           # Radware 原生导出生成压缩配置归档。
           def self.file_extension = "tgz"
 
@@ -18,6 +21,7 @@ module Net
             raise ArgumentError, "Radware TFTP backup does not use vrf" unless vrf.nil?
           end
 
+          # 只接受管理或数据路由来源，拒绝未声明的 Radware 源接口值。
           def validate_source_interface!(_target, source_interface:)
             return if source_interface.nil? || %w[management data].include?(source_interface)
 
@@ -30,7 +34,8 @@ module Net
           # 检查设备回显是否确认 TFTP 传输完成。
           def device_reported_complete?(result)
             completion_lines(result).any? do |line|
-              line.match?(/\A
+              line.match?(REPORTED_DESTINATION) ||
+                line.match?(/\A
                 (?:Current\s+)?(?:configuration|config)\s+
                 (?:successfully\s+(?:uploaded|tftp'd)|(?:uploaded|tftp'd)(?:\s+successfully)?|
                   complete(?:d)?(?:\s+successfully)?)[.!]?
@@ -38,13 +43,30 @@ module Net
             end
           end
 
+          # 解析设备实际报告的目标，文件名变化保留真实回执，服务器冲突则拒绝确认请求路径。
+          def remote_path(target, result)
+            destinations = completion_lines(result).filter_map do |line|
+              match = REPORTED_DESTINATION.match(line)
+              [match[1].downcase, match[2]] if match
+            end.uniq
+            return target.path if destinations.empty?
+
+            unless destinations.size == 1 && destinations.first.first == target.host.downcase
+              raise ArgumentError, "Radware reported a different or ambiguous TFTP server"
+            end
+
+            destinations.first.last
+          end
+
           private
 
+          # 生成 Radware 导出命令，按本次源接口选择管理或数据路径。
           def transfer_command(target, source_interface: nil, **)
             flag = { "management" => " -mgmt", "data" => " -data" }.fetch(source_interface, "")
             "/cfg/ptcfg #{target.host} -tftp#{flag}"
           end
 
+          # 在预期导出对话中填写目标服务器、协议和文件名。
           def transfer_interactions(target, **)
             [interaction(/Enter\s+(?:hostname|IP address)[^\r\n]*:\s*\z/i, "#{target.host}\n"),
              interaction(/Enter\s+name\s+of\s+(?:\.tgz\s+)?file[^\r\n]*:\s*\z/i, "#{target.path}\n"),

@@ -6,8 +6,10 @@ module Net
       # HTTP、PostgreSQL 与缓存共用清单字段、错误和资源范围，不依赖具体来源。
       module Inventory
         class Error < StandardError
+          # 读取清单错误的稳定分类码。
           attr_reader :code
 
+          # 保存清单错误消息及稳定错误码，供上层分类处理。
           def initialize(message = nil, code: :inventory_error)
             @code = code
             super(message)
@@ -15,6 +17,7 @@ module Net
         end
 
         class Timeout < Error
+          # 构造总清单预算已耗尽的统一超时错误。
           def initialize(_message = nil)
             super("Netdisco inventory exceeded inventory_timeout", code: :inventory_timeout)
           end

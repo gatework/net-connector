@@ -100,7 +100,7 @@ class ConnectorExamplesTest < Minitest::Test
       dotenv = "NC_DEVICE_USERNAME=fixture-user\nNC_DEVICE_PASSWORD=fixture-password\n"
       with_example("backup.rb", [{ "ip" => "192.0.2.1", "vendor" => "H3C" }],
                    preload_code: preload, extra_env: overrides, dotenv: dotenv,
-                   config: "inventory:\n  include_hosts: [192.0.2.1]\nbackup:\n  concurrency: 2\n") do |output, error, status, _directory|
+                   config: "inventory:\n  include_hosts: [192.0.2.1]\nbackup:\n  parallel: 2\n") do |output, error, status, _directory|
         assert status.success?, error
         assert JSON.parse(output.lines.last).fetch("tasks_succeeded")
         assert_equal 1, JSON.parse(output.lines.last).fetch("counts").fetch("backed_up")
@@ -141,12 +141,12 @@ class ConnectorExamplesTest < Minitest::Test
     end
   end
 
-  def test_command_line_credentials_override_environment_and_concurrency_overrides_yaml
+  def test_command_line_credentials_override_environment_and_parallel_overrides_yaml
     preload = <<~RUBY
       require #{File.join(ROOT, "test/support/fake_transport").inspect}
       Net::Connector::Netdisco::Fleet.prepend(Module.new do
         def initialize(**options)
-          raise "wrong concurrency" unless options.fetch(:settings).concurrency == 7
+          raise "wrong parallel" unless options.fetch(:settings).parallel == 7
           raise "wrong key policy" unless options.fetch(:settings).connection_options[:host_key_policy] == :accept_new
           factory = lambda do |device, settings|
             raise "wrong credentials" unless settings.values_at(:username, :password) == ["cli-user", "cli-secret"]
@@ -158,8 +158,8 @@ class ConnectorExamplesTest < Minitest::Test
     RUBY
     env = { "NC_H3C_USERNAME" => "vendor-user", "NC_H3C_PASSWORD" => "vendor-secret" }
     with_example("backup.rb", [{ "ip" => "192.0.2.1", "vendor" => "H3C" }],
-                 preload_code: preload, extra_env: env, config: "backup:\n  concurrency: 3\n",
-                 arguments: %w[--json --concurrency 7 --username cli-user --password cli-secret --host-key-policy accept_new]) do |output, error, status, _directory|
+                 preload_code: preload, extra_env: env, config: "backup:\n  parallel: 3\n",
+                 arguments: %w[--json --parallel 7 --username cli-user --password cli-secret --host-key-policy accept_new]) do |output, error, status, _directory|
       assert status.success?, error
       assert JSON.parse(output.lines.last).fetch("tasks_succeeded")
       refute_includes output + error, "cli-secret"
@@ -168,7 +168,7 @@ class ConnectorExamplesTest < Minitest::Test
   end
 
   def test_bad_options_fail_before_inventory_without_echoing_secrets
-    [%w[--concurrency 0], %w[--concurrency 51], %w[--concurrency private-secret],
+    [%w[--parallel 0], %w[--parallel 501], %w[--parallel private-secret],
      %w[--stdin-credentials --password private-secret], %w[--ask-password]].each do |arguments|
       with_example("backup.rb", [], arguments: arguments) do |output, error, status, directory|
         refute status.success?

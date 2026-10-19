@@ -12,7 +12,7 @@ class BenchmarkMemoryTest < Minitest::Test
     Dir.mktmpdir do |directory|
       output = File.join(directory, "results")
       _stdout, errors, status = Open3.capture3(RbConfig.ruby, SCRIPT, "--response-bytes", (32 * 1024 * 1024).to_s,
-                                              "--commands", "100", "--concurrency", "16", "--directory", output)
+                                              "--commands", "100", "--parallel", "16", "--directory", output)
       refute status.success?
       assert_includes errors, "128 MiB"
       refute File.exist?(output)

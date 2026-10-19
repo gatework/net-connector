@@ -9,6 +9,7 @@ module Net
     class Result
       include Enumerable
 
+      # 读取完成步骤、领域错误及可选配置正文。
       attr_reader :steps, :error, :config
 
       # 校验步骤、错误和配置文本，并冻结结果容器。

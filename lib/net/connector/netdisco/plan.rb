@@ -33,6 +33,7 @@ module Net
                 allow_fixed_name_reuse: allow_fixed_name_reuse, transfers: transfer_copy)
         end
 
+        # 返回经校验的更新快照，未更新时沿用当前对象。
         def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
 
         # 按清单顺序返回选中的设备。
@@ -77,11 +78,13 @@ module Net
 
         private
 
+        # 要求传输策略键与清单中全部有能力的设备一致，防止遗漏或多出目标。
         def validate_transfers!
           expected = mode == :tftp ? inventory.select { |device| device.ready? && device.supports_backup?(mode: :tftp) }.map(&:host).sort : []
           raise ArgumentError, "plan transfer options must match capable inventory devices" unless transfers.keys.sort == expected
         end
 
+        # 预检厂商传输参数，并拒绝未获归档保护的同批远端文件名冲突。
         def validate_tftp_target!(device, selected_filenames)
           transfer = transfers.fetch(device.host)
           Tftp::Policy.validate_options!(transfer, host: device.host, vendor: device.vendor, path: device.tftp_filename) if transfer.server
@@ -92,6 +95,7 @@ module Net
           selected_filenames[filename] = true
         end
 
+        # 以有效服务器和原生远端文件名共同标识上传目标。
         def target_key(device) = [transfers[device.host]&.server, device.tftp_filename]
 
         # 外部快照也遵守清单入口的地址唯一性；采样不能把重复设备重新变为可执行。

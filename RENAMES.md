@@ -174,3 +174,16 @@ Worker 接受并发范围两个端点。预算和钩子复用既有行为测试�
 | `DeviceSession` | `Device::Scope` | 工厂返回后的设备对象所有权；关闭后分别交付业务值与故障 |
 
 三个旧加载路径及常量均移除，不保留兼容别名。并发线程与设备关闭保持原有取消、异常优先级和非局部退出语义。覆盖率门槛继续覆盖这三个实现及 Netdisco Worker。
+
+
+## 并行入口与模板资源（未发布）
+
+- `Concurrency::Pool` / `Concurrency::Observer` 改为 `Parallel::Pool` / `Parallel::Observer`，加载路径改为 `net/connector/parallel/`；旧常量和路径移除，不提供兼容别名。
+- TextFSM 资源从 `lib/net/connector/templates/` 移至 `lib/net/connector/textfsm/`。默认模板查询自动跟随新目录，手工构造的资源路径需要更新。
+- 安装包的公开策略模板为 `examples/backup.example.yml`；运行中的 `examples/backup.yml` 不再进入 gem，已有现场配置保持原样。
+
+以上覆盖前文历史迁移表中的“当前名称”；历史验收数字只描述当时版本，不代表本次未发布工作区的验证结果。
+# 并发参数命名补充
+
+当前接口统一使用 `parallel:` / YAML `parallel` / 环境变量 `NC_PARALLEL` / CLI `--parallel`。
+旧的 `concurrency` 参数和配置名称已移除，不保留兼容别名。GitHub Actions 的 `concurrency` 为平台规定字段，历史基准产物保留原始记录。

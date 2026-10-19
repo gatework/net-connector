@@ -1,4 +1,15 @@
-# Topsec、Fortinet 与 Juniper
+# 厂商能力与验证
+
+## Centec / DclingCloudOS
+
+`centec` 使用独立的 `Vendor::Centec` 档案，Netdisco 的 `Centec Networks Inc.` 自动映射到该驱动。
+配置采集依次使用 `terminal length 0`、`show running-config`，只移除边界回显，保留配置正文。
+TFTP 导出运行配置，只有非零 `Sent ... bytes in ... seconds` 完成行才确认上传；失败证据优先。
+`tftp.source_interfaces.centec` 接受 `management`（命令追加 `mgmt-if`）或 `data`（使用默认数据路由），省略时沿用设备默认值。
+示例备份配置默认使用管理口；不更改设备的持久路由或接口配置。
+保存命令为显式能力 `copy running-config startup-config`，本次未执行现场保存；拓扑读写能力未开放。
+
+## Topsec、Fortinet 与 Juniper
 
 三个平台使用 `Vendor` 注册表、Profile 和现有会话执行器，均支持 SSH/Telnet 命令执行、运行配置采集与本地私有备份。能力声明区分设备系统，不能仅凭品牌把 FortiMail、ScreenOS 等产品映射到 FortiOS 或 Junos。
 

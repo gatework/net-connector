@@ -9,6 +9,7 @@ module Net
       module FileReader
         Fingerprint = Data.define(:path, :sha256, :mode, :dev, :ino)
 
+        # 打开同一安全文件描述符后校验文件类型并交给业务块，退出时保留主故障。
         def self.open(path, missing: false, replace_symlink: false)
           file = acquisition_error = nil
           begin
@@ -50,10 +51,12 @@ module Net
           end
         end
 
+        # 在安全读取作用域内计算目标文件的摘要和目录项身份。
         def self.fingerprint(path, **options)
           self.open(path, **options) { |file, stat| fingerprint_io(path, file, stat) }
         end
 
+        # 按固定大小分片累计 SHA-256，返回摘要、权限及设备和 inode 标识。
         def self.fingerprint_io(path, file, stat)
           digest = Digest::SHA256.new
           while (chunk = file.read(64 * 1024))
@@ -71,6 +74,7 @@ module Net
           false
         end
 
+        # 禁止跟随末级符号链接，按缺失和替换策略处理可预期打开错误。
         def self.open_handle(path, missing:, replace_symlink:)
           File.open(path, File::RDONLY | File::NOFOLLOW | File::NONBLOCK)
         rescue Errno::ENOENT

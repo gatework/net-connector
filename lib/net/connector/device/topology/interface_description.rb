@@ -17,6 +17,20 @@ module Net
           validate!("To_#{neighbor.neighbor_name.tr(" ", "_")}_#{port.tr(" ", "_")}")
         end
 
+        # 保留语义相同的旧描述；只归一末尾已知接口别名和大小写，不模糊匹配名称或端口编号。
+        # 未识别端口只允许忽略大小写；速率、子接口和拆分通道仍属于不同身份。
+        def self.equivalent?(current, expected)
+          return true if current.casecmp?(expected)
+
+          old_prefix, separator, old_port = current.rpartition("_")
+          new_prefix, new_separator, new_port = expected.rpartition("_")
+          return false if separator.empty? || new_separator.empty? || !old_prefix.casecmp?(new_prefix)
+          return false unless InterfaceName::RULES.any? { |pattern,| pattern.match?(old_port) } &&
+                              InterfaceName::RULES.any? { |pattern,| pattern.match?(new_port) }
+
+          InterfaceName.key(old_port) == InterfaceName.key(new_port)
+        end
+
         # 生成进入接口、设置描述和退出视图的命令，不执行设备操作。
         def self.commands(interface:, description:, leave: "exit")
           validate_interface!(interface)

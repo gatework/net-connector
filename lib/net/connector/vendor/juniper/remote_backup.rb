@@ -9,8 +9,10 @@ module Net
       class Juniper < Net::Connector::Base
         # 操作视图直接导出已提交配置，不经过共享候选库，也不创建临时设备文件。
         class RemoteBackup
+          # 接受统一策略构造参数；本策略不保存设备运行状态。
           def initialize(_device); end
 
+          # 生成 Junos 原生配置上传脚本，仅在交互范围内使用认证密码。
           def script(target, password: nil)
             replies = if password.nil?
                         []

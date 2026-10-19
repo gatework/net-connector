@@ -34,6 +34,7 @@ module Net
                   started_at: started_at.dup.freeze, finished_at: finished_at.dup.freeze, duration_ms: duration_ms)
           end
 
+          # 返回经校验的更新快照，未更新时沿用当前对象。
           def with(**attributes)
             return self if attributes.empty?
 
@@ -41,10 +42,13 @@ module Net
             self.class.new(**fields.merge(attributes))
           end
 
+          # 判断设备操作是否完整成功。
           def success? = status == :succeeded
 
+          # 判断设备是否已有返回值或完成步骤但仍发生故障。
           def partial? = status == :partial
 
+          # 将设备操作转换为受控摘要，省略配置正文、命令和原始错误信息。
           def to_h
             { host: device.host, vendor: device.vendor, status: status,
               started_at: started_at.iso8601, finished_at: finished_at.iso8601, duration_ms: duration_ms,
@@ -53,6 +57,7 @@ module Net
               diagnostic: Diagnostic.from(error)&.to_h }.compact
           end
 
+          # 返回对象的安全摘要，不展开正文或认证凭据。
           def inspect = "#<#{self.class} host=#{device.host.inspect} status=#{status.inspect}>"
 
           private

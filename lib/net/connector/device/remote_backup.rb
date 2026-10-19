@@ -8,13 +8,16 @@ module Net
     # 设备原生 FTP/SCP 导出；与采集到本机的 LocalBackup 分别保留完成证据。
     class RemoteBackup
       module Capability
+        # 让设备向指定服务器导出备份，交互密码只用于当前上传。
         def remote_backup(host:, path:, username:, protocol: :scp, password: nil)
           RemoteBackup.new(self).call(host: host, path: path, username: username, protocol: protocol, password: password)
         end
       end
 
+      # 保存执行远端备份的设备对象。
       def initialize(device) = @device = device
 
+      # 在一次设备操作中执行导出，完成后先保留回执，再处理收尾错误。
       def call(host:, path:, username:, protocol:, password: nil)
         receipt = nil
         implementation = @device.profile.remote_backup_strategy

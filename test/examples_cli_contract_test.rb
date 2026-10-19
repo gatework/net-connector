@@ -50,9 +50,9 @@ class ExampleCLIContractTest < Minitest::Test
     end
   end
 
-  def test_topology_help_only_advertises_supported_operations
+  def test_topology_full_help_only_advertises_supported_operations
     output = StringIO.new
-    assert_equal 0, N::CLI::Topology.new(argv: ["--help"], env: {}, output: output, error: StringIO.new).run
+    assert_equal 0, N::CLI::Topology.new(argv: ["--help-all"], env: {}, output: output, error: StringIO.new).run
     %w[--apply --description-format --full-port-names --lowercase-ports].each { |flag| assert_includes output.string, flag }
     %w[--sample --all --tftp-root --success-policy].each { |flag| refute_includes output.string, flag }
   end

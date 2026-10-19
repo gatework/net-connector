@@ -4,7 +4,7 @@
 
 ## 目录与命名
 
-`lib/net/connector/templates/` 统一采用 `<平台>/<完整命令名>[_格式变体].textfsm`。命令使用小写，空格、连字符和路径分隔符转为下划线；不使用缩写命令、字段用途名或额外的命令子目录。管道的输出格式选项保留为命令词，纯分页控制 `no-more` 不进入文件名。
+`lib/net/connector/textfsm/` 统一采用 `<平台>/<完整命令名>[_格式变体].textfsm`。命令使用小写，空格、连字符和路径分隔符转为下划线；不使用缩写命令、字段用途名或额外的命令子目录。管道的输出格式选项保留为命令词，纯分页控制 `no-more` 不进入文件名。
 
 例如，`show running-config` 对应 `show_running_config.textfsm`，`display current-configuration` 对应 `display_current_configuration.textfsm`，`/cfg/dump` 对应 `cfg_dump.textfsm`，`show configuration | display set` 对应 `show_configuration_display_set.textfsm`。PAN-OS 配置视图的命令是 `show`，其 set 输出对应 `palo_alto/show.textfsm`。H3C 同一命令的列序由同一模板按表头切换状态。
 

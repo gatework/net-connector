@@ -3,13 +3,15 @@
 require "io/console"
 require_relative "../engine/error/metadata"
 require_relative "../engine/log/event"
-require_relative "../concurrency/observer"
+require_relative "../parallel/observer"
+require_relative "topology/presentation"
 
 module Net
   module Connector
     module Netdisco
       # 共享一个实例接收并发会话事件和任务回调；人类进度不混入 JSON 输出。
       class Progress
+        # 读取首次终端输出故障的受控诊断，供最终报告保留。
         attr_reader :output_error
 
         # 调用方保留输出 IO 所有权；同一个互斥锁保护心跳、事件和任务计数。
@@ -25,18 +27,20 @@ module Net
           @total = @completed = @active = 0
         end
 
-        def reading_inventory
-          write(nil, "正在读取 Netdisco 设备清单")
+        # 输出当前开始读取清单的进度提示。
+        def reading_inventory(config: nil)
+          write(nil, "正在读取 Netdisco 设备清单#{config ? "（配置：#{config}）" : ""}")
         end
 
         # 以实际选中设备初始化进度，清单中被跳过的条目不计入执行任务总数。
-        def plan(plan, concurrency:, limit_per_vendor: nil)
+        def plan(plan, parallel:, limit_per_vendor: nil)
           @mutex.synchronize do
+            @operation_mode = false
             @total = plan.ready.size
             @completed = @active = 0
             @run_started = monotonic
             mode = limit_per_vendor ? "抽样（每厂商最多 #{limit_per_vendor} 台）" : "全量"
-            emit(nil, "#{mode} | 清单 #{plan.inventory.size} 台；本次 #{@total} 台；跳过 #{plan.inventory.size - @total} 台；并发 #{concurrency}")
+            emit(nil, "#{mode} | 清单 #{plan.inventory.size} 台；本次 #{@total} 台；跳过 #{plan.inventory.size - @total} 台；并发 #{parallel}")
           end
         end
 
@@ -50,25 +54,30 @@ module Net
           end
         end
 
-        def operation_plan(devices, concurrency:, label:)
+        # 清空上一阶段计数，初始化本次拓扑操作的任务规模与计时。
+        def operation_plan(devices, parallel:, label:)
           @mutex.synchronize do
-            @operation_neighbors = @operation_changes = @operation_skipped = 0
+            @operation_neighbors = @operation_changes = @operation_skipped = @operation_pending = 0
+            @operation_mode = true
             @total = devices.size
             @completed = @active = @succeeded = @failed = 0
             @stages.clear
             @task_started.clear
             @run_started = monotonic
-            emit(nil, "#{label} | 本次 #{@total} 台；并发 #{concurrency}")
+            emit(nil, "#{label} | 本次 #{@total} 台；并发 #{parallel}")
           end
         end
 
-        def operation_result(device:, status:, duration_ms:, error_code: nil, neighbors: 0, changes: 0)
+        # 在共享锁内累计拓扑结果、邻居及变更数，并刷新安全进度。
+        def operation_result(device:, status:, duration_ms:, error_code: nil, neighbors: 0, changes: 0, issues: [])
           @mutex.synchronize do
             @completed += 1
             @active -= 1
             @stages.delete(device.host)
             @task_started.delete(device.host)
-            succeeded = %i[planned discovered applied].include?(status)
+            failed = Topology::Presentation::FAILURES.include?(status)
+            succeeded = !failed
+            @operation_pending += 1 unless issues.empty?
             skipped = status == :unsupported_operation
             @operation_neighbors += neighbors
             @operation_changes += changes
@@ -80,8 +89,10 @@ module Net
               @failed += 1
             end
             @failures[error_code || status] += 1 unless succeeded || skipped
-            if @verbose || !succeeded
-              emit(device.host, "#{status}；耗时 #{duration_ms} ms#{error_code ? "（#{error_code}）" : ""}")
+            if @verbose || failed
+              label = Topology::Presentation.status(status, changes: changes)
+              reasons = issues.empty? ? "" : "；#{Topology::Presentation.issues(issues)}"
+              emit(device.host, "#{label}；耗时 #{duration_ms} ms#{error_code ? "（#{error_code}）" : ""}#{reasons}")
             elsif !@tty && ((@completed % 25).zero? || @completed == @total)
               emit(nil, status_line)
             end
@@ -89,8 +100,11 @@ module Net
           end
         end
 
+        # 输出拓扑批次的最终状态计数和完成判断。
         def finish_operations(success:, counts:)
-          write(nil, "拓扑批次结束：#{counts.map { |status, count| "#{status}=#{count}" }.join("，")}；结果 #{success ? "完成" : "未完成"}")
+          failed = counts.any? { |status, count| Topology::Presentation::FAILURES.include?(status) && count.positive? }
+          result = success ? "完成" : (failed ? "未完成" : "存在待处理项")
+          write(nil, "拓扑批次结束：#{counts.map { |status, count| "#{Topology::Presentation.status(status)} #{count} 台" }.join("，")}；结果 #{result}")
         end
 
         # 只显示已脱敏事件中的阶段和安全命令，不显示设备回显或异常原文。
@@ -192,7 +206,7 @@ module Net
             @mutex.synchronize { record_output_error(error) }
           end
           stop = -> { lock.synchronize { stopped = true; signal.broadcast } }
-          Concurrency::Observer.run(task: task, stop: stop, &)
+          Parallel::Observer.run(task: task, stop: stop, &)
         rescue Exception => error # rubocop:disable Lint/RescueException -- 后台已回收，最后清屏也不能覆盖原业务故障或取消。
           primary_failure = error
           raise
@@ -209,12 +223,14 @@ module Net
           @mutex.synchronize { refresh(force: true) }
         end
 
+        # 显示已保存报告的位置与可读标签。
         def location(path, label: "报告")
           write(nil, "#{label}：#{path}")
         end
 
         private
 
+        # 根据已知错误码返回简短排查建议，不展示任意异常正文。
         def failure_hint(code)
           case code
           when :authentication_failed then "设备拒绝认证，请核对账号、密码或 AAA 策略"
@@ -227,13 +243,17 @@ module Net
           end
         end
 
+        # 生成已完成、成功、失败、当前阶段和排队数量摘要。
         def status_line
           percent = @total.positive? ? @completed * 100 / @total : 0
-          "#{@completed}/#{@total} #{percent}% | 成功 #{@succeeded} 未完成 #{@failed} | 登录 #{@stages.values.count("登录")} 采集 #{@stages.values.count("采集")} 排队 #{[@total - @completed - @active, 0].max}"
+          counts = @operation_mode ? "完成 #{@completed} 待核实 #{@operation_pending} 失败 #{@failed}" : "成功 #{@succeeded} 未完成 #{@failed}"
+          "#{@completed}/#{@total} #{percent}% | #{counts} | 登录 #{@stages.values.count("登录")} 采集 #{@stages.values.count("采集")} 排队 #{[@total - @completed - @active, 0].max}"
         end
 
+        # 读取单调时钟秒数，避免系统校时影响期限与耗时计算。
         def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
+        # 将秒数格式化为小时、分钟和秒。
         def duration(seconds)
           total = seconds.round
           format("%02d:%02d:%02d", total / 3600, total / 60 % 60, total % 60)
@@ -297,10 +317,12 @@ module Net
           @refreshing = false
         end
 
+        # 在进度互斥锁内输出一条消息，避免多线程交错刷新。
         def write(host, message)
           @mutex.synchronize { emit(host, message) }
         end
 
+        # 清除旧进度后输出经过控制符过滤的单行消息。
         def emit(host, message)
           return unless @enabled
 
@@ -324,6 +346,7 @@ module Net
           false
         end
 
+        # 保存一次受控输出错误并停用进度，设备任务仍继续保存结果。
         def record_output_error(error)
           @output_error = { host: nil, error_type: Error::Metadata.type(error.class.name) || "StandardError" }.freeze
           @enabled = false

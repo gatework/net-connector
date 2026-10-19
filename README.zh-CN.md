@@ -41,7 +41,7 @@ net-backup --config config.yml --plan
 net-backup --config config.yml
 ```
 
-从 [backup.yml](examples/backup.yml) 或 [inventory.yml](examples/inventory.yml) 开始配置。清单与设备凭据放在环境变量中，YAML 只保存非敏感设置。HTTP/PostgreSQL 清单、成功策略、TFTP 核验和批量示例见 [Netdisco 指南](docs/netdisco.zh-CN.md)。
+从 [backup.example.yml](examples/backup.example.yml) 或 [inventory.yml](examples/inventory.yml) 开始配置。清单与设备凭据放在环境变量中，YAML 只保存非敏感设置。HTTP/PostgreSQL 清单、成功策略、TFTP 核验和批量示例见 [Netdisco 指南](docs/netdisco.zh-CN.md)。
 
 ## 文档
 

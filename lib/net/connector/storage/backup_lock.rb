@@ -13,8 +13,10 @@ module Net
         STORAGE_KEY = :net_connector_backup_delegation
         private_constant :STORAGE_KEY
 
+        # 读取当前路径锁对应的绝对备份目标路径。
         attr_reader :path
 
+        # 解析真实父目录并规范化文件名，以稳定摘要生成跨会话互斥锁路径。
         def self.lock_path(path)
           destination = File.expand_path(path)
           directory = File.realpath(File.dirname(destination))
@@ -25,8 +27,11 @@ module Net
           File.join(directory, ".net-connector-#{Digest::SHA256.hexdigest(filename)}.lock")
         end
 
+        # 在目标路径锁内执行块并统一回收锁文件句柄。
+        # 锁覆盖采集和文件提交全过程；借用授权只消费一次，采集回调内的递归操作仍须重新竞争。
         def self.synchronize(path, **options, &) = new(path, **options).synchronize(&)
 
+        # 校验目标路径和有限等待时间，预先固定目标及锁路径。
         def initialize(path, timeout: 0, host: nil)
           raise ArgumentError, "path must be a nonempty String" unless path.is_a?(String) && !path.empty?
           unless timeout.is_a?(Numeric) && timeout.real? && timeout.finite? && timeout >= 0 && timeout.to_f.finite?
@@ -38,6 +43,8 @@ module Net
           @timeout, @host = timeout.to_f, host
         end
 
+        # 取得并验证目标锁后执行备份，只有同一 Fiber 获授权时可借用一次已有锁。
+        # 锁覆盖采集和文件提交全过程；借用授权只消费一次，采集回调内的递归操作仍须重新竞争。
         def synchronize
           # Fleet 只向下层备份借用一次；消费后清除，采集回调中的递归备份仍须竞争锁。
           # Thread#[] 是 Fiber 局部存储；fork 后不能消费父进程的借用记录。
@@ -101,12 +108,14 @@ module Net
 
         private
 
+        # 以不跟随符号链接的方式打开私有锁文件，拒绝危险文件类型。
         def open_lock
           File.open(@lock_path, File::RDWR | File::CREAT | File::NOFOLLOW | File::NONBLOCK, 0o600)
         rescue Errno::ELOOP, Errno::EISDIR, Errno::ENXIO
           raise ArgumentError, "backup lock must be a private regular file", cause: nil
         end
 
+        # 核对锁为当前用户所有的单链接 0600 文件，且路径仍指向同一 inode。
         def verify_lock!(file)
           stat = file.stat
           unless stat.file? && stat.uid == Process.euid && stat.nlink == 1 && (stat.mode & 0o7777) == 0o600
@@ -120,6 +129,7 @@ module Net
           raise ArgumentError, "backup lock path changed while acquiring ownership", cause: nil
         end
 
+        # 非阻塞尝试取得文件独占锁，在有限时间内等待且不执行设备操作。
         def acquire(file)
           deadline = monotonic + @timeout
           loop do
@@ -134,7 +144,9 @@ module Net
           end
         end
 
+        # 读取单调时钟秒数，避免系统校时影响期限与耗时计算。
         def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        # 等待下一次锁竞争尝试，将轮询与单调时钟期限分开。
         def wait(seconds) = sleep(seconds)
       end
     end

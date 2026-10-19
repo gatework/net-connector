@@ -24,6 +24,8 @@ class TopologySyncTest < Minitest::Test
   # 名称规则必须贯通邻居解析、配置关联与实际下发，不能只验证展示函数。
   def test_vendor_high_speed_and_aggregate_interfaces_sync_without_rewriting_local_identity
     cases = [
+      [:h3c, "G1/0/1", "GigabitEthernet1/0/1", "GE1/0/2", "Gi1/0/2"],
+      [:h3c, "SE1/0/1", "Smartrate-Ethernet1/0/1", "Smartrate-Ethernet1/0/2", "SE1/0/2"],
       [:h3c, "BAGG25", "Bridge-Aggregation25", "Port-channel25", "Po25"],
       [:h3c, "RAGG25", "Route-Aggregation25", "aggregate25", "Agg25"],
       [:h3c, "WGE1/0/1:2", "Twenty-FiveGigE1/0/1:2", "TwentyFiveGigE1/0/2", "Twe1/0/2"],

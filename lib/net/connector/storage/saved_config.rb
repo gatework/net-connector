@@ -36,10 +36,12 @@ module Net
           with_file(host, required: required) { |path, file, stat| FileReader.fingerprint_io(path, file, stat) }
         end
 
+        # 按规范管理地址读取已保存配置，不访问设备。
         def read(host)
           with_file(host) { |_path, file, _stat| file.read }
         end
 
+        # 计算配置路径并通过已验证的同一文件描述符执行读取操作。
         def with_file(host, required: true)
           path = File.join(@directory, self.class.filename(host))
           FileReader.open(path, missing: !required) { |file, stat| yield path, file, stat }

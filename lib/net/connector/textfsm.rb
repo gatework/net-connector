@@ -22,7 +22,7 @@ module Net
         end
       end
 
-      DEFAULT_TEMPLATE_DIR = File.expand_path("templates", __dir__).freeze
+      DEFAULT_TEMPLATE_DIR = File.expand_path("textfsm", __dir__).freeze
 
       # 配置模板目录和 Netmiko 风格的命令索引文件。
       def initialize(template_dir: nil, index: "index")

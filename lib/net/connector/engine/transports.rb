@@ -13,6 +13,7 @@ module Net
       class Pty
         # 即使读到完整行也保留 32 KiB，因为提示符可能跨越多次读取和多行。
         STREAM = /\A[\s\S]{32768}(?=[\s\S]{32768})/n
+        # 读取传输持有的不可变连接配置。
         attr_reader :configuration
 
         # 保存配置和可替换的信道工厂，便于测试和设备差异注入。
@@ -46,6 +47,7 @@ module Net
           if @channel.respond_to?(:transcript=)
             writer = Object.new
             callback = method(:write_log_output)
+            # 将新版本通道的回显转交统一日志边界，并返回原始分片字节数。
             writer.define_singleton_method(:write) do |bytes|
               callback.call(bytes)
               bytes.bytesize
@@ -148,6 +150,7 @@ module Net
 
       # 生成 OpenSSH 参数，并处理显式请求的旧版协商和主机密钥操作。
       class Ssh < Pty
+        # 读取本次 SSH 恢复使用的旧版协商参数。
         attr_reader :legacy_arguments
 
         # 保存旧版 SSH 参数并复用伪终端初始化。
@@ -156,6 +159,7 @@ module Net
           @legacy_arguments = legacy_arguments.dup.freeze
         end
 
+        # 校验 SSH 端点并取得私有信任快照，再启动通道；失败或取消时一并清理。
         def open
           failure = nil
           configuration.validate_endpoint!
@@ -174,11 +178,13 @@ module Net
           raise failure || error, cause: nil
         end
 
+        # 登录后合并新主机密钥到共享信任，并结束本次替换密钥状态。
         def authenticated
           @known_hosts&.commit
           @replace_host_key = false
         end
 
+        # 同时回收 SSH 通道与私有信任快照，保留先发生的关闭故障。
         def close
           failure = nil
           # 一次取消须等待信道和信任快照均完成回收；同步故障仍保留首个。

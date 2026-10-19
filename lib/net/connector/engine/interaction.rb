@@ -6,6 +6,7 @@ module Net
   module Connector
     # 一组提示与响应规则；可调用响应支持一次性密码等动态挑战。
     class Interaction
+      # 读取交互触发规则及单次对话的触发次数上限。
       attr_reader :pattern, :limit
 
       # 校验提示模式、响应类型和次数限制，然后冻结规则定义。

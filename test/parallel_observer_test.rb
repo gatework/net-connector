@@ -2,10 +2,10 @@
 
 require "minitest/autorun"
 require "timeout"
-require_relative "../lib/net/connector/concurrency/observer"
+require_relative "../lib/net/connector/parallel/observer"
 
-class ConcurrencyObserverTest < Minitest::Test
-  Observer = Net::Connector::Concurrency::Observer
+class ParallelObserverTest < Minitest::Test
+  Observer = Net::Connector::Parallel::Observer
 
   def test_validates_before_creating_threads
     assert_raises(ArgumentError) { Observer.run(task: nil, stop: -> {}) {} }

@@ -8,7 +8,11 @@
 /pkg/
 /tmp/
 /*.gem
+/examples/backup.yml
 /examples/backups/
+/examples/topology_reports/
+/examples/topologys/
+/topologys/
 /backups/
 /exports/
 /logs/

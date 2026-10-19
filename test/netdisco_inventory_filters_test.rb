@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
+require "minitest/mock"
+require "stringio"
 require_relative "../lib/net/connector/netdisco"
 
 class NetdiscoInventoryFiltersTest < Minitest::Test
@@ -60,4 +62,51 @@ class NetdiscoInventoryFiltersTest < Minitest::Test
     assert_raises(ArgumentError) { N::Rules.new(include_names: [""]) }
     assert_raises(ArgumentError) { N::Rules.new(exclude_vendors: [:unknown]) }
   end
+
+  def test_blank_yaml_filter_entries_are_rejected_but_explicit_empty_arrays_are_allowed
+    %w[include_hosts exclude_hosts include_names exclude_names include_vendors exclude_vendors].each do |field|
+      ["   ", "\t", "\n"].each do |blank|
+        assert_raises(ArgumentError, field) { N::Config.parse("inventory" => { field => [blank] }) }
+      end
+      assert_equal "", N::Config.parse("inventory" => { field => [] }).values.first
+    end
+  end
+
+  def test_formal_cli_rejects_cidr_and_validates_every_repeated_host
+    invalid = [["--host", "192.0.2.0/31"], ["--host", "192.0.2.1", "--host", "192.0.2.99"],
+               ["--host", "192.0.2.99", "--host", "192.0.2.1"]]
+    rows = [row(ip: "192.0.2.0"), row(ip: "192.0.2.1")]
+    factory = ->(settings) { N::Fleet.new(settings: settings, inventory: Struct.new(:devices).new(rows)) }
+    invalid.each do |arguments|
+      status = N::CLI.new(argv: [*arguments, "--plan"], env: {}, output: StringIO.new, error: StringIO.new,
+                          fleet_factory: factory).run
+      assert_equal 2, status, arguments.inspect
+    end
+    output = StringIO.new
+    status = N::CLI.new(argv: %w[--host 192.0.2.0 --host 192.0.2.1 --plan], env: {}, output: output,
+                        error: StringIO.new, fleet_factory: factory).run
+    assert_equal 0, status
+    assert_equal(%w[192.0.2.0 192.0.2.1], JSON.parse(output.string).fetch("selected").map { |entry| entry.fetch("host") })
+  end
+
+  def test_previews_remove_terminal_controls_but_json_preserves_the_name_as_data
+    name = "edge\e]52;c;fixture\a"
+    inventory = Struct.new(:devices).new([row(name: name)])
+    [:backup, :topology].each do |mode|
+      output = StringIO.new
+      klass = mode == :backup ? N::CLI::Backup : N::CLI::Topology
+      N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { nil }]) do
+        assert_equal 0, klass.new(argv: ["--inventory-only", "--quiet"], env: {}, output: output, error: StringIO.new).run
+      end
+      refute_match(/[\e\a]/, output.string)
+      assert_includes output.string, "edge"
+      output = StringIO.new
+      N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { nil }]) do
+        assert_equal 0, klass.new(argv: ["--inventory-only", "--quiet", "--json"], env: {}, output: output, error: StringIO.new).run
+      end
+      refute_includes output.string, "\e"
+      assert_includes output.string, "\\u001b"
+    end
+  end
+
 end

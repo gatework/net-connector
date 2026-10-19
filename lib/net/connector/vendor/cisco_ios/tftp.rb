@@ -27,8 +27,10 @@ module Net
 
           private
 
+          # 生成 IOS 原生运行配置上传命令，实际目标由后续交互填写。
           def transfer_command(_target, **) = "copy running-config tftp:"
 
+          # 按 IOS 提示填写服务器和文件名，并只接受预期的目标确认。
           def transfer_interactions(target, **)
             [interaction(/Address\s+or\s+name\s+of\s+remote\s+host\s*\[[^\]]*\]\?\s*\z/i, "#{target.host}\n"),
              interaction(/Destination\s+filename\s*\[[^\]]*\]\?\s*\z/i, "#{target.path}\n")]

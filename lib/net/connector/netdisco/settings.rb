@@ -3,7 +3,7 @@
 require "json"
 require "digest"
 require_relative "../../connector"
-require_relative "../concurrency/pool"
+require_relative "../parallel/pool"
 require_relative "inventory/http"
 require_relative "inventory/postgres"
 require_relative "inventory/cache"
@@ -20,10 +20,10 @@ module Net
       # 活的凭据来源与不可变的批次策略分开保存；只有明确列出的非敏感字段进入快照。
       class Settings
         DEFAULT_BACKUP_DIRECTORY = "backups"
-        DEFAULT_CONCURRENCY = Concurrency::Pool::DEFAULT_CONCURRENCY
-        MAX_CONCURRENCY = Concurrency::Pool::MAX_CONCURRENCY
+        DEFAULT_PARALLEL = Parallel::Pool::DEFAULT_PARALLEL
+        MAX_PARALLEL = Parallel::Pool::MAX_PARALLEL
         # 这里只列可从环境读取的公开策略；凭据单独动态读取，其他内部键只供 YAML/CLI 使用。
-        ENVIRONMENT_KEYS = %w[ND_URL ND_CACHE_TTL NC_CONCURRENCY].freeze
+        ENVIRONMENT_KEYS = %w[ND_URL ND_CACHE_TTL NC_PARALLEL].freeze
         DEFAULT_PAGE_SIZE = Inventory::DEFAULTS.fetch(:page_size)
         UNSET = Object.new.freeze
         private_constant :UNSET
@@ -92,7 +92,7 @@ module Net
           inventory_cache_options
           inventory_cache_mode
           rules
-          concurrency
+          parallel
           limit_per_vendor
           log_directory
           tftp_root
@@ -162,15 +162,18 @@ module Net
             enabled: boolean("ND_CACHE_ENABLED", true) }.freeze
         end
 
+        # 将有效配置转换为拓扑模式、并发、目录和描述格式策略。
         def topology_options
           directory = value("NC_TOPOLOGY_DIRECTORY")
           Topology::Options.new(mode: raw("NC_TOPOLOGY_MODE", "plan"), cache_mode: raw("NC_TOPOLOGY_CACHE_MODE", raw("ND_CACHE_MODE", "prefer")),
-                              concurrency: integer("NC_TOPOLOGY_CONCURRENCY", concurrency), directory: directory && absolute_path(directory),
+                              parallel: integer("NC_TOPOLOGY_PARALLEL", parallel), directory: directory && absolute_path(directory),
                               description_format: raw("NC_TOPOLOGY_DESCRIPTION_FORMAT", "To_%{neighbor}_%{port}"),
+                              neighbor_name_prefixes: list("NC_TOPOLOGY_NEIGHBOR_NAME_PREFIXES"),
                               abbreviate_ports: boolean("NC_TOPOLOGY_ABBREVIATE", true), lowercase_ports: boolean("NC_TOPOLOGY_LOWERCASE", false),
                               limit: optional_integer("NC_TOPOLOGY_LIMIT"))
         end
 
+        # 解析并限制清单缓存为优先缓存、仅缓存或强制刷新模式。
         def inventory_cache_mode
           mode = raw("ND_CACHE_MODE", "prefer")
           unless (mode.is_a?(String) || mode.is_a?(Symbol)) && %w[prefer only refresh].include?(mode.to_s)
@@ -201,9 +204,9 @@ module Net
         end
 
         # 与 Worker 共用并发上限，非法值在任务与目录创建前失败。
-        def concurrency
-          count = integer("NC_CONCURRENCY", DEFAULT_CONCURRENCY)
-          raise ArgumentError, "NC_CONCURRENCY must be at most #{MAX_CONCURRENCY}" if count > MAX_CONCURRENCY
+        def parallel
+          count = integer("NC_PARALLEL", DEFAULT_PARALLEL)
+          raise ArgumentError, "NC_PARALLEL must be at most #{MAX_PARALLEL}" if count > MAX_PARALLEL
 
           count
         end
@@ -232,16 +235,23 @@ module Net
           files.merge(declared.transform_keys(&:to_sym))
         end
 
+        # 解析各厂商与设备的 TFTP 源接口策略。
         def tftp_source_interfaces = json("NC_TFTP_SOURCE_INTERFACES", {})
+        # 解析按精确设备地址覆盖的 TFTP 服务器映射。
         def tftp_servers = json("NC_TFTP_SERVERS", {})
 
+        # 实时读取服务器归档密码，不将凭据纳入公开策略快照。
+        def tftp_ssh_password = secret_value("NC_TFTP_SSH_PASSWORD")
+
+        # 解析并校验各服务器对应的核验目录，避免跨服务器复用证据。
         def tftp_verification_roots
           mapping = json("NC_TFTP_ROOTS", {})
           raise ArgumentError, "tftp.verification_roots must be a mapping" unless mapping.is_a?(Hash)
 
-          mapping.transform_values { |path| absolute_path(path) }
+          mapping.transform_values { |path| Tftp::Root.resolve(path) { |local| absolute_path(local) } }
         end
 
+        # 组合服务器、源文件、源接口和 VRF，建立完整不可变传输策略。
         def tftp_policy
           Tftp::Policy.new(server: tftp_server, servers: tftp_servers, verification_root: tftp_root,
                            verification_roots: tftp_verification_roots, source_files: tftp_source_files,
@@ -259,6 +269,7 @@ module Net
         # 解析参考配置中的厂商默认与精确设备覆盖；批次执行复用这个不可变选择器。
         def tftp_vrf_policy = self.class.vrf_policy(tftp_vrfs)
 
+        # 按厂商能力验证 VRF 默认值及精确主机覆盖规则。
         def self.vrf_policy(vrfs)
           Device::Policy.new(vrfs, vendors: %i[cisco_nxos hillstone]) do |name|
             unless name.nil? || (name.is_a?(String) && name.match?(/\A[A-Za-z0-9_][A-Za-z0-9_.-]*\z/))
@@ -282,7 +293,7 @@ module Net
         # 本机核验根目录属于策略快照，解析路径不证明文件已经上传。
         def tftp_root
           path = value("NC_TFTP_ROOT")
-          absolute_path(path) if path
+          Tftp::Root.resolve(path) { |local| absolute_path(local) } if path
         end
 
         # 端口、TLS 与连接超时进入固定策略；主机、数据库名和登录凭据仍从环境读取。
@@ -353,6 +364,7 @@ module Net
           snapshot(mode: :show_config).config_hash
         end
 
+        # 返回对象的安全摘要，不展开正文或认证凭据。
         def inspect = "#<#{self.class}>"
 
         protected
@@ -362,7 +374,7 @@ module Net
           {
             netdisco: inventory_options.merge(source: inventory_source, database: database_options, cache: inventory_cache_options, cache_mode: inventory_cache_mode),
             topology: topology_options.to_h,
-            backup: { directory: backup_directory, concurrency: concurrency, limit_per_vendor: limit_per_vendor },
+            backup: { directory: backup_directory, parallel: parallel, limit_per_vendor: limit_per_vendor },
             inventory: { include_hosts: list("NC_INCLUDE_HOSTS"),
                          exclude_hosts: list("NC_EXCLUDE_HOSTS"),
                          include_vendors: list("NC_INCLUDE_VENDORS"),
@@ -429,6 +441,7 @@ module Net
           end
         end
 
+        # 将共享清单配置逐项转换为合法预算与传输策略。
         def inventory_policy(defaults)
           defaults.to_h do |name, default|
             key = "ND_#{name.to_s.upcase}"
@@ -441,11 +454,13 @@ module Net
           end
         end
 
+        # 要求数据库清单具有查询文本，并校验绑定参数与公共预算。
         def postgres_options(options)
           query = value("ND_QUERY") || (raise ArgumentError, "ND_QUERY is required for postgres")
           Inventory::Postgres.options(query: query, query_params: json("ND_QUERY_PARAMS", []), **options)
         end
 
+        # 拒绝 HTTP 来源混用 SQL 选项，校验端点和公共预算。
         def http_options(options)
           if value("ND_QUERY") || value("ND_QUERY_PARAMS")
             raise ArgumentError, "SQL query settings require ND_SOURCE=postgres"
@@ -456,6 +471,7 @@ module Net
           options.merge(url: url).freeze
         end
 
+        # 列出公开配置允许映射的非敏感键，不将凭据混入快照。
         def non_secret_keys
           Config::FIELDS.values.flat_map { |section| section.values.map(&:first) }
         end
@@ -469,14 +485,16 @@ module Net
           raise ArgumentError, "#{legacy} is unsupported; use ND_ credentials or YAML via NC_CONFIG" if legacy
 
           removed = non_secret_keys - ENVIRONMENT_KEYS
-          removed << "NC_PROGRESS"
+          removed.concat(%w[NC_PROGRESS NC_CONCURRENCY NC_TOPOLOGY_CONCURRENCY])
           removed += Net::Connector.vendors.map { |vendor| "NC_#{vendor.to_s.upcase}_PROTOCOL" }
           key = removed.find { |name| @env.key?(name) }
           raise ArgumentError, "#{key} is no longer an environment setting; use YAML via NC_CONFIG or CLI options" if key
         end
 
+        # 判断配置键是否显式出现，保留缺失与显式空值的区别。
         def configured?(key) = !raw(key, UNSET).equal?(UNSET)
 
+        # 解析可选 JSON 配置，缺失时沿用默认值，解析错误只显示配置键。
         def json(key, default)
           text = value(key)
           text ? JSON.parse(text) : default
@@ -484,8 +502,10 @@ module Net
           raise ArgumentError, "#{key} must be valid JSON", cause: nil
         end
 
+        # 将有效逗号分隔配置拆分为去空白的非空条目列表。
         def list(key) = (value(key) || "").split(",").map(&:strip).reject(&:empty?)
 
+        # 将配置转换为正整数，无效时只报告配置键和类型要求。
         def integer(key, default)
           result = Integer(raw(key, default).to_s, 10)
           raise ArgumentError unless result.positive?
@@ -495,10 +515,12 @@ module Net
           raise ArgumentError, "#{key} must be a positive integer", cause: nil
         end
 
+        # 解析可省略的正整数参数，显式空值保持未设置。
         def optional_integer(key)
           integer(key, nil) unless raw(key).nil?
         end
 
+        # 将配置转换为有限正数，拒绝无穷、非法或非正数。
         def number(key, default)
           input = raw(key, default)
           result = input.is_a?(String) ? Float(input) : input
@@ -510,6 +532,7 @@ module Net
           raise ArgumentError, "#{key} must be a positive finite number", cause: nil
         end
 
+        # 只接受布尔值或 true/false 文本，不按普通 Ruby 真值隐式转换。
         def boolean(key, default)
           result = raw(key, default)
           return true if result == true || result == "true"
@@ -518,6 +541,7 @@ module Net
           raise ArgumentError, "#{key} must be true or false"
         end
 
+        # 读取可选字符串配置，将全空白文本视为未设置。
         def value(key)
           result = raw(key)
           raise ArgumentError, "#{key} must be a String" unless result.nil? || result.is_a?(String)
@@ -533,8 +557,10 @@ module Net
           result.dup.freeze if present?(result)
         end
 
+        # 只从实时凭据来源读取必需秘密，缺失时提示变量名而不显示值。
         def required_secret(key) = secret_value(key) || (raise ArgumentError, "#{key} is required")
 
+        # 判断输入是否为包含非空白内容的字符串。
         def present?(value) = value.is_a?(String) && !value.strip.empty?
       end
     end

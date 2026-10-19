@@ -16,10 +16,10 @@ class NetdiscoCacheIntegrationTest < Minitest::Test
     end
   end
 
-  def test_default_ttl_environment_concurrency_and_precedence
-    settings = Netdisco::Settings.new(env: { "NC_CONCURRENCY" => "3" }, defaults: { "NC_CONCURRENCY" => "2" })
-    assert_equal 3, settings.snapshot.concurrency
-    assert_equal 5, settings.with_overrides("NC_CONCURRENCY" => "5").snapshot.concurrency
+  def test_default_ttl_environment_parallel_and_precedence
+    settings = Netdisco::Settings.new(env: { "NC_PARALLEL" => "3" }, defaults: { "NC_PARALLEL" => "2" })
+    assert_equal 3, settings.snapshot.parallel
+    assert_equal 5, settings.with_overrides("NC_PARALLEL" => "5").snapshot.parallel
     assert_equal 259_200, settings.snapshot.inventory_cache_options.fetch(:ttl)
     assert settings.snapshot.inventory_cache_options.fetch(:enabled)
     assert_raises(ArgumentError) { settings.with_overrides("ND_CACHE_TTL" => "NaN").snapshot }

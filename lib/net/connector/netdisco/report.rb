@@ -10,19 +10,23 @@ module Net
       class Report
         extend Forwardable
         SUCCESS_STATUSES = %i[backed_up reported_uploaded].freeze
-        ATTEMPTED_STATUSES = [*SUCCESS_STATUSES, :failed, :saved_with_error, :reported_with_error].freeze
+        ATTEMPTED_STATUSES = [*SUCCESS_STATUSES, :failed, :saved_with_error, :reported_with_error, :interrupted].freeze
         IGNORABLE_STATUSES = %i[filtered sample_limit].freeze
         private_constant :SUCCESS_STATUSES, :ATTEMPTED_STATUSES, :IGNORABLE_STATUSES
 
+        # 读取固定批次、成功策略、计时及报告诊断。
         attr_reader :batch, :policy, :duration_ms, :report_diagnostic, :log_directory
+        # 将批次字段与状态查询委托给唯一批次对象，避免维护第二份执行结果。
         def_delegators :@batch, *Batch.members, :success?, :status, :counts
 
+        # 只接受严格、所选设备或服务器核验三种成功策略。
         def self.validate_policy!(policy)
           raise ArgumentError, "success_policy must be strict, selected or verified" unless %i[strict selected verified].include?(policy)
 
           policy
         end
 
+        # 校验批次、成功策略与诊断元数据，固定报告对象。
         def initialize(batch, policy: :strict, duration_ms: nil, report_diagnostic: nil, log_directory: nil)
           self.class.validate_policy!(policy)
           raise ArgumentError, "report requires a Batch" unless batch.instance_of?(Batch)
@@ -41,6 +45,7 @@ module Net
 
         # 严格完成情况与所选成功策略分别保留，未知状态不能当作可忽略跳过。
         def policy_success?
+          return false if batch.interrupted
           return batch.success? if policy == :strict
           return false unless callback_errors.empty? && report_error.nil?
 
@@ -51,11 +56,13 @@ module Net
             statuses.keys.all? { |status| SUCCESS_STATUSES.include?(status) || IGNORABLE_STATUSES.include?(status) }
         end
 
+        # 返回经校验的更新快照，未更新时沿用当前对象。
         def with(**attributes)
           self.class.new(batch.with(**attributes), policy: policy, duration_ms: duration_ms,
                           report_diagnostic: report_diagnostic, log_directory: log_directory)
         end
 
+        # 保留设备结果，单独记录报告保存失败及可确认的提交位置。
         def with_report_error(error, location: nil)
           diagnostic = Diagnostic.from(error, phase: :report)
           self.class.new(batch.with(report_location: location, report_error: diagnostic.error_type),
@@ -81,6 +88,7 @@ module Net
         # 手工构造的批次同样经过诊断白名单，不序列化任意异常内容。
         def summary = statistics.merge(devices: device_summaries)
 
+        # 返回对象的安全摘要，不展开正文或认证凭据。
         def inspect = "#<#{self.class} policy=#{policy} status=#{status} policy_success=#{policy_success?}>"
 
         private
@@ -90,7 +98,7 @@ module Net
           statuses = counts
           succeeded = SUCCESS_STATUSES.sum { |status| statuses.fetch(status, 0) }
           partial = statuses.fetch(:saved_with_error, 0) + statuses.fetch(:reported_with_error, 0)
-          failed = statuses.fetch(:failed, 0)
+          failed = statuses.fetch(:failed, 0) + statuses.fetch(:interrupted, 0)
           {
             mode: mode, status: status, started_at: started_at.iso8601, finished_at: finished_at.iso8601,
             total: outcomes.size,
@@ -101,10 +109,12 @@ module Net
           }
         end
 
+        # 仅以 TFTP 回执中的服务器核验状态判断是否已有文件证据。
         def server_verified?(outcome)
           outcome.backup.is_a?(TftpReceipt) && outcome.backup.verification == :server_verified
         end
 
+        # 分别输出设备上传回执、服务器核验和双端归档的受控元数据。
         def tftp_summary(outcome)
           receipt = outcome.backup if outcome.backup.is_a?(TftpReceipt)
           { remote_path: receipt&.path, server: receipt&.server,
@@ -115,6 +125,7 @@ module Net
             bytes: receipt&.server_bytes, sha256: receipt&.server_sha256 }
         end
 
+        # 将每台设备转换为带产物、计时与白名单诊断的公开报告行。
         def device_summaries
           outcomes.map do |outcome|
             diagnostic = outcome.diagnostic || Diagnostic.new(error_code: outcome.error_code, error_type: outcome.error_type)

@@ -39,10 +39,11 @@ module Net
         # 两个厂商的上传完成消息使用相同的文本及进度格式。
         def completed_upload?(line)
           line.match?(/\A
-            (?:File\s+)?(?:transfer|upload)(?:\s+(?:is|was))?\s+
+            (?:File\s+)?(?:transfer(?:red)?|upload(?:ed)?)(?:\s+(?:is|was))?\s+
             (?:success(?:ful(?:ly)?)?|succeeded|complete(?:d)?(?:\s+successfully)?)[.!]?
             \z/ix) ||
-            line.match?(/\A[1-9]\d*\s+bytes?\s+sent(?:\s+in\s+[\d.]+\s+(?:secs?|seconds?))?[.!]?\z/i) ||
+            line.match?(/\A(?:TFTP:\s*)?[1-9]\d*\s+bytes?\s+sent
+              (?:\s+in\s+[\d.]+\s+(?:secs?|seconds?|second\(s\)))?[.!]?\z/ix) ||
             completed_progress?(line)
         end
       end

@@ -109,6 +109,7 @@ module Net
             end
           end
 
+          # 返回对象的安全摘要，不展开正文或认证凭据。
           def inspect = "#<#{self.class}>"
 
           private
@@ -135,6 +136,7 @@ module Net
             rows
           end
 
+          # 按 libpq 非阻塞状态等待连接，连接超时和总清单预算共同约束等待。
           def wait_for_connection(connection, budget)
             deadline = monotonic + @connection_options.fetch(:connect_timeout, budget.remaining).to_f
             loop do
@@ -175,11 +177,13 @@ module Net
             options.transform_values { |value| value.is_a?(String) ? value.dup.freeze : value }.freeze
           end
 
+          # 将本次剩余预算设为事务内语句超时，防止分页重置总期限。
           def set_statement_timeout(connection, budget)
             milliseconds = [(budget.remaining * 1000).ceil, 2_147_483_647].min
             connection.exec_params("SELECT set_config('statement_timeout', $1, true)", [milliseconds.to_s]).clear
           end
 
+          # 逐页读取只读游标，限制总页数并只返回完整清单。
           def inventory(connection, budget)
             rows = []
             @options.fetch(:max_pages).times do
@@ -208,6 +212,7 @@ module Net
             count
           end
 
+          # 校验列名和设备字段，累计所有传输列的预算后仅保存白名单数据。
           def append_rows(result, rows, budget, response_bytes)
             fields = result.fields
             unless fields.include?("ip") && fields.uniq == fields
@@ -228,6 +233,7 @@ module Net
             response_bytes
           end
 
+          # 读取单调时钟秒数，避免系统校时影响期限与耗时计算。
           def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
         end
       end

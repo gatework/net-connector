@@ -47,7 +47,7 @@ class NetdiscoProgressTest < Minitest::Test
       fleet = Netdisco::Fleet.new(inventory: inventory, settings: settings, connector_factory: factory,
                                   credentials: ->(_) { { username: "audit", password: "private-password" } })
       plan = fleet.plan_backup
-      progress.plan(plan, concurrency: 1)
+      progress.plan(plan, parallel: 1)
       report = fleet.backup_all(directory: directory, plan: plan, on_start: progress.method(:start), on_result: progress.method(:result))
       progress.finish(report)
       assert report.success?, report.summary.inspect
@@ -67,7 +67,7 @@ class NetdiscoProgressTest < Minitest::Test
     progress = Netdisco::Progress.new(io: output, verbose: true)
     devices = 10.times.map { |i| Struct.new(:host, :vendor).new("192.0.2.#{i + 1}", :h3c) }
     plan = Struct.new(:ready, :inventory).new(devices, devices + [nil, nil])
-    progress.plan(plan, concurrency: 4)
+    progress.plan(plan, parallel: 4)
     devices.map do |device|
       Thread.new do
         progress.start(device)
@@ -88,7 +88,7 @@ class NetdiscoProgressTest < Minitest::Test
       output = StringIO.new
       progress = Netdisco::Progress.new(io: output, enabled: enabled, verbose: true)
       device = Struct.new(:host, :vendor).new("192.0.2.1", :h3c)
-      progress.plan(Struct.new(:ready, :inventory).new([device], [device]), concurrency: 1)
+      progress.plan(Struct.new(:ready, :inventory).new([device], [device]), parallel: 1)
       progress.start(device)
       progress.result(Netdisco::Outcome.new(device: device, status: :reported_uploaded, backup: nil,
                                             error_code: nil, error_type: nil, duration_ms: 10))
@@ -105,7 +105,7 @@ class NetdiscoProgressTest < Minitest::Test
     output.define_singleton_method(:tty?) { true }
     progress = Netdisco::Progress.new(io: output)
     device = Struct.new(:host, :vendor).new("192.0.2.1", :h3c)
-    progress.plan(Struct.new(:ready, :inventory).new([device], [device]), concurrency: 1)
+    progress.plan(Struct.new(:ready, :inventory).new([device], [device]), parallel: 1)
     progress.start(device)
     assert_includes output.string, "登录 1"
     progress.result(Netdisco::Outcome.new(device: device, status: :failed, backup: nil,
@@ -124,7 +124,7 @@ class NetdiscoProgressTest < Minitest::Test
     clock = 100.0
     progress.define_singleton_method(:monotonic) { clock }
     device = Struct.new(:host, :vendor).new("192.0.2.1", :h3c)
-    progress.plan(Struct.new(:ready, :inventory).new([device], [device]), concurrency: 1)
+    progress.plan(Struct.new(:ready, :inventory).new([device], [device]), parallel: 1)
     progress.start(device)
     clock += 12
     progress.tick
@@ -275,7 +275,7 @@ class NetdiscoProgressTest < Minitest::Test
     clock = 100.0
     progress.define_singleton_method(:monotonic) { clock }
     devices = 10.times.map { |i| Struct.new(:host, :vendor).new("192.0.2.#{i + 1}", :h3c) }
-    progress.plan(Struct.new(:ready, :inventory).new(devices, devices), concurrency: 2)
+    progress.plan(Struct.new(:ready, :inventory).new(devices, devices), parallel: 2)
     devices.each_with_index do |device, index|
       progress.start(device)
       clock += 2
@@ -285,6 +285,26 @@ class NetdiscoProgressTest < Minitest::Test
     end
     assert_includes output.string, "0.5 台/秒"
     assert_includes output.string, "剩余 00:00:00"
+  end
+
+  def test_topology_pending_evidence_is_quiet_by_default_and_explained_in_verbose_mode
+    [false, true].each do |verbose|
+      output = StringIO.new
+      progress = Netdisco::Progress.new(io: output, verbose: verbose)
+      device = Struct.new(:host, :vendor).new("192.0.2.1", :h3c)
+      progress.operation_plan([device], parallel: 1, label: "拓扑发现/规划")
+      progress.start(device)
+      progress.operation_result(device: device, status: :unverified, duration_ms: 10,
+                                issues: [{ interface: "GE1/0/1", code: :unknown_neighbor_name }])
+      if verbose
+        assert_includes output.string, "邻居未提供名称 1 个接口"
+        assert_includes output.string, "含待核实接口"
+      else
+        refute_includes output.string, device.host
+        assert_includes output.string, "待核实 1 失败 0"
+      end
+      refute_includes output.string, "unverified"
+    end
   end
 
 end

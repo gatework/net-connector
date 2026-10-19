@@ -6,7 +6,7 @@ require "openssl"
 require "timeout"
 require "uri"
 require_relative "budget"
-require_relative "../../concurrency/observer"
+require_relative "../../parallel/observer"
 
 module Net
   module Connector
@@ -21,6 +21,7 @@ module Net
           OPTIONAL_FIELDS = FIELDS.drop(1).freeze
           private_constant :OPTIONAL_FIELDS
 
+          # 校验 HTTP 专用选项与共享清单资源上限，返回不可变策略。
           def self.options(**values)
             raise ArgumentError, "unknown HTTP inventory options" unless (values.keys - DEFAULTS.keys).empty?
 
@@ -30,6 +31,7 @@ module Net
             Inventory.options(**values.except(:allow_insecure_http)).merge(allow_insecure_http: allow_insecure_http).freeze
           end
 
+          # 只接受无凭据、查询和片段的 HTTP(S) 基地址，并执行明文传输策略。
           def self.validate_url!(url, allow_insecure_http: true)
             uri = URI.parse(url.to_s)
             unless uri.is_a?(URI::HTTP) && uri.host && !uri.userinfo && !uri.query && !uri.fragment
@@ -54,6 +56,7 @@ module Net
             @requester = requester
           end
 
+          # 在同一次预算和连接作用域内认证、分页并交付完整清单。
           def devices
             budget = Inventory::Budget.new(@options, clock: method(:monotonic))
             with_connection(budget) do |http|
@@ -64,10 +67,13 @@ module Net
             end
           end
 
+          # 返回对象的安全摘要，不展开正文或认证凭据。
           def inspect = "#<#{self.class} url=#{@url.scheme}://#{@url.host}>"
 
           private
 
+          # 按页累积清单并检查分页是否前进，遇兼容响应时改用查询接口。
+          # 分页和兼容查询共享一个总预算；只有完整且有效的清单才能交给规划器。
           def inventory(token, budget, http)
             rows = []
             seen_ips = {}
@@ -90,6 +96,7 @@ module Net
             query_required_devices(token, budget, http)
           end
 
+          # 调用需要查询参数的兼容接口，验证完整响应后只保留清单字段。
           def query_required_devices(token, budget, http)
             uri = endpoint("api/v1/search/device")
             uri.query = URI.encode_www_form(q: "%", seeallcolumns: true)
@@ -98,6 +105,7 @@ module Net
             rows.map { |row| row.slice(*FIELDS) }.uniq
           end
 
+          # 以基本认证取得 API key，拒绝缺失或含换行的令牌。
           def authenticate(budget, http)
             uri = endpoint("login")
             request = ::Net::HTTP::Post.new(uri)
@@ -109,10 +117,12 @@ module Net
             token
           end
 
+          # 构造携带 API key 请求头的清单读取请求。
           def authorized_get(uri, token)
             ::Net::HTTP::Get.new(uri).tap { |request| request["Authorization"] = "Apikey #{token}" }
           end
 
+          # 在固定基地址下组合接口路径，不接受外部任意端点。
           def endpoint(path)
             @url.dup.tap { |uri| uri.path = "#{uri.path.chomp("/")}/#{path}" }
           end
@@ -142,6 +152,7 @@ module Net
             raise Error.new("Netdisco connection failed (#{error.class})", code: :connection_failed), cause: nil
           end
 
+          # 使用注入请求器或当前 HTTP 连接读取正文，并执行同一清单预算。
           def request_body(uri, request, budget, http)
             unless @requester
               apply_timeouts(http, budget)
@@ -201,9 +212,10 @@ module Net
               end
             end
             stop = -> { mutex.synchronize { finished = true; changed.broadcast } }
-            Concurrency::Observer.run(task: task, stop: stop, &)
+            Parallel::Observer.run(task: task, stop: stop, &)
           end
 
+          # 逐块检查正文预算并积累字节；超限时关闭自有连接，避免继续下载。
           def read_response(http, request, budget)
             body = "".b
             failure = nil
@@ -226,15 +238,18 @@ module Net
             raise failure || error, cause: nil
           end
 
+          # 按总预算剩余时间收紧连接、读取和写入超时。
           def http_timeouts(budget)
             remaining = budget.remaining
             { open_timeout: [10, remaining].min, read_timeout: [60, remaining].min, write_timeout: [10, remaining].min }
           end
 
+          # 将当前预算推导的超时同步到自有 HTTP 连接。
           def apply_timeouts(http, budget)
             http_timeouts(budget).each { |name, value| http.public_send(:"#{name}=", value) }
           end
 
+          # 校验清单行及可选字段，同时将原始记录数计入总预算。
           def validate_rows!(rows, budget)
             unless rows.is_a?(Array)
               raise Error.new("Netdisco returned an invalid device inventory", code: :invalid_inventory), cause: nil
@@ -249,6 +264,7 @@ module Net
             raise Error.new("Netdisco returned an invalid device inventory", code: :invalid_inventory), cause: nil
           end
 
+          # 要求用户名密码与 API key 二选一，并拒绝凭据中的控制分隔符。
           def validate_credentials!(username, password, api_key)
             unless (api_key.nil? && present?(username) && present?(password)) ||
                    (present?(api_key) && username.nil? && password.nil?)
@@ -259,8 +275,10 @@ module Net
             raise ArgumentError, "credentials must be single-line strings"
           end
 
+          # 读取单调时钟秒数，避免系统校时影响期限与耗时计算。
           def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
+          # 判断输入是否为包含非空白内容的字符串。
           def present?(value) = value.is_a?(String) && !value.strip.empty?
         end
       end

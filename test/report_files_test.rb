@@ -24,7 +24,7 @@ class ReportFilesTest < Minitest::Test
       define_method(:summary) { summaries << true; super() }
     end
     Dir.mktmpdir do |directory|
-      result = N::Report::Files.write(report_class.new(original.batch), directory: directory, plan: plan, concurrency: 1)
+      result = N::Report::Files.write(report_class.new(original.batch), directory: directory, plan: plan, parallel: 1)
       assert result.policy_success?
       assert_equal 1, JSON.parse(File.read(result.report_location)).fetch("devices").size
       assert_includes File.read(File.join(directory, "summary.txt")), "成功：1"
@@ -43,7 +43,7 @@ class ReportFilesTest < Minitest::Test
         writer.call(path, contents)
       end
       Net::Connector::Storage::AtomicFile.stub(:write, failure) do
-        result = N::Report::Files.write(original, directory: directory, plan: plan, concurrency: 1)
+        result = N::Report::Files.write(original, directory: directory, plan: plan, parallel: 1)
         refute result.policy_success?
         assert_equal "IOError", result.report_error
         assert_nil result.report_location
@@ -59,7 +59,7 @@ class ReportFilesTest < Minitest::Test
     original, plan = fixture
     Dir.mktmpdir do |directory|
       N::Report::Text.stub(:write, ->(**) { raise IOError, "private failure details" }) do
-        result = N::Report::Files.write(original, directory: directory, plan: plan, concurrency: 1)
+        result = N::Report::Files.write(original, directory: directory, plan: plan, parallel: 1)
         refute result.policy_success?
         document = JSON.parse(File.read(result.report_location))
         refute document.fetch("policy_success")
@@ -87,7 +87,7 @@ class ReportFilesTest < Minitest::Test
           end
           N::Report::Text.stub(:write, ->(**) { raise IOError, "text unavailable" }) do
             Net::Connector::Storage::AtomicFile.stub(:write, failure) do
-              result = N::Report::Files.write(original, directory: directory, plan: plan, concurrency: 1)
+              result = N::Report::Files.write(original, directory: directory, plan: plan, parallel: 1)
               assert_equal destination, result.report_location
               assert_equal "IOError", result.report_error
               refute result.policy_success?
@@ -102,11 +102,11 @@ class ReportFilesTest < Minitest::Test
   def test_later_diagnostic_update_preserves_the_first_report_failure_and_committed_path
     original, plan = fixture
     Dir.mktmpdir do |directory|
-      original = N::Report::Files.write(original, directory: directory, plan: plan, concurrency: 1)
+      original = N::Report::Files.write(original, directory: directory, plan: plan, parallel: 1)
       failed = original.with_report_error(IOError.new("first failure"), location: original.report_location)
       updated = failed.with(callback_errors: [{ host: nil, error_type: "IOError" }])
       N::Report::Text.stub(:write, ->(**) { raise Errno::ENOSPC }) do
-        result = N::Report::Files.write(updated, directory: directory, plan: plan, concurrency: 1)
+        result = N::Report::Files.write(updated, directory: directory, plan: plan, parallel: 1)
         assert_equal "IOError", result.report_error
         assert_equal failed.report_diagnostic, result.report_diagnostic
         document = JSON.parse(File.read(result.report_location))
@@ -114,7 +114,7 @@ class ReportFilesTest < Minitest::Test
         assert_equal 1, document.fetch("callback_errors").size
       end
       Net::Connector::Storage::AtomicFile.stub(:write, ->(*) { raise Errno::ENOSPC }) do
-        result = N::Report::Files.write(updated, directory: directory, plan: plan, concurrency: 1)
+        result = N::Report::Files.write(updated, directory: directory, plan: plan, parallel: 1)
         assert_equal original.report_location, result.report_location
         assert_equal "IOError", result.report_error
         assert_equal failed.report_diagnostic, result.report_diagnostic

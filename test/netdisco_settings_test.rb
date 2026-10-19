@@ -19,8 +19,8 @@ class NetdiscoSettingsTest < Minitest::Test
     assert_equal false, policy.public_config.fetch(:netdisco).fetch(:allow_insecure_http)
     assert_equal 5, Settings.new(env: {}).limit_per_vendor(tftp: true)
     [nil, false].each do |value|
-      error = assert_raises(ArgumentError) { Settings.new(env: {}, overrides: { "NC_CONCURRENCY" => value }).snapshot }
-      assert_equal "NC_CONCURRENCY must be a positive integer", error.message
+      error = assert_raises(ArgumentError) { Settings.new(env: {}, overrides: { "NC_PARALLEL" => value }).snapshot }
+      assert_equal "NC_PARALLEL must be a positive integer", error.message
       assert_nil error.cause
     end
   end
@@ -58,7 +58,7 @@ class NetdiscoSettingsTest < Minitest::Test
 
   def test_policy_snapshot_copies_only_non_secret_values_and_is_immutable
     secret = "generated-#{rand(1_000_000)}"
-    defaults = { "NC_PROTOCOL" => +"ssh", "NC_CONCURRENCY" => "2" }
+    defaults = { "NC_PROTOCOL" => +"ssh", "NC_PARALLEL" => "2" }
     env = { "NC_DEVICE_USERNAME" => secret, "NC_DEVICE_PASSWORD" => secret,
             "ND_API_KEY" => secret, "ND_URL" => "https://inventory.example",
             "UNRELATED_SECRET" => secret }
@@ -67,11 +67,11 @@ class NetdiscoSettingsTest < Minitest::Test
     assert_predicate policy, :frozen?
     assert_equal :ssh, policy.connection_options(:h3c).fetch(:protocol)
     defaults.fetch("NC_PROTOCOL").replace("telnet")
-    defaults["NC_CONCURRENCY"] = "3"
+    defaults["NC_PARALLEL"] = "3"
     assert_equal :ssh, policy.connection_options(:h3c).fetch(:protocol)
-    assert_equal 2, policy.concurrency
+    assert_equal 2, policy.parallel
     assert_equal :telnet, settings.snapshot(mode: :backup).connection_options(:h3c).fetch(:protocol)
-    assert_equal 3, settings.snapshot(mode: :backup).concurrency
+    assert_equal 3, settings.snapshot(mode: :backup).parallel
     [policy.inspect, Marshal.dump(policy), policy.public_config.to_json, settings.inspect].each do |text|
       refute_includes text, secret
     end
@@ -80,17 +80,17 @@ class NetdiscoSettingsTest < Minitest::Test
 
   def test_overrides_preserve_fixed_policy_and_dynamic_credentials
     env = { "NC_DEVICE_USERNAME" => "first", "NC_DEVICE_PASSWORD" => "first-pass" }
-    defaults = { "NC_PROTOCOL" => "ssh", "NC_CONCURRENCY" => "2", "ND_MAX_DEVICES" => "12", "NC_MAX_SCRIPT_OUTPUT_BYTES" => "1024",
+    defaults = { "NC_PROTOCOL" => "ssh", "NC_PARALLEL" => "2", "ND_MAX_DEVICES" => "12", "NC_MAX_SCRIPT_OUTPUT_BYTES" => "1024",
                  "NC_VENDOR_PROTOCOLS" => '{"cisco_ios":"telnet"}' }
     settings = Settings.new(env: env, defaults: defaults).for_run
-    defaults.merge!("NC_PROTOCOL" => "telnet", "NC_CONCURRENCY" => "3")
+    defaults.merge!("NC_PROTOCOL" => "telnet", "NC_PARALLEL" => "3")
     env.merge!("NC_DEVICE_USERNAME" => "second", "NC_DEVICE_PASSWORD" => "second-pass")
     log_directory = +"/tmp/net-connector-policy-logs"
     updated = settings.with_overrides("NC_LOG_DIRECTORY" => log_directory)
     log_directory.replace("/tmp/changed-after-override")
     policy = updated.snapshot
     assert_equal :ssh, policy.connection_options(:h3c).fetch(:protocol)
-    assert_equal 2, policy.concurrency
+    assert_equal 2, policy.parallel
     assert_equal 12, policy.inventory_options.fetch(:max_devices)
     assert_equal 1024, policy.connection_options(:h3c).fetch(:max_script_output_bytes)
     assert_equal :telnet, policy.connection_options(:cisco_ios).fetch(:protocol)
@@ -158,7 +158,7 @@ class NetdiscoSettingsTest < Minitest::Test
       [first, second].each { |path| Dir.mkdir(path) }
       begin
         Dir.chdir(first)
-        settings = Settings.new(env: {}, defaults: { "NC_KNOWN_HOSTS" => "known_hosts", "NC_CONCURRENCY" => "1" })
+        settings = Settings.new(env: {}, defaults: { "NC_KNOWN_HOSTS" => "known_hosts", "NC_PARALLEL" => "1" })
         observed = []
         fleet = Netdisco::Fleet.new(settings: settings, inventory: Struct.new(:devices).new(rows), report_store: nil,
                                     credentials: ->(*) { Dir.chdir(second); { username: "reader" } },
@@ -249,7 +249,7 @@ class NetdiscoSettingsTest < Minitest::Test
   def test_running_batch_keeps_policy_but_reads_credentials_for_each_device
     Dir.mktmpdir do |directory|
       env = { "NC_DEVICE_USERNAME" => "first", "NC_DEVICE_PASSWORD" => "first-pass" }
-      defaults = { "NC_CONCURRENCY" => "1", "NC_PROTOCOL" => "ssh",
+      defaults = { "NC_PARALLEL" => "1", "NC_PROTOCOL" => "ssh",
                    "NC_LOG_DIRECTORY" => File.join(directory, "logs-one"), "NC_MAX_SCRIPT_OUTPUT_BYTES" => "1024" }
       seen = []
       factory = lambda do |device, options|
@@ -260,7 +260,7 @@ class NetdiscoSettingsTest < Minitest::Test
                                   connector_factory: factory, report_store: nil)
       rotate = lambda do |_result|
         defaults.merge!("NC_MAX_SCRIPT_OUTPUT_BYTES" => "2048", "NC_EXCLUDE_HOSTS" => "192.0.2.1")
-        defaults.merge!("NC_PROTOCOL" => "telnet", "NC_CONCURRENCY" => "2",
+        defaults.merge!("NC_PROTOCOL" => "telnet", "NC_PARALLEL" => "2",
                         "NC_HOST_KEY_POLICY" => "accept_new", "NC_LOG_LEVEL" => "warn",
                         "NC_LOG_DIRECTORY" => File.join(directory, "logs-two"))
         env.merge!("NC_DEVICE_USERNAME" => "second", "NC_DEVICE_PASSWORD" => "second-pass")
@@ -333,7 +333,7 @@ class NetdiscoSettingsTest < Minitest::Test
     invalid = {
       "NC_PROTOCOL" => "invalid", "NC_H3C_PROTOCOL" => "invalid",
       "NC_LOG_LEVEL" => "trace", "NC_HOST_KEY_POLICY" => "disabled",
-      "NC_SAMPLE_PER_VENDOR" => "6", "NC_CONCURRENCY" => "51",
+      "NC_SAMPLE_PER_VENDOR" => "6", "NC_PARALLEL" => "501",
       "ND_MAX_PAGES" => "0", "ND_MAX_DEVICES" => "-1",
       "ND_MAX_RESPONSE_BYTES" => "1.5", "ND_MAX_INVENTORY_BYTES" => "0",
       "ND_INVENTORY_TIMEOUT" => "Infinity", "ND_ALLOW_INSECURE_HTTP" => "maybe",
@@ -378,7 +378,7 @@ class NetdiscoSettingsTest < Minitest::Test
           inventory_timeout: 2.5
           allow_insecure_http: false
         backup:
-          concurrency: 2
+          parallel: 2
           limit_per_vendor: 3
         ssh:
           max_script_output_bytes: 1024
@@ -393,11 +393,11 @@ class NetdiscoSettingsTest < Minitest::Test
       env["NC_DEVICE_PASSWORD"] = "second"
       device = Netdisco::Device.from_row(rows.first, rules: policy.rules)
       assert_equal "second", settings.device_credentials_for(device).fetch(:password)
-      status, output, error = cli(env, ["--config", path, "--show-config", "--concurrency", "5", "--limit-per-vendor", "1",
+      status, output, error = cli(env, ["--config", path, "--show-config", "--parallel", "5", "--limit-per-vendor", "1",
                                        "--max-script-output-bytes", "4096"])
       assert_equal 0, status, error
       values = JSON.parse(output)
-      assert_equal 5, values.fetch("backup").fetch("concurrency")
+      assert_equal 5, values.fetch("backup").fetch("parallel")
       assert_equal 1, values.fetch("backup").fetch("limit_per_vendor")
       assert_equal 20, values.fetch("netdisco").fetch("max_devices")
       assert_equal 4096, values.fetch("ssh").fetch("max_script_output_bytes")
@@ -438,7 +438,7 @@ class NetdiscoSettingsTest < Minitest::Test
       path = File.join(directory, "backup.yml")
       File.write(path, <<~YAML)
         backup:
-          concurrency: 2
+          parallel: 2
         inventory:
           include_hosts: [192.0.2.1]
         netdisco:
@@ -451,7 +451,7 @@ class NetdiscoSettingsTest < Minitest::Test
       YAML
       env = { "NC_CONFIG" => path }
       settings = Settings.from_env(env: env).snapshot
-      assert_equal 2, settings.concurrency
+      assert_equal 2, settings.parallel
       assert_equal 8, settings.inventory_options.fetch(:max_devices)
       assert_equal :telnet, settings.connection_options(:h3c).fetch(:protocol)
       assert_equal :ssh, settings.connection_options(:huawei).fetch(:protocol)

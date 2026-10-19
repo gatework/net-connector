@@ -8,8 +8,10 @@ module Net
     class Log
       # 在敏感作用域结束前冻结安全副本；应用 formatter 可直接读取字段。
       class Event
+        # 读取已经脱敏并冻结的事件名及标量字段。
         attr_reader :name, :fields
 
+        # 在当前脱敏范围内复制事件名和白名单标量字段，并冻结安全副本。
         def initialize(name, fields, redactor:)
           @name = safe_text(name.is_a?(String) || name.is_a?(Symbol) ? name.to_s : "custom", redactor).freeze
           @fields = fields.each_with_object({}) do |(key, value), result|
@@ -25,6 +27,7 @@ module Net
         # 与文本呈现共用同一安全记录，调用方不能借 formatter 取得原始秘密。
         def to_h = { event: name, **fields }.freeze
 
+        # 格式化主机、事件说明和安全字段，供文本日志直接输出。
         def to_s
           details = to_h.reject { |key, _| key == :host }.map { |key, value| "#{key}=#{token(value)}" }.join(" ")
           "[host=#{token(fields[:host])}] #{Messages.format(name, fields)} | #{details}"
@@ -35,6 +38,7 @@ module Net
 
         private
 
+        # 只接受可安全展示的标量，其他对象统一遮蔽且不调用其字符串方法。
         def safe_value(value, redactor)
           case value
           when String, Symbol
@@ -49,11 +53,13 @@ module Net
           end
         end
 
+        # 脱敏后渲染终端文本，再次过滤并去除控制符。
         def safe_text(text, redactor)
           rendered = Terminal::Renderer.render(redactor.call(text))
           redactor.call(rendered).force_encoding(Encoding::UTF_8).scrub.gsub(/[[:cntrl:]]+/, " ").strip
         end
 
+        # 将日志字段格式化为单个可辨识词，必要时保留字符串引号。
         def token(value)
           return "nil" if value.nil?
 

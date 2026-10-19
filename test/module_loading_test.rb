@@ -10,7 +10,7 @@ class ModuleLoadingTest < Minitest::Test
   VENDORS = { "h3c" => "H3c", "h3c_wireless" => "H3cWireless", "cisco_ios" => "CiscoIos",
               "cisco_nxos" => "CiscoNxos", "huawei" => "Huawei", "hillstone" => "Hillstone",
               "palo_alto" => "PaloAlto", "radware" => "Radware",
-              "topsec" => "Topsec", "fortinet" => "Fortinet", "juniper" => "Juniper" }.freeze
+              "topsec" => "Topsec", "fortinet" => "Fortinet", "juniper" => "Juniper", "centec" => "Centec" }.freeze
 
   def test_device_entry_points_load_before_or_after_the_public_api
     paths = %w[net/connector/device/profile net/connector/device/running_config/strategy
@@ -143,12 +143,12 @@ class ModuleLoadingTest < Minitest::Test
     [paths, paths.reverse].each do |order|
       result = isolated(<<~RUBY)
         #{order.map { |path| "require #{path.inspect}" }.join("\n")}
-        values = Net::Connector::Netdisco::CLI::Options.parse(argv: ["--concurrency", "7"])
-        puts JSON.generate(concurrency: values[:environment]["NC_CONCURRENCY"],
+        values = Net::Connector::Netdisco::CLI::Options.parse(argv: ["--parallel", "7"])
+        puts JSON.generate(parallel: values[:environment]["NC_PARALLEL"],
                            connection: Net::Connector::Netdisco::CLI::Credentials.respond_to?(:resolve),
                            text: Net::Connector::Netdisco::Report::Text.respond_to?(:write))
       RUBY
-      assert_equal "7", result.fetch("concurrency")
+      assert_equal "7", result.fetch("parallel")
       assert result.fetch("connection")
       assert result.fetch("text")
     end
@@ -156,7 +156,7 @@ class ModuleLoadingTest < Minitest::Test
 
   def test_netdisco_entry_points_declare_their_dependencies
     cases = {
-      "config" => 'N::Config.parse("backup" => { "concurrency" => 2 }) == { "NC_CONCURRENCY" => "2" }',
+      "config" => 'N::Config.parse("backup" => { "parallel" => 2 }) == { "NC_PARALLEL" => "2" }',
       "config/initializer" => 'require "tmpdir"; require "stringio"; Dir.mktmpdir { |root| path = File.join(root, "settings.yml"); N::Config::Initializer.new(output: StringIO.new).create(path: path, document: {}, interactive: false) == :created && N::Config.load(path).empty? }',
       "device/policy" => 'N::Device::Policy.new({ h3c: "startup.cfg" }, vendors: [:h3c]) { |value| value }.for(vendor: :h3c, host: "192.0.2.1") == "startup.cfg"',
       "topology/options" => 'N::Topology::Options.new.format(neighbor: "edge", port: "Gi1") == "To_edge_Gi1"',
@@ -165,10 +165,10 @@ class ModuleLoadingTest < Minitest::Test
       "inventory/http" => 'N::Inventory::HTTP.new(url: "https://inventory.example", api_key: "fixture").respond_to?(:devices)',
       "inventory/postgres" => "N::Inventory::Postgres.options(query: 'SELECT ip FROM device').fetch(:page_size) == 500",
       "device/access" => "N::Device::Access.respond_to?(:resolve)",
-      "settings" => "N::Settings.new(env: {}).public_config.fetch(:backup).fetch(:concurrency) == 4",
-      "cli/options" => 'N::CLI::Options.settings(N::CLI::Options.parse(argv: ["--concurrency", "7"]), env: {}).concurrency == 7',
+      "settings" => "N::Settings.new(env: {}).public_config.fetch(:backup).fetch(:parallel) == 4",
+      "cli/options" => 'N::CLI::Options.settings(N::CLI::Options.parse(argv: ["--parallel", "7"]), env: {}).parallel == 7',
       "cli/credentials" => "N::CLI::Credentials.respond_to?(:resolve)",
-      "cli/backup" => 'require "stringio"; output = StringIO.new; N::CLI::Backup.new(argv: ["--help"], output: output).run.zero? && output.string.include?("--concurrency")',
+      "cli/backup" => 'require "stringio"; output = StringIO.new; N::CLI::Backup.new(argv: ["--help"], output: output).run.zero? && output.string.include?("--parallel")',
       "cli/topology" => 'require "stringio"; output = StringIO.new; N::CLI::Topology.new(argv: ["--help"], output: output).run.zero? && output.string.include?("--apply")',
       "inventory/cache" => 'inventory = Struct.new(:devices).new([]); N::Inventory::Cache.new(inventory: inventory, directory: "unused-cache", identity: "test").status.nil?',
       "report/store" => "N::Report::Store::Json.new.respond_to?(:write)",
@@ -321,6 +321,51 @@ class ModuleLoadingTest < Minitest::Test
         refute result.fetch("features").any? { |path| path.match?(%r{/lib/textfsm(?:/|\.rb)}) }, vendor
       end
     end
+  end
+
+  # 本地归档只加载本地依赖；选择 SSH 根目录时才加载并构造远端归档器。
+  def test_archive_factory_loads_ssh_only_when_selecting_a_remote_root
+    result = isolated(<<~'RUBY')
+      require "net/connector/netdisco/tftp/archive"
+      require "tmpdir"
+      loaded = -> { $LOADED_FEATURES.any? { |path| path.end_with?("/tftp/ssh_archive.rb") } }
+      before = loaded.call
+      Dir.mktmpdir do |directory|
+        archive = Net::Connector::Netdisco::Tftp::Archive.new(directory: directory, root: "ssh://reader@192.0.2.10/srv")
+        puts JSON.generate(before: before, after: loaded.call, type: archive.class.name)
+        archive.close
+      end
+    RUBY
+    refute result.fetch("before")
+    assert result.fetch("after")
+    assert_equal "Net::Connector::Netdisco::Tftp::SshArchivePool", result.fetch("type")
+  end
+
+  # 独立加载 SSH 归档后仍须具备完整错误边界，启动失败不能退化为 NameError。
+  def test_ssh_archive_declares_its_failure_dependencies_without_loading_the_netdisco_entry
+    result = isolated(<<~'RUBY')
+      require "net/connector/netdisco/tftp/ssh_archive"
+      require "tmpdir"
+      device = Object.new
+      def device.host = "192.0.2.1"
+      def device.tftp_filename = "fixture.cfg"
+      def device.backup_filename(**) = "fixture.txt"
+      Dir.mktmpdir do |directory|
+        archive = Net::Connector::Netdisco::Tftp::SshArchive.new(
+          directory: directory, root: "ssh://reader@192.0.2.10/srv",
+          launcher: ->(&_) { raise IOError, "fixture launch failed" }
+        )
+        begin
+          archive.upload_and_archive(device, started_at: Time.now.utc) { raise "device must not run" }
+        rescue StandardError => error
+          puts JSON.generate(error: error.class.name, code: error.respond_to?(:code) ? error.code : nil,
+                             facade_loaded: $LOADED_FEATURES.any? { |path| path.end_with?("/net/connector/netdisco.rb") })
+        end
+      end
+    RUBY
+    assert_equal "Net::Connector::Netdisco::Tftp::Archive::Failure", result.fetch("error")
+    assert_equal "tftp_archive_failed", result.fetch("code")
+    refute result.fetch("facade_loaded")
   end
 
   private

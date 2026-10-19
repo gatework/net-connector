@@ -7,6 +7,7 @@ module Net
   module Connector
     # 单个脚本的局部状态；执行对象不拥有设备或传输层生命周期。
     class Execution
+      # 读取单次脚本的临时上下文和已完成步骤。
       attr_reader :context, :steps
 
       # 保存命令准备和后处理钩子，并初始化批次上下文及已完成步骤。
@@ -102,6 +103,7 @@ module Net
         raise_output_limit!(command)
       end
 
+      # 报告脚本累计输出超限，并明确此前发送的命令可能已经执行。
       def raise_output_limit!(command)
         raise @session.build_error(ScriptOutputLimitExceeded,
                                    "script output reached max_script_output_bytes; commands already sent may have executed",

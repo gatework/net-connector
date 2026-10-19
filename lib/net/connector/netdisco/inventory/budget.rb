@@ -9,6 +9,7 @@ module Net
         # 每次 devices 调用独占一个预算，认证、分页和兼容查询不得重置已用资源或期限。
         # @api private
         class Budget
+          # 为一次完整清单读取建立总截止时间及累计字节、设备计数。
           def initialize(options, clock:)
             @options = options
             @clock = clock
@@ -17,6 +18,7 @@ module Net
             @devices = 0
           end
 
+          # 返回本次读取剩余秒数，预算耗尽时立即抛出清单超时。
           def remaining
             seconds = @deadline - @clock.call
             raise Inventory::Timeout, cause: nil if seconds <= 0
@@ -41,6 +43,7 @@ module Net
 
           private
 
+          # 检查累计资源量是否超过指定上限，超限时返回稳定错误码。
           def validate_limit!(name, value)
             return if value <= @options.fetch(name)
 

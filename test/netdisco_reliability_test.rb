@@ -16,7 +16,7 @@ class NetdiscoReliabilityTest < Minitest::Test
     callback.define_singleton_method(:call) { |result| received << result }
     callback.define_singleton_method(:to_a) { [] }
     outcomes = [nil]
-    errors = Netdisco::Worker.new(concurrency: 1).run([[0, device]], outcomes: outcomes,
+    errors = Netdisco::Worker.new(parallel: 1).run([[0, device]], outcomes: outcomes,
                                                     on_error: ->(*) { flunk "unexpected failure" }, on_result: callback) do
       result_type.new(started_at: nil, finished_at: nil, duration_ms: nil)
     end
@@ -38,7 +38,7 @@ class NetdiscoReliabilityTest < Minitest::Test
     end
     fleet = Netdisco::Fleet.new(inventory: Struct.new(:devices).new(rows), report_store: nil,
                                credentials: ->(_) { { username: "backup" } }, connector_factory: factory)
-    observed = assert_raises(Interrupt) { fleet.tftp_backup_all(server: "192.0.2.10", concurrency: 1) }
+    observed = assert_raises(Interrupt) { fleet.tftp_backup_all(server: "192.0.2.10", parallel: 1) }
     assert_same failure, observed
     assert_equal 1, closed.size
   end
@@ -49,7 +49,7 @@ class NetdiscoReliabilityTest < Minitest::Test
     second_started = Queue.new
     blocker = Queue.new
     other_thread = nil
-    worker = Netdisco::Worker.new(concurrency: 2)
+    worker = Netdisco::Worker.new(parallel: 2)
 
     assert_raises(Interrupt) do
       worker.run([[0, first], [1, second]], outcomes: Array.new(2), on_error: ->(*) { flunk "unexpected error callback" }) do |device|
@@ -74,7 +74,7 @@ class NetdiscoReliabilityTest < Minitest::Test
     blocker = Queue.new
     threads = []
     thread_new = Thread.method(:new)
-    worker = Netdisco::Worker.new(concurrency: 2)
+    worker = Netdisco::Worker.new(parallel: 2)
     # 两个线程建立后才放行；第二台等待第一台进入任务再中断。
     spawn = lambda do |&operation|
       thread_new.call(&operation).tap do |thread|
@@ -118,7 +118,7 @@ class NetdiscoReliabilityTest < Minitest::Test
       thread = thread_new.call(&operation)
       thread
     end
-    worker = Netdisco::Worker.new(concurrency: 2)
+    worker = Netdisco::Worker.new(parallel: 2)
     Thread.stub(:new, spawn) do
       error = assert_raises(ThreadError) do
         worker.run([[0, first], [1, second]], outcomes: Array.new(2), on_error: ->(*) { flunk "unexpected error callback" }) do
@@ -222,4 +222,27 @@ class NetdiscoReliabilityTest < Minitest::Test
     assert_nil error.cause
     refute_includes error.full_message, "private-api-token"
   end
+
+  def test_completed_task_handoff_is_published_before_pending_cancellation
+    failure = Interrupt.new("cancel during result handoff")
+    klass = Class.new(Netdisco::Worker) do
+      define_method(:run_task) do |*args, &block|
+        value = super(*args, &block)
+        Thread.current.raise(failure)
+        value
+      end
+      private :run_task
+    end
+    device = Struct.new(:host).new("192.0.2.1")
+    result_type = Data.define(:started_at, :finished_at, :duration_ms, :artifact)
+    outcomes = [nil]
+    observed = assert_raises(Interrupt) do
+      klass.new(parallel: 1).run([[0, device]], outcomes: outcomes, on_error: ->(*) { flunk "unexpected error" }) do
+        result_type.new(started_at: nil, finished_at: nil, duration_ms: nil, artifact: "already-saved")
+      end
+    end
+    assert_same failure, observed
+    assert_equal "already-saved", outcomes.first&.artifact
+  end
+
 end

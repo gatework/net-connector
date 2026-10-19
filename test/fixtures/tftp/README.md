@@ -1,5 +1,9 @@
 # TFTP 合成夹具
 
+Centec 新增脱敏回归源自本地旧实现中的 V530/DclingCloudOS 3.0.17.r1、24X2Q 现场记录：
+`copy running-config mgmt-if tftp://<server>/<file>`，完成行 `Sent 3664 bytes in 0.1 seconds`。
+当前实现另验证源接口选择、零字节、失败优先和无连接参数预检；保存与拓扑写入未作现场验证。
+
 `test/support/tftp_fixture.rb` 的七类成功对话直接提取自仓库原有
 `test/tftp_evidence_test.rb` 的 CASES，没有新增设备命令或放宽完成匹配规则。
 本轮基线为 `3192377190fa8b28334e1f39007789ef2ae5cc6e` 上的原有工作树；

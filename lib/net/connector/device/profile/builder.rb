@@ -115,6 +115,7 @@ module Net
 
         # 命令集合的声明对象。
         class Commands
+          # 读取声明块构建中的配置采集与保存命令。
           attr_reader :config_commands, :save_commands
 
           # 复制继承的命令，后续修改不会污染父类档案。
@@ -191,6 +192,7 @@ module Net
 
         # 登录和命令交互的声明对象。
         class Interactions
+          # 读取声明块积累的登录与确认交互。
           attr_reader :login_interactions, :confirmation_interactions
 
           # 复制继承的交互规则，子类可以在其上追加设备差异。

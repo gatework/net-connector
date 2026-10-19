@@ -28,16 +28,18 @@ module Net
 
             values
           rescue OptionParser::ParseError
-            raise ArgumentError, "参数无效：并发数须为 1 至 50，抽样须为 1 至 5；使用 --help 查看参数", cause: nil
+            limits = mode == :topology ? "并发数须为 1 至 500，设备上限须为正整数" : "并发数须为 1 至 500，抽样须为 1 至 5"
+            raise ArgumentError, "参数无效：#{limits}；使用 --help 查看参数", cause: nil
           end
 
+          # 组装当前模式的选项、帮助和扩展参数，解析器自身不执行设备任务。
           def self.parser_for(values, output:, program:, mode:, &additional)
             raise ArgumentError, "unknown CLI mode" unless %i[backup tftp topology].include?(mode)
 
             OptionParser.new do |opts|
               default = mode == :topology ? "默认只读规划" : "默认沿用配置"
               opts.banner = "用法：ruby #{File.basename(program)} [选项]（#{default}）\n命令行参数优先；未指定的项沿用配置及默认值。无筛选时选择全部就绪设备。"
-              add_settings(opts, values)
+              add_settings(opts, values, mode: mode)
               add_execution(opts, values, mode: mode)
               add_terminal_options(opts, values)
               if mode == :topology
@@ -51,13 +53,14 @@ module Net
                 values[:help] = true
               end
               opts.on("-h", "--help", "显示常用选项") do
-                output.puts(mode == :topology ? opts : Help.common(opts))
+                output.puts Help.common(opts, mode: mode)
                 values[:help] = true
               end
-              opts.on("--help-all", "显示完整选项（凭据、抽样、SSH、自动化等）") { output.puts opts; values[:help] = true }
+              opts.on("--help-all", "显示完整选项（凭据、SSH、自动化等）") { output.puts opts; values[:help] = true }
             end
           end
 
+          # 登记进度、JSON、密码输入及配置问答等终端选项。
           def self.add_terminal_options(opts, values)
             opts.on("--ask-password", "隐藏输入设备密码") { values[:ask_password] = true }
             opts.on("--ask-netdisco-password", "隐藏输入 Netdisco 密码") { values[:ask_netdisco_password] = true }
@@ -65,14 +68,16 @@ module Net
             opts.on("--verbose", "显示逐条登录和命令事件") { values[:verbose] = true }
             opts.on("--json", "在 stdout 输出 JSON；默认显示可读摘要") { values[:json] = true }
             opts.on("--stdin-credentials", "从标准输入读取凭据并等待 RUN") { values[:stdin_credentials] = true }
-            opts.on("--interactive", "缺少配置时交互填写，已有配置保持原样") { values[:interactive] = true }
-            opts.on("--non-interactive", "缺少配置时使用默认值，不进行问答") { values[:interactive] = false }
+            opts.on("--init", "创建缺失配置和环境模板后退出；已有文件不覆盖") { values[:init] = true }
+            opts.on("--interactive", "缺少文件时询问是否创建，并可交互填写") { values[:interactive] = true }
+            opts.on("--non-interactive", "禁用问答；创建文件须同时指定 --init") { values[:interactive] = false }
           end
 
+          # 登记互斥的拓扑执行模式和格式化参数，应用模式必须显式选择。
           def self.add_topology(opts, values)
             { discover: "发现邻居并检查描述", plan: "生成配置计划", apply: "修正、读回并保存" }.each do |mode, description|
               opts.on("--#{mode}", description) do
-                raise ArgumentError, "topology modes are mutually exclusive" if values[:topology_mode]
+                raise ArgumentError, "--discover、--plan、--apply 不能同时使用" if values[:topology_mode]
 
                 values[:topology_mode] = mode
                 values[:apply] = true if mode == :apply
@@ -96,10 +101,10 @@ module Net
             opts.on("--cache-mode MODE", %w[prefer only refresh], "清单缓存 prefer / only / refresh") do |value|
               values[:environment]["ND_CACHE_MODE"] = value
             end
-            opts.on("-c", "--concurrency N", Integer, "并发设备数，1 至 50") do |count|
-              raise OptionParser::InvalidArgument unless (1..Settings::MAX_CONCURRENCY).cover?(count)
+            opts.on("-p", "--parallel N", Integer, "并发设备数，1 至 500") do |count|
+              raise OptionParser::InvalidArgument unless (1..Settings::MAX_PARALLEL).cover?(count)
 
-              values[:environment]["NC_CONCURRENCY"] = count.to_s
+              values[:environment]["NC_PARALLEL"] = count.to_s
             end
             return if mode == :topology
 
@@ -142,7 +147,7 @@ module Net
           end
 
           # 共用配置与凭据参数登记；具体入口决定后续预览、执行或导出。
-          def self.add_settings(opts, values)
+          def self.add_settings(opts, values, mode: nil)
             add_filters(opts, values)
             {
               "--username USER" => ["NC_DEVICE_USERNAME", "设备登录用户名"],
@@ -151,7 +156,7 @@ module Net
               "--netdisco-url URL" => ["ND_URL", "Netdisco 地址"],
               "--netdisco-username USER" => ["ND_USERNAME", "Netdisco 用户名"],
               "--netdisco-password PASSWORD" => ["ND_PASSWORD", "Netdisco 密码"],
-              "--directory DIR" => ["NC_BACKUP_DIRECTORY", "备份目录，相对项目根目录"],
+              "--directory DIR" => ["NC_BACKUP_DIRECTORY", "#{mode == :topology ? "拓扑报告" : "备份"}目录，相对项目根目录"],
               "--config FILE" => ["NC_CONFIG", "YAML 配置，相对项目根目录"]
             }.each do |flag, (key, description)|
               opts.on(flag, description) do |value|

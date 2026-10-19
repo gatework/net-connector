@@ -1,33 +1,37 @@
 # frozen_string_literal: true
 
+require_relative "../parallel"
+
 module Net
   module Connector
-    module Concurrency
+    module Parallel
       # 仅管理有限并发和线程所有权；业务层负责将普通任务故障转换为领域结果。
       class Pool
-        DEFAULT_CONCURRENCY = 4
-        MAX_CONCURRENCY = 50
+        DEFAULT_PARALLEL = 4
+        MAX_PARALLEL = 500
 
-        def self.validate_concurrency!(concurrency)
-          unless concurrency.is_a?(Integer) && (1..MAX_CONCURRENCY).cover?(concurrency)
-            raise ArgumentError, "concurrency must be an Integer in 1..#{MAX_CONCURRENCY}"
+        # 要求并发数为允许范围内的整数，非法值不创建任何线程。
+        def self.validate_parallel!(parallel)
+          unless parallel.is_a?(Integer) && (1..MAX_PARALLEL).cover?(parallel)
+            raise ArgumentError, "parallel must be an Integer in 1..#{MAX_PARALLEL}"
           end
 
-          concurrency
+          parallel
         end
 
         # 环境只提供默认并发数；显式构造参数优先，非法值不创建线程。
-        def self.environment_concurrency(env: ENV)
-          value = env.fetch("NC_CONCURRENCY", DEFAULT_CONCURRENCY.to_s)
+        def self.environment_parallel(env: ENV)
+          value = env.fetch("NC_PARALLEL", DEFAULT_PARALLEL.to_s)
           unless value.is_a?(String) && value.match?(/\A[0-9]+\z/)
-            raise ArgumentError, "NC_CONCURRENCY must be a positive integer"
+            raise ArgumentError, "NC_PARALLEL must be a positive integer"
           end
 
-          validate_concurrency!(Integer(value, 10))
+          validate_parallel!(Integer(value, 10))
         end
 
-        def initialize(concurrency: self.class.environment_concurrency)
-          @concurrency = self.class.validate_concurrency!(concurrency)
+        # 校验并保存工作线程并发上限，构造时不启动任务。
+        def initialize(parallel: self.class.environment_parallel)
+          @parallel = self.class.validate_parallel!(parallel)
         end
 
         # 保序返回块的值；任何未处理异常均在调用线程抛出，停止并回收本次所有线程。
@@ -39,7 +43,7 @@ module Net
           items = items.dup
           queue = Queue.new
           items.each_with_index { |item, index| queue << [index, item] }
-          count = [items.size, @concurrency].min
+          count = [items.size, @parallel].min
           count.times { queue << nil }
           gate = Queue.new
           finished = Queue.new

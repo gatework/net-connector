@@ -5,7 +5,7 @@ require "socket"
 require_relative "options"
 require_relative "credentials"
 require_relative "../fleet"
-require_relative "../config/initializer"
+require_relative "setup"
 require_relative "../progress"
 require_relative "../report/files"
 require_relative "../../storage/batch_directory"
@@ -18,12 +18,12 @@ module Net
         class Backup
           # 保存批次模式与调用方 IO，构造阶段不读取清单、不创建目录。
           def initialize(mode: :backup, argv: ARGV, env: ENV, input: $stdin, output: $stdout, error: $stderr,
-                         default_config: nil, default_directory: nil, load_env: false)
+                         default_config: nil, default_directory: nil, default_env: nil, load_env: false)
             raise ArgumentError, "mode must be backup or tftp" unless %i[backup tftp].include?(mode)
 
             @mode, @argv, @env, @input, @output, @error = mode, argv, env, input, output, error
             @default_config, @default_directory = default_config, default_directory
-            @load_env = load_env
+            @load_env, @default_env = load_env, default_env
           end
 
           # 先固定并校验策略，再预览、执行和保存报告；成功判定使用最终报告。
@@ -45,12 +45,13 @@ module Net
             Storage::AtomicFile.write(File.join(batch_directory, "plan.json"), JSON.pretty_generate(plan_summary(plan)))
             report = execute(fleet, settings, plan, batch_directory, progress, success_policy, server_root)
             report = record_progress_error(report, progress)
-            report = Report::Files.write(report, directory: batch_directory, plan: plan, concurrency: settings.concurrency)
-            finish(report, progress, options, batch_directory, plan, settings.concurrency)
+            report = Report::Files.write(report, directory: batch_directory, plan: plan, parallel: settings.parallel)
+            finish(report, progress, options, batch_directory, plan, settings.parallel)
           rescue Interrupt
+            finish_interrupted(fleet, progress, options, batch_directory, plan, settings)
             130
           rescue EOFError
-            @error.puts "配置输入未完成，未创建文件。"
+            @error.puts "配置输入未完成，已停止；请检查先前提示的文件。"
             2
           rescue ArgumentError, Inventory::Error => exception
             @error.puts "备份参数或清单错误：#{exception.message}"
@@ -62,8 +63,9 @@ module Net
 
           private
 
+          # 按固定策略读取一次清单并生成计划，同时展示缓存诊断与执行规模。
           def read_plan(fleet, settings, options, progress, server_root)
-            progress.reading_inventory
+            progress.reading_inventory(config: options.fetch(:environment)["NC_CONFIG"] || @env["NC_CONFIG"])
             limit = settings.limit_per_vendor
             refresh = options[:force_refresh] ? { force_refresh: true } : {}
             plan = if @mode == :backup || options[:inventory_only]
@@ -73,40 +75,34 @@ module Net
                                             allow_fixed_name_reuse: !server_root.nil? || !settings.tftp_verification_roots.empty?, **refresh)
                    end
             inventory_warning(fleet)
-            progress.plan(plan, concurrency: settings.concurrency, limit_per_vendor: limit)
+            progress.plan(plan, parallel: settings.parallel, limit_per_vendor: limit)
             preview = plan_summary(plan)
             @output.puts JSON.generate(plan: preview) if options[:json]
             @output.flush
             plan
           end
 
+          # 输出已选择设备的安全预览，根据空选择或异常跳过项决定退出码。
           def preview_status(plan, options)
-            @output.puts(plan.selected.map { |device| "#{device.host}\t#{device.name}\t#{device.vendor}" }) unless options[:json]
+            @output.puts(plan.selected.map { |device| "#{device.host}\t#{device.name.to_s.gsub(/[[:cntrl:]]/, " ")}\t#{device.vendor}" }) unless options[:json]
             plan.selected.empty? || plan.outcomes.compact.any? { |item| !%i[filtered sample_limit].include?(item.status) } ? 1 : 0
           end
 
+          # 仅为未显式设置的选项补充示例配置和备份目录。
           def apply_defaults(options)
             values = options.fetch(:environment)
             values["NC_CONFIG"] = @default_config if @default_config && !values.key?("NC_CONFIG") && !@env.key?("NC_CONFIG")
-            return unless @default_directory && !values.key?("NC_BACKUP_DIRECTORY")
+            return unless @default_directory && !values.key?("NC_BACKUP_DIRECTORY") && !@env.key?("NC_BACKUP_DIRECTORY")
 
             path = values["NC_CONFIG"] || @env["NC_CONFIG"]
             document = path && File.file?(path) ? Config.load(path) : {}
             values["NC_BACKUP_DIRECTORY"] = @default_directory unless document.key?("NC_BACKUP_DIRECTORY")
           end
 
+          # 配置不存在时生成并验证初始文件；本次运行到此结束，不继续连接设备。
           def initialize_config?(options)
-            path = options.fetch(:environment)["NC_CONFIG"] || @env["NC_CONFIG"]
-            return false unless path && !File.exist?(path) && !File.symlink?(path)
-
-            document = { "backup" => { "directory" => @default_directory || "./backups", "concurrency" => 4 },
-                         "netdisco" => { "source" => "http", "cache_mode" => "prefer" },
-                         "inventory" => { "include_hosts" => [], "exclude_hosts" => [], "include_names" => [],
-                                          "exclude_names" => [], "include_vendors" => [], "exclude_vendors" => [], "name_match" => "contains" },
-                         "ssh" => { "protocol" => "ssh", "host_key_policy" => "accept_new" } }
-            Config::Initializer.new(input: @input, output: @error).create(path: path, document: document, interactive: options[:interactive])
-            @error.puts "已初始化配置：#{path}；检查配置后再次运行。"
-            true
+            Setup.new(mode: @mode, options: options, env: @env, input: @input, output: @error,
+                      env_path: @default_env, directory: @default_directory, load_env: @load_env).initialize_files?
           end
 
           # 清单离线回退和本地保存故障单独提示，不覆盖设备操作结果。
@@ -141,7 +137,7 @@ module Net
           # 事件流仅记录受控元数据；计划写入后在有界工作线程中执行同一批设备。
           def execute(fleet, settings, plan, batch_directory, progress, success_policy, server_root)
             File.open(File.join(batch_directory, "events.jsonl"), File::WRONLY | File::CREAT | File::EXCL, 0o600) do |events|
-              options = { plan: plan, concurrency: settings.concurrency, success_policy: success_policy,
+              options = { plan: plan, parallel: settings.parallel, success_policy: success_policy,
                           on_start: progress.method(:start), on_result: result_callback(progress, events) }
               progress.with_updates do
                 if @mode == :backup
@@ -163,14 +159,28 @@ module Net
               lock.synchronize do
                 events.puts JSON.generate(host: outcome.device.host, vendor: outcome.device.vendor,
                                            status: outcome.status, error_code: outcome.diagnostic&.error_code,
-                                           error_type: outcome.diagnostic&.error_type, duration_ms: outcome.duration_ms)
+                                           error_type: outcome.diagnostic&.error_type, duration_ms: outcome.duration_ms,
+                                           artifact: outcome.backup&.to_h)
                 events.flush
               end
             end
           end
 
+          # 工作线程已停止后保存部分回执；保存或显示失败都不能改变取消退出码。
+          def finish_interrupted(fleet, progress, options, directory, plan, settings)
+            report = fleet&.last_report
+            return unless report && report.status == :interrupted && directory && plan
+
+            report = record_progress_error(report, progress)
+            report = Report::Files.write(report, directory: directory, plan: plan, parallel: settings.parallel)
+            finish(report, progress, options, directory, plan, settings.parallel)
+          rescue StandardError, Interrupt
+            # 部分文件可能已经提交；不重复设备操作，仍以原中断结束。
+            nil
+          end
+
           # 报告先保存，再显示完成信息；终端收尾失败只补写诊断，不重放任务。
-          def finish(report, progress, options, batch_directory, plan, concurrency)
+          def finish(report, progress, options, batch_directory, plan, parallel)
             progress.finish(report)
             progress.location(report.report_location) if report.report_location
             summary_path = File.join(batch_directory, "summary.txt")
@@ -178,12 +188,13 @@ module Net
             updated = record_progress_error(report, progress)
             unless updated.equal?(report)
               # 末尾显示也可能首次失败，只补写诊断，不重复设备任务或事件。
-              report = Report::Files.write(updated, directory: batch_directory, plan: plan, concurrency: concurrency)
+              report = Report::Files.write(updated, directory: batch_directory, plan: plan, parallel: parallel)
             end
             if options[:json]
               @output.puts JSON.generate(directory: batch_directory, counts: report.counts,
                                          tasks_succeeded: report.policy_success?, success: report.policy_success?,
                                          policy: report.policy, policy_success: report.policy_success?,
+                                         exit_status: report.status == :interrupted ? 130 : (report.policy_success? ? 0 : 1),
                                          report_location: report.report_location, report_error: report.report_error)
             end
             report.policy_success? ? 0 : 1

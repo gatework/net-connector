@@ -15,13 +15,15 @@ require_relative "report"
 require_relative "tftp/verifier"
 require_relative "tftp/archive"
 require_relative "fleet/options"
+require_relative "resources"
 
 module Net
   module Connector
     module Netdisco
       # 基于已验证的清单快照组织有上限的并发备份。
       class Fleet
-        attr_reader :inventory_status
+        # 读取清单来源诊断及最近一次可用批次报告，包括中断后的部分结果。
+        attr_reader :inventory_status, :last_report
 
         DEFAULT_SETTING = Object.new.freeze
         private_constant :DEFAULT_SETTING
@@ -56,13 +58,14 @@ module Net
         end
 
         # 先拉取完整清单，再并发采集并保存设备配置。
-        def backup_all(directory: DEFAULT_SETTING, concurrency: DEFAULT_SETTING,
+        def backup_all(directory: DEFAULT_SETTING, parallel: DEFAULT_SETTING,
                        limit_per_vendor: nil, plan: nil, on_start: nil, on_result: nil, on_change: nil,
                        success_policy: :strict, filename_style: :ip)
+          @last_report = nil
           settings_snapshot = @settings.snapshot(mode: :backup)
           directory = settings_snapshot.backup_directory if directory.equal?(DEFAULT_SETTING)
-          concurrency = settings_snapshot.concurrency if concurrency.equal?(DEFAULT_SETTING)
-          options = BackupOptions.new(directory: directory, concurrency: concurrency, limit_per_vendor: limit_per_vendor,
+          parallel = settings_snapshot.parallel if parallel.equal?(DEFAULT_SETTING)
+          options = BackupOptions.new(directory: directory, parallel: parallel, limit_per_vendor: limit_per_vendor,
                                       success_policy: success_policy, filename_style: filename_style,
                                       on_start: on_start, on_result: on_result, on_change: on_change)
 
@@ -75,10 +78,11 @@ module Net
         end
 
         # 让设备主动导出配置，在执行前检查同批目标文件名冲突。
-        def tftp_backup_all(server: DEFAULT_SETTING, source_files: DEFAULT_SETTING, concurrency: DEFAULT_SETTING,
+        def tftp_backup_all(server: DEFAULT_SETTING, source_files: DEFAULT_SETTING, parallel: DEFAULT_SETTING,
                             limit_per_vendor: 5, vrfs: DEFAULT_SETTING, source_interfaces: DEFAULT_SETTING, servers: DEFAULT_SETTING, verification_roots: DEFAULT_SETTING, on_start: nil, on_result: nil, plan: nil,
                             report_directory: DEFAULT_SETTING, success_policy: :strict, verification_root: DEFAULT_SETTING,
                             preserve_history: false)
+          @last_report = nil
           settings_snapshot = @settings.snapshot(mode: :tftp)
           transfer_options = tftp_transfer_options(settings_snapshot, server: server, source_files: source_files, vrfs: vrfs,
                                                     source_interfaces: source_interfaces, servers: servers,
@@ -86,9 +90,9 @@ module Net
           policy = Tftp::Policy.new(**transfer_options)
           server, source_files, vrfs = transfer_options.values_at(:server, :source_files, :vrfs)
           verification_root, verification_roots = transfer_options.values_at(:verification_root, :verification_roots)
-          concurrency = settings_snapshot.concurrency if concurrency.equal?(DEFAULT_SETTING)
+          parallel = settings_snapshot.parallel if parallel.equal?(DEFAULT_SETTING)
           report_directory = settings_snapshot.backup_directory if report_directory.equal?(DEFAULT_SETTING)
-          options = TftpOptions.new(server: server, source_files: source_files, vrfs: vrfs, concurrency: concurrency,
+          options = TftpOptions.new(server: server, source_files: source_files, vrfs: vrfs, parallel: parallel,
                                     limit_per_vendor: limit_per_vendor, report_directory: report_directory,
                                     success_policy: success_policy, verification_root: verification_root,
                                     preserve_history: preserve_history, on_start: on_start, on_result: on_result,
@@ -101,8 +105,8 @@ module Net
           end
           validate_plan!(plan, :tftp)
           transfers = tftp_plan_options(plan, policy, success_policy: success_policy, preserve_history: preserve_history)
-          contexts = tftp_contexts(plan, transfers, report_directory: report_directory, preserve_history: preserve_history)
-          validate_tftp_targets!(plan, transfers, contexts)
+          contexts = tftp_contexts(plan, transfers, report_directory: report_directory, preserve_history: preserve_history, parallel: [parallel, plan.selected.size].min)
+          contexts.each_value { |archive, _verification| archive.prepare if archive.respond_to?(:prepare) }
           run_batch(:tftp, plan, options: options, settings_snapshot: settings_snapshot) do |device, log_directory|
             transfer = transfers.fetch(device.host)
             archive, verification = contexts.fetch(transfer.server)
@@ -116,6 +120,8 @@ module Net
               end
             end
           end
+        ensure
+          close_tftp_contexts(contexts, primary_failure: $!)
         end
 
         # 配置批次在任何连接之前验证全部脚本与目标，写操作须显式确认。
@@ -140,6 +146,26 @@ module Net
 
         private
 
+        # 尝试关闭本批次的全部归档连接；清理失败不能覆盖原业务故障或中断。
+        def close_tftp_contexts(contexts, primary_failure:)
+          cleanup_failure = nil
+          begin
+            Thread.handle_interrupt(Exception => :never) do
+              contexts&.each_value do |archive, _verification|
+                begin
+                  archive.close if archive.respond_to?(:close)
+                rescue Exception => error # rubocop:disable Lint/RescueException -- 仍须回收后续资源，保留首个清理故障。
+                  cleanup_failure ||= error
+                end
+              end
+            end
+          rescue Exception => error # rubocop:disable Lint/RescueException -- 延迟取消不能覆盖原故障或先发生的清理错误。
+            cleanup_failure ||= error
+          end
+          raise cleanup_failure, cause: cleanup_failure.cause if cleanup_failure && !primary_failure
+        end
+
+        # 组合配置执行与接口描述操作入口，复用当前清单和接入依赖。
         def operations
           Operations.new(settings: @settings, inventory: method(:inventory), credentials: @credentials,
                          connector_factory: @connector_factory)
@@ -175,6 +201,7 @@ module Net
           devices.map { |device| host_counts[device.host] > 1 ? device.with(issue: :duplicate_host) : device }.freeze
         end
 
+        # 在固定清单快照上生成模式对应的计划，规划阶段不读取设备凭据。
         def build_plan(mode, limit, settings_snapshot, allow_fixed_name_reuse: false, force_refresh: false)
           Planner.validate_limit!(limit)
           Planner.new(inventory(settings_snapshot, force_refresh: force_refresh)).call(mode: mode, limit_per_vendor: limit,
@@ -184,24 +211,58 @@ module Net
 
         # 统一组织设备任务、日志目录与报告；Worker 保证单台设备失败不影响其他设备。
         def run_batch(mode, plan, options:, settings_snapshot:, output_directory: nil)
-          worker = Worker.new(concurrency: options.concurrency)
+          Resources.prepare!(parallel: [options.parallel, plan.ready.size].min)
+          worker = Worker.new(parallel: options.parallel)
           started_at = Time.now.utc
           started = monotonic
           outcomes = plan.outcomes.dup
           FileUtils.mkdir_p(output_directory, mode: 0o700) if output_directory && !plan.ready.empty?
           log_directory = settings_snapshot.log_directory
           FileUtils.mkdir_p(log_directory, mode: 0o700) if log_directory && !plan.ready.empty?
-          callback_errors = worker.run(plan.ready, outcomes: outcomes, on_start: options.on_start, on_result: options.callbacks,
-                                       on_error: ->(device, error) { build_outcome(device, :failed, error: error) }) do |device|
+          worker.run(plan.ready, outcomes: outcomes, on_start: options.on_start, on_result: options.callbacks,
+                     on_error: ->(device, error) { build_outcome(device, :failed, error: error) }) do |device|
             yield device, log_directory
           end
-          batch = Batch.new(mode: mode, outcomes: outcomes.freeze, started_at: started_at,
-                            finished_at: Time.now.utc, callback_errors: callback_errors,
-                            report_location: nil, report_error: nil)
-          report = Report.new(batch, policy: options.success_policy, duration_ms: ((monotonic - started) * 1000).round, log_directory: log_directory)
-          save_report(report, directory: options.report_directory)
+          finish_batch(mode, outcomes, worker, options, started_at, started, log_directory)
+        rescue Interrupt => interruption
+          begin
+            # Pool 已停止全部任务；结果组装、发布与保存期间的取消同样保留完成证据。
+            Thread.handle_interrupt(Exception => :never) do
+              outcomes ||= plan.outcomes.dup
+              complete_interrupted_slots(plan, outcomes, worker&.started_tasks || {})
+              finish_batch(mode, outcomes, worker, options, started_at || Time.now.utc, started || monotonic,
+                           log_directory, interrupted: true)
+            end
+          rescue Exception # rubocop:disable Lint/RescueException -- 报告故障或二次取消不能替换首个中断。
+            nil
+          ensure
+            raise interruption, cause: interruption.cause
+          end
         end
 
+        # 先发布内存回执，再尝试落盘；保存故障不会丢失已经取得的设备结果。
+        def finish_batch(mode, outcomes, worker, options, started_at, started, log_directory, interrupted: false)
+          batch = Batch.new(mode: mode, outcomes: outcomes.freeze, started_at: started_at,
+                            finished_at: Time.now.utc, callback_errors: worker&.callback_errors || [],
+                            report_location: nil, report_error: nil, interrupted: interrupted)
+          @last_report = Report.new(batch, policy: options.success_policy, duration_ms: ((monotonic - started) * 1000).round,
+                                    log_directory: log_directory)
+          @last_report = save_report(@last_report, directory: options.report_directory)
+        end
+
+        # 中断只补全未交付的槽位；已经确认的备份和上传回执不被取消状态覆盖。
+        def complete_interrupted_slots(plan, outcomes, started_tasks)
+          plan.ready.each do |index, device|
+            next if outcomes[index]
+
+            started_at = started_tasks[index]
+            outcomes[index] = Outcome.new(device: device, status: started_at ? :interrupted : :not_started,
+                                           backup: nil, error_code: nil, error_type: nil,
+                                           started_at: started_at, finished_at: started_at && Time.now.utc)
+          end
+        end
+
+        # 读取单调时钟秒数，避免系统校时影响期限与耗时计算。
         def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         # 保存批量报告，记录写入失败而不覆盖设备结果。
@@ -231,6 +292,7 @@ module Net
                       error_type: error&.class&.name, diagnostic: Diagnostic.from(error, backup: backup))
         end
 
+        # 合并显式 TFTP 参数与快照默认值，服务器变化时不借用旧核验目录。
         def tftp_transfer_options(snapshot, **values)
           defaults = { server: :tftp_server, source_files: :tftp_source_files, vrfs: :tftp_vrfs,
                        source_interfaces: :tftp_source_interfaces, servers: :tftp_servers, verification_roots: :tftp_verification_roots }
@@ -242,6 +304,7 @@ module Net
           values
         end
 
+        # 核对计划与实际传输策略一致，预检每台设备的服务器、归档和核验要求。
         def tftp_plan_options(plan, policy, success_policy:, preserve_history:)
           transfers = plan.inventory.select { |device| device.ready? && device.supports_backup?(mode: :tftp) }.to_h do |device|
             [device.host, policy.for(host: device.host, vendor: device.vendor)]
@@ -258,6 +321,9 @@ module Net
           plan.selected.each do |device|
             transfer = transfers.fetch(device.host)
             raise ArgumentError, "selected device requires a TFTP server" unless transfer.server
+            if Tftp::Root.remote?(transfer.verification_root) && !preserve_history
+              raise ArgumentError, "SSH TFTP roots require history archival"
+            end
             if plan.allow_fixed_name_reuse && device.vendor == :palo_alto && !transfer.verification_root
               raise ArgumentError, "fixed-name TFTP uploads require a matching server archive directory"
             end
@@ -271,12 +337,21 @@ module Net
           transfers
         end
 
-        def tftp_contexts(plan, transfers, report_directory:, preserve_history:)
+        # 每台服务器只创建一份归档与核验上下文，再预检最终上传文件名。
+        def tftp_contexts(plan, transfers, report_directory:, preserve_history:, parallel:)
+          Resources.prepare!(parallel: [parallel, plan.selected.size].min)
           # 每个服务器持有自己的核验/归档上下文，跨服务器设备不能复用全局目录证据。
-          plan.selected.map { |device| transfers.fetch(device.host) }.uniq { |transfer| transfer.server }.to_h do |transfer|
-            archive = Tftp::Archive.new(directory: report_directory, root: transfer.verification_root) if preserve_history
-            [transfer.server, [archive, Tftp::Verifier.new(root: transfer.verification_root)]]
+          groups = plan.selected.group_by { |device| transfers.fetch(device.host).server }
+          contexts = groups.to_h do |server, devices|
+            transfer = transfers.fetch(devices.first.host)
+            if preserve_history
+              archive = Tftp::Archive.new(directory: report_directory, root: transfer.verification_root,
+                                          ssh_password: @settings.tftp_ssh_password, parallel: [parallel, devices.size].min)
+            end
+            [server, [archive, Tftp::Verifier.new(root: transfer.verification_root)]]
           end
+          validate_tftp_targets!(plan, transfers, contexts)
+          contexts
         end
 
         # 归档批次可能改变远端名；使用最终目标预检协议限制，不能等到读取凭据或发命令后。

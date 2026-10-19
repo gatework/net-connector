@@ -32,7 +32,7 @@ inventory:
   device_rules: []
 backup:
   directory: ./examples/backups
-  concurrency: 4
+  parallel: 4
 ssh:
   protocol: ssh
   host_key_policy: accept_new

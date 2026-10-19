@@ -31,7 +31,8 @@ module Net
           # 检查设备回显是否确认 TFTP 传输完成。
           def device_reported_complete?(result)
             completion_lines(result).any? do |line|
-              line.match?(/\ASent\s+[1-9]\d*\s+bytes(?:\s+in\s+[\d.]+\s+(?:secs?|seconds?))?[.!]?\z/i)
+              line.match?(/\ASent\s+[1-9]\d*\s+bytes(?:\s+in\s+[\d.]+\s+(?:secs?|seconds?))?
+                (?:\s+\[\d+(?:\.\d+)?\s+bit\/s\])?[.!]?\z/ix)
             end
           end
 
@@ -40,6 +41,7 @@ module Net
 
           private
 
+          # 使用 PAN-OS 固定配置文件名生成 TFTP 导出命令。
           def transfer_command(target, **) = "tftp export configuration to #{target.host} from #{FILENAME}"
         end
       end

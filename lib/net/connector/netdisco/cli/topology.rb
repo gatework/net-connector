@@ -6,8 +6,11 @@ require_relative "options"
 require_relative "credentials"
 require_relative "../fleet"
 require_relative "../progress"
-require_relative "../config/initializer"
+require_relative "setup"
 require_relative "../../storage/batch_directory"
+require_relative "../resources"
+require_relative "../topology/files"
+require_relative "../topology/presentation"
 
 module Net
   module Connector
@@ -15,14 +18,16 @@ module Net
       class CLI
         # 只读默认的拓扑应用入口；计划先持久化，显式 apply 仍通过设备层重验及保存。
         class Topology
+          # 保存拓扑入口默认配置、输入输出和连接器工厂，暂不访问清单。
           def initialize(default_config: nil, default_directory: nil, argv: ARGV, env: ENV, input: $stdin,
-                         output: $stdout, error: $stderr, connector_factory: nil, load_env: false)
+                         output: $stdout, error: $stderr, connector_factory: nil, default_env: nil, load_env: false)
             @default_config, @default_directory = default_config, default_directory
             @argv, @env, @input, @output, @error = argv, env, input, output, error
-            @load_env = load_env
+            @load_env, @default_env = load_env, default_env
             @connector_factory = connector_factory || ->(device, options) { device.build_connector(**options) }
           end
 
+          # 固定策略后读取清单，执行预览或拓扑批次，并将取消与参数错误映射为退出码。
           def run
             @initialized = false
             @events_mutex = @task_results = nil
@@ -33,20 +38,24 @@ module Net
             return 0 if @initialized
 
             policy = settings.topology_options
-            raise ArgumentError, "topology apply requires explicit --apply" if policy.mode == :apply && !options[:apply]
+            raise ArgumentError, "应用配置必须显式传入 --apply；--plan 仅生成计划，--discover 只读发现" if policy.mode == :apply && !options[:apply]
 
             inventory, credentials = CLI::Credentials.resolve(settings, input: @input, stdin_credentials: options[:stdin_credentials])
             @progress = Progress.new(io: @error, enabled: !options[:no_progress], verbose: options[:verbose])
-            @progress.reading_inventory
+            @progress.reading_inventory(config: options.fetch(:environment)["NC_CONFIG"] || @env["NC_CONFIG"])
             fleet = Fleet.new(inventory: inventory, settings: settings, report_store: nil)
             devices = fleet.devices(force_refresh: options[:force_refresh] || false)
+            inventory_warning(fleet)
             return inventory_preview(devices, options) if options[:inventory_only]
             return 1 if policy.mode == :apply && options[:stdin_credentials] && @input.gets("\n")&.strip != "RUN"
 
             execute(devices, settings, credentials, policy, options)
           rescue Interrupt
             130
-          rescue ArgumentError, Inventory::Error, EOFError => exception
+          rescue EOFError
+            @error.puts "配置输入未完成，已停止；请检查先前提示的文件。"
+            2
+          rescue ArgumentError, Inventory::Error => exception
             @error.puts "拓扑参数或清单错误：#{exception.message}"
             2
           rescue StandardError => exception
@@ -56,21 +65,25 @@ module Net
 
           private
 
+          # 使用共享解析器读取拓扑模式参数，不修改调用方的参数数组。
           def parse_options
             CLI::Options.parse(argv: @argv, input: @input, output: @output, error: @error, mode: :topology)
           end
 
+          # 解析配置与 CLI 覆盖并固定拓扑策略；首次生成配置后停止执行。
           def settings_for(options)
             environment = options.fetch(:environment)
             environment["NC_CONFIG"] ||= @default_config if @default_config && !@env["NC_CONFIG"]
-            path = environment["NC_CONFIG"] || @env["NC_CONFIG"]
-            initialize_config(path, options) if path && !File.exist?(path) && !File.symlink?(path)
+            @initialized = Setup.new(mode: :topology, options: options, env: @env, input: @input, output: @error,
+                                     env_path: @default_env, directory: @default_directory, load_env: @load_env).initialize_files?
+            return if @initialized
             settings = CLI::Options.settings(options, env: @env, load_env: @load_env)
             policy = settings.topology_options
             overrides = topology_overrides(options, policy)
             @settings = settings.with_overrides(overrides).for_run(mode: :topology)
           end
 
+          # 按 CLI、配置与示例默认值组合拓扑输出、并发和缓存选项。
           def topology_overrides(options, policy)
             values = { "ND_CACHE_MODE" => policy.cache_mode.to_s }
             values["NC_TOPOLOGY_MODE"] = options[:topology_mode].to_s if options[:topology_mode]
@@ -78,29 +91,34 @@ module Net
             explicit = options.fetch(:environment)
             values["NC_TOPOLOGY_DIRECTORY"] = explicit["NC_BACKUP_DIRECTORY"] || policy.directory || @default_directory
             values.delete("NC_TOPOLOGY_DIRECTORY") unless values["NC_TOPOLOGY_DIRECTORY"]
-            values["NC_TOPOLOGY_CONCURRENCY"] = explicit["NC_CONCURRENCY"] if explicit["NC_CONCURRENCY"]
+            values["NC_TOPOLOGY_PARALLEL"] = explicit["NC_PARALLEL"] if explicit["NC_PARALLEL"]
             values["ND_CACHE_MODE"] = explicit["ND_CACHE_MODE"] if explicit["ND_CACHE_MODE"]
             values
           end
 
-          def initialize_config(path, options)
-            document = { "topology" => { "mode" => "plan", "cache_mode" => "prefer", "concurrency" => 4 } }
-            document["topology"]["directory"] = @default_directory if @default_directory
-            Config::Initializer.new(input: @input, output: @error).create(path: path, document: document, interactive: options[:interactive])
-            @error.puts "已初始化配置：#{path}；检查配置后再次运行。"
-            # 新建配置不能继续访问清单；由 run 入口处理这个明确状态。
-            @initialized = true
+          # 缓存回退和写入失败与备份入口一致提示，不把历史清单当作远端恢复。
+          def inventory_warning(fleet)
+            status = fleet.inventory_status
+            return unless status
+
+            @error.puts "清单刷新失败，使用历史缓存（#{status[:refresh_error_code]}）" if status[:source] == :stale_cache
+            @error.puts "清单缓存写入失败（#{status[:write_error_type]}）" if status[:write_error_type]
           end
 
+          # 仅预览就绪清单，不建立设备连接；无选中设备时返回未完成。
           def inventory_preview(devices, options)
             selected = devices.select(&:ready?)
-            data = { devices: selected.map { |device| { host: device.host, name: device.name, vendor: device.vendor } } }
+            data = { total: devices.size, ready: selected.size,
+                     issues: devices.reject(&:ready?).group_by(&:issue).transform_values(&:size),
+                     devices: selected.map { |device| { host: device.host, name: device.name, vendor: device.vendor } } }
             display(data, options)
             selected.empty? ? 1 : 0
           end
 
+          # 先发现并保存审批计划，仅在显式应用模式执行变更，失败后保存已有任务回执。
+          # 发现结果先落盘并生成校验摘要，再进入应用；取消只汇总回执，不重新下发配置。
           def execute(devices, settings, credentials, policy, options)
-            raise ArgumentError, "topology.directory or --directory is required" unless policy.directory
+            raise ArgumentError, "请在 topology.directory 或 --directory 设置拓扑报告目录" unless policy.directory
 
             directory = Storage::BatchDirectory.create(policy.directory)
             selected = devices.select(&:ready?)
@@ -112,12 +130,12 @@ module Net
             @events_mutex = Mutex.new
             @task_results = {}
             credentials = observed_credentials(credentials)
-            @progress.operation_plan(selected, concurrency: policy.concurrency, label: "拓扑发现/规划")
+            @progress.operation_plan(selected, parallel: policy.parallel, label: "拓扑发现/规划")
             outcomes = @progress.with_updates { collect(selected, settings, credentials, policy, directory) }
             save_plan(directory, outcomes)
             if policy.mode == :apply
               applying = outcomes.filter_map { |outcome| @devices_by_host[outcome[:host]] if %i[planned partial_planned].include?(outcome[:status]) }
-              @progress.operation_plan(applying, concurrency: policy.concurrency, label: "拓扑应用")
+              @progress.operation_plan(applying, parallel: policy.parallel, label: "拓扑应用")
               outcomes = @progress.with_updates { apply_plans(outcomes, settings, credentials, policy, directory) }
             end
             summary = build_summary(devices, outcomes, policy, directory)
@@ -137,6 +155,7 @@ module Net
             raise
           end
 
+          # 在线程池停止后汇总已完成和未开始任务，持久化中断或编排失败摘要。
           def persist_aborted(directory, devices, selected, policy, failure)
             outcomes = @events_mutex.synchronize do
               selected.map do |device|
@@ -154,33 +173,34 @@ module Net
             persist_summary(directory, summary)
           end
 
+          # 并发读取支持发现能力的设备，逐设备生成接口描述审计与候选计划。
           def collect(devices, settings, credentials, policy, directory)
-            Net::Connector::Concurrency::Pool.new(concurrency: policy.concurrency).map(devices) do |device|
+            Resources.prepare!(parallel: [policy.parallel, devices.size].min)
+            Net::Connector::Parallel::Pool.new(parallel: policy.parallel).map(devices) do |device|
               unless discovery_supported?(device)
                 next observe_task(device, directory) { { host: device.host, vendor: device.vendor, status: :unsupported_operation } }
               end
               perform(device, settings, credentials, directory) do |connector|
                 audit = connector.audit_interface_descriptions(abbreviate: policy.abbreviate_ports, lowercase: policy.lowercase_ports,
+                                                                 description_matcher: policy.method(:description_matches?),
                                                                  &formatter(policy))
                 audit_outcome(audit, device, policy)
               end
             end
           end
 
+          # 只检查厂商是否声明邻居发现能力，不建立设备连接。
           def discovery_supported?(device)
             strategy = Net::Connector.vendor_class(device.vendor).profile.topology_strategy
             strategy&.supports?(:neighbors)
           end
 
+          # 构造邻居描述格式化回调，按策略缩写或转换远端端口名称。
           def formatter(policy)
-            lambda do |neighbor|
-              port = neighbor.neighbor_interface
-              port = Net::Connector::Topology::InterfaceName.short(port) if policy.abbreviate_ports
-              port = port.downcase if policy.lowercase_ports
-              policy.format(neighbor: neighbor.neighbor_name, port: port)
-            end
+            policy.method(:description_for)
           end
 
+          # 将接口审计转换为规划、发现或需人工处理的任务结果。
           def audit_outcome(audit, device, policy)
             raise TypeError, "topology audit must return an Audit" unless audit.instance_of?(Net::Connector::Topology::Audit)
             plan = audit.plan
@@ -201,6 +221,7 @@ module Net
               issues: audit.issues, changes: audit.changes, commands: policy.mode == :discover ? [] : (plan&.commands || []) }
           end
 
+          # 在内容不一致时进一步检查描述模板，区分格式不符与普通差异。
           def comparison_rows(audit, policy)
             pattern = Regexp.escape(policy.description_format).gsub("%\\{neighbor\\}", ".+").gsub("%\\{port\\}", ".+")
             audit.comparisons.map do |entry|
@@ -212,10 +233,12 @@ module Net
             end
           end
 
+          # 为原有逐设备凭据回调附加进度事件观察，不改变认证内容。
           def observed_credentials(credentials)
             ->(device) { credentials.call(device)&.merge(on_event: @progress.method(:event)) }
           end
 
+          # 将终端显示故障纳入摘要，阻止有诊断丢失的批次报告成功。
           def attach_progress_error(summary)
             return unless @progress.output_error
 
@@ -223,10 +246,12 @@ module Net
             summary[:success] = false
           end
 
+          # 在统一计时和完成事件作用域内执行单设备拓扑操作。
           def perform(device, settings, credentials, directory, &)
             observe_task(device, directory) { perform_value(device, settings, credentials, directory, &) }
           end
 
+          # 隔离普通设备错误，并在取消时仍登记完成事件后传播原始中断。
           def observe_task(device, directory)
             started_at = Time.now.utc
             started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -249,6 +274,7 @@ module Net
             result
           end
 
+          # 解析设备接入设置，在独占连接作用域内执行操作并保留部分返回值。
           def perform_value(device, settings, credentials, directory, &)
             access = Device::Access.resolve(device, settings: settings, credentials: credentials, policy: settings,
                                             log_directory: settings.log_directory || File.join(directory, "logs"))
@@ -265,6 +291,7 @@ module Net
             result
           end
 
+          # 登记任务时间、事件和进度；被取消的任务保留先前可用的操作证据。
           def complete_task(device, result, directory, started_at, started)
             result ||= @events_mutex.synchronize { @task_results[device.host]&.except(:plan) }&.merge(status: :interrupted)
             result ||= { host: device.host, vendor: device.vendor, status: :interrupted }
@@ -274,13 +301,21 @@ module Net
             @events_mutex.synchronize { @task_results[device.host] = result }
             @progress.operation_result(device: device, status: result[:status], duration_ms: result[:duration_ms],
                                        error_code: result.dig(:diagnostic, :error_code), neighbors: result.fetch(:neighbors, []).size,
-                                       changes: result.fetch(:changes, 0))
+                                       changes: result.fetch(:changes, 0), issues: result.fetch(:issues, []))
           end
 
+          # 原子保存设备审批计划及其 SHA-256，应用之前先固定可复核证据。
           def save_plan(directory, outcomes)
-            plans = outcomes.filter_map { |outcome| outcome[:plan] }.map do |plan|
-              { host: plan.host, vendor: plan.vendor, evidence: plan.evidence, scope: plan.scope, commands: plan.commands,
-                changes: plan.changes.map { |change| change.to_h.merge(neighbor: change.neighbor.to_h) } }
+            outcomes.each do |outcome|
+              Netdisco::Topology::Files.write_plan(directory: directory, device: @devices_by_host.fetch(outcome[:host]), outcome: outcome)
+            end
+            plans = outcomes.filter_map do |outcome|
+              plan = outcome[:plan]
+              next unless plan
+
+              { host: plan.host, name: outcome[:name], vendor: plan.vendor, evidence: plan.evidence, scope: plan.scope,
+                commands: plan.commands, script_file: outcome[:script_file], script_sha256: outcome[:script_sha256],
+                device_report: outcome[:device_report], changes: plan.changes.map { |change| change.to_h.merge(neighbor: change.neighbor.to_h) } }
             end
             contents = JSON.pretty_generate(devices: plans, audits: outcomes.map { |outcome| outcome.except(:plan) })
             path = File.join(directory, "plan.json")
@@ -288,8 +323,10 @@ module Net
             Storage::AtomicFile.write(path + ".sha256", Digest::SHA256.hexdigest(contents) + "\n")
           end
 
+          # 仅应用已规划的设备，并保留现场核验、已执行步骤和部分失败状态。
           def apply_plans(outcomes, settings, credentials, policy, directory)
-            Net::Connector::Concurrency::Pool.new(concurrency: policy.concurrency).map(outcomes) do |outcome|
+            Resources.prepare!(parallel: [policy.parallel, outcomes.size].min)
+            Net::Connector::Parallel::Pool.new(parallel: policy.parallel).map(outcomes) do |outcome|
               next outcome unless %i[planned partial_planned].include?(outcome[:status]) && outcome[:plan]
 
               plan = outcome.fetch(:plan)
@@ -308,6 +345,7 @@ module Net
             end
           end
 
+          # 汇总清单覆盖、逐设备结果和事件故障，按当前模式判断是否完成。
           def build_summary(devices, outcomes, policy, directory)
             unexpected = devices.any? { |device| device.issue && device.issue != :filtered }
             good = %i[planned discovered applied]
@@ -316,23 +354,27 @@ module Net
               (good.include?(outcome[:status]) || outcome[:status] == :unsupported_operation) && !outcome[:event_error_type] && (policy.mode != :plan || outcome.fetch(:changes, 0).zero?)
             end
             { mode: policy.mode, success: success, directory: directory,
-              counts: outcomes.map { |outcome| outcome[:status] }.tally,
+              counts: outcomes.map { |outcome| outcome[:status] }.tally, statistics: Netdisco::Topology::Presentation.statistics(outcomes),
               inventory: devices.map { |device| { host: device.host, vendor: device.vendor, issue: device.issue } },
               devices: outcomes.map { |outcome| outcome.except(:plan) } }
           end
 
+          # 分别原子写入 JSON 摘要和逐接口可读报告。
           def persist_summary(directory, summary)
             Storage::AtomicFile.write(File.join(directory, "summary.json"), JSON.pretty_generate(summary))
-            lines = summary[:devices].flat_map do |item|
-              ["#{item[:host]} #{item[:status]} changes=#{item.fetch(:changes, 0)}"] +
+            summary[:devices].each { |outcome| Netdisco::Topology::Files.write_report(outcome) }
+            lines = result_lines(summary) + summary[:devices].flat_map do |item|
+              ["#{item[:host]} #{item[:name].to_s.gsub(/[[:cntrl:]]/, " ")} #{Netdisco::Topology::Presentation.status(item[:status], changes: item.fetch(:changes, 0))} changes=#{item.fetch(:changes, 0)}",
+               "  设备报告：#{item[:device_report]}", "  命令文件：#{item[:script_file] || "未生成"}"] +
                 item.fetch(:neighbors, []).map do |row|
                   "  #{row[:interface]} #{row[:status]} current=#{row[:current].inspect} expected=#{row[:expected].inspect}"
-                end + item.fetch(:issues, []).map { |issue| "  #{issue[:interface]} issue=#{issue[:code]}" } +
+                end + item.fetch(:issues, []).map { |issue| "  #{issue[:interface]} #{Netdisco::Topology::Presentation.reason(issue[:code])}" } +
                 item.fetch(:commands, []).map { |command| "  command=#{command.inspect}" }
             end
             Storage::AtomicFile.write(File.join(directory, "summary.txt"), lines.join("\n") + "\n")
           end
 
+          # 持锁追加受控任务事件，写入失败时登记诊断而不丢弃设备结果。
           def append_event(directory, result)
             @events_mutex.synchronize do
               File.open(File.join(directory, "events.jsonl"), File::WRONLY | File::APPEND | File::CREAT | File::NOFOLLOW, 0o600) do |file|
@@ -343,12 +385,38 @@ module Net
             result[:event_error_type] = Error::Metadata.type(failure.class.name) || "StandardError"
           end
 
+          # 默认只打印设备、接口两层摘要；逐设备及命令详情已经写入独立报告。
+          def result_lines(data)
+            stats = data.fetch(:statistics)
+            ["结果：#{Netdisco::Topology::Presentation.result(data)}；模式：#{data[:mode]}",
+             "设备：采集完成 #{stats[:collected]} 台；无需修改 #{stats[:unchanged]} 台；有候选变更 #{stats[:change_devices]} 台；失败 #{stats[:failed]} 台",
+             "接口：候选变更 #{stats[:changes]} 个；待核实 #{stats[:review_interfaces]} 个（涉及 #{stats[:review_devices]} 台设备）",
+             "待核实原因：#{Netdisco::Topology::Presentation.issues(data[:devices].flat_map { |item| item.fetch(:issues, []) })}"]
+          end
+
+          # 按 JSON 或安全文本格式输出设备结果及报告位置。
           def display(data, options)
             if options[:json]
               @output.puts JSON.generate(data)
             else
-              data.fetch(:devices).each { |item| @output.puts "#{item[:host]}\t#{item[:status] || item[:name]}" }
-              @output.puts "报告：#{data[:directory]}" if data[:directory]
+              if data.key?(:total)
+                @output.puts "清单 #{data[:total]} 台；本次 #{data[:ready]} 台；跳过 #{data[:total] - data[:ready]} 台"
+              end
+              if data.key?(:total)
+                data.fetch(:devices).each do |item|
+                  fields = [item[:host], item[:vendor], item[:name]]
+                  @output.puts fields.map { |field| field.to_s.gsub(/[[:cntrl:]]/, " ") }.join("\t")
+                end
+              end
+              if data[:directory]
+                @output.puts result_lines(data)
+                scripts = data[:devices].count { |item| item[:script_file] }
+                @output.puts "命令文件：#{File.join(data[:directory], "scripts")}（#{scripts} 台有变更）" if scripts.positive?
+                @output.puts "设备报告：#{File.join(data[:directory], "devices")}"
+                @output.puts "计划：#{File.join(data[:directory], "plan.json")}"
+                @output.puts "报告：#{File.join(data[:directory], "summary.json")}"
+                @output.puts "文本报告：#{File.join(data[:directory], "summary.txt")}"
+              end
             end
           end
         end

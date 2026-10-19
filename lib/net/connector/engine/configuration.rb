@@ -7,6 +7,7 @@ module Net
   module Connector
     # 显式且不可变的连接设置；环境变量读取由调用库的可执行程序负责。
     class Configuration
+      # 只读提供经校验的连接设置；凭据字段只供内部认证使用，不能直接序列化。
       attr_reader :host, :username, :password, :enable_password, :protocol, :port, :login_timeout,
                   :command_timeout, :write_timeout, :max_output_bytes, :max_script_output_bytes, :log_file, :log_format, :log_level,
                   :known_hosts, :host_key_policy, :challenges, :logger, :on_event
@@ -86,6 +87,7 @@ module Net
 
       private
 
+      # 校验字节上限等参数为正整数，拒绝隐式类型转换。
       def positive_integer(value, name)
         raise ArgumentError, "#{name} must be a positive Integer" unless value.is_a?(Integer) && value.positive?
 

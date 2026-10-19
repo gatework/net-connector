@@ -24,6 +24,7 @@
 | `:palo_alto` | Palo Alto PAN-OS | 候选视图中的 set 格式导出 | 不支持 |
 | `:huawei` | 华为 | `dis cur` | `save force` |
 | `:hillstone` | 山石 StoneOS | `show configuration running` | `save all` |
+| `:centec` | Centec / DclingCloudOS | `show running-config` | `copy running-config startup-config` |
 | `:topsec` | 天融信 TopOS 防火墙 | `show-running nostop` | 未开放 |
 | `:fortinet` | FortiGate / FortiOS | `show full-configuration` | `execute cfg save` |
 | `:juniper` | Juniper Junos OS | `show configuration \| display set \| no-more` | 不隐式提交候选库 |
@@ -123,6 +124,8 @@ end
 ```
 
 显式调用 `sync_interface_descriptions`，在同一连接中完成发现、修改、读回和保存，不需要处理计划或二次确认；已有描述一致时不修改、不保存。需要单独预览审批时，后端仍可使用 `plan_interface_descriptions` 与 `apply_interface_descriptions(plan, confirmed: true)`。
+
+规划、审计与同步会保留语义一致的旧描述：仅大小写或同类接口别名（如 G/GE/Gi、SE/Smartrate-Ethernet）不同不触发写入。邻居名称或端口编号、速率不同仍需修正。未知名称或端口占位符（如 `-`、`unknown`）不能形成变更，审计记录问题，直接规划/同步及下发重验会拒绝未知身份。
 
 默认描述为 `To_<邻居名称>_<接口简称>`，例如 `To_Core-SW_Gi1/0/1`。同类接口的厂商全称、简称和大小写统一，显示文本中的空格替换为下划线。端口、拆分通道与子接口编号完整保留；原始邻居记录和本机下发接口拼写不改变。`abbreviate: false` 保留对端接口全称，`lowercase: true` 仅将对端接口简称转为小写；后端也可用代码块定制。公共纯函数是 `Net::Connector::Topology::InterfaceDescription.format`。
 

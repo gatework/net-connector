@@ -248,6 +248,245 @@ class CLITopologyTest < Minitest::Test
     end
   end
 
+  def test_help_levels_and_examples_are_offline_and_mode_specific
+    { "--help" => false, "--help-all" => true, "--examples" => false }.each do |flag, detailed|
+      output = StringIO.new
+      N::CLI::Credentials.stub(:resolve, ->(*) { flunk "help queried inventory" }) do
+        assert_equal 0, N::CLI::Topology.new(argv: [flag], env: {}, output: output, error: StringIO.new).run
+      end
+      if flag == "--examples"
+        assert_includes output.string, "--inventory-only"
+        assert_includes output.string, "--apply"
+      else
+        %w[--discover --plan --apply --inventory-only --parallel --limit --examples].each do |option|
+          assert_includes output.string, option
+        end
+        assert_equal detailed, output.string.include?("--description-format")
+        assert_includes output.string, "拓扑报告目录"
+        refute_includes output.string, "备份目录"
+        refute_includes output.string, "--sample"
+      end
+    end
+  end
+
+  def test_missing_configuration_has_complete_public_defaults_and_stops
+    Dir.mktmpdir do |root|
+      path = File.join(root, "topology.yml")
+      N::CLI::Credentials.stub(:resolve, ->(*) { flunk "initialization queried inventory" }) do
+        status = N::CLI::Topology.new(argv: ["--init", "--non-interactive"], env: {}, default_config: path,
+                                    output: StringIO.new, error: StringIO.new).run
+        assert_equal 0, status
+      end
+      document = YAML.safe_load_file(path)
+      assert_equal %w[inventory netdisco ssh topology], document.keys.sort
+      assert_equal "./topologys", document.dig("topology", "directory")
+      assert_equal "plan", document.dig("topology", "mode")
+      assert_equal "To_%{neighbor}_%{port}", document.dig("topology", "description_format")
+      assert_equal ["topology.yml"], Dir.children(root)
+      assert_equal 0o600, File.stat(path).mode & 0o777
+    end
+  end
+
+  def test_inventory_preview_reports_selection_and_sanitizes_terminal_text
+    inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "name" => "edge\e[31m", "vendor" => "H3C" },
+                                          { "ip" => "192.0.2.2", "name" => "core", "vendor" => "H3C" }])
+    output = StringIO.new
+    N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { flunk "preview connected" }]) do
+      status = N::CLI::Topology.new(argv: ["--inventory-only", "--name", "edge", "--no-progress"], env: {},
+                                  output: output, error: StringIO.new).run
+      assert_equal 0, status
+    end
+    assert_includes output.string, "清单 2 台；本次 1 台；跳过 1 台"
+    assert_includes output.string, "h3c"
+    refute_includes output.string, "\e"
+  end
+
+  def test_invalid_topology_limit_does_not_advertise_backup_sampling
+    error = StringIO.new
+    assert_equal 2, N::CLI::Topology.new(argv: ["--limit", "0"], env: {}, output: StringIO.new, error: error).run
+    assert_includes error.string, "设备上限须为正整数"
+    refute_includes error.string, "抽样"
+  end
+
+  def test_report_directory_and_parallel_cli_overrides_take_precedence_over_yaml
+    Dir.mktmpdir do |root|
+      path = File.join(root, "topology.yml")
+      destination = File.join(root, "chosen")
+      File.write(path, { "topology" => { "directory" => File.join(root, "unused"), "parallel" => 1 } }.to_yaml)
+      inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
+      output, completed, requested = StringIO.new, [], []
+      prepare = ->(parallel:) { requested << parallel }
+      N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
+        N::Resources.stub(:prepare!, prepare) do
+          status = N::CLI::Topology.new(argv: ["--discover", "--directory", destination, "--parallel", "500", "--quiet"],
+                                      env: {}, default_config: path, default_directory: File.join(root, "default"),
+                                      connector_factory: audit_factory(completed), output: output, error: StringIO.new).run
+          assert_equal 0, status
+        end
+      end
+      assert_equal [:audit, :close], completed
+      assert_equal [1], requested
+      assert_includes output.string, "结果：完成；模式：discover"
+      %w[plan.json summary.json summary.txt].each do |filename|
+        artifact = Dir.glob(File.join(destination, "*", filename)).fetch(0)
+        assert_includes output.string, artifact
+      end
+      refute File.exist?(File.join(root, "unused"))
+      refute File.exist?(File.join(root, "default"))
+    end
+  end
+
+  def test_cache_fallback_and_write_failure_are_visible_in_inventory_preview
+    output, error = StringIO.new, StringIO.new
+    device = N::Device.new(**N::Device.members.to_h { |key| [key, nil] }.merge(host: "192.0.2.1", name: "edge", vendor: :h3c))
+    fleet = Object.new
+    fleet.define_singleton_method(:devices) { |**| [device] }
+    fleet.define_singleton_method(:inventory_status) do
+      { source: :stale_cache, refresh_error_code: :request_failed, write_error_type: "IOError" }
+    end
+    N::CLI::Credentials.stub(:resolve, [Object.new, ->(*) { flunk "preview connected" }]) do
+      N::Fleet.stub(:new, fleet) do
+        status = N::CLI::Topology.new(argv: ["--inventory-only", "--json", "--quiet"], env: {}, output: output, error: error).run
+        assert_equal 0, status
+      end
+    end
+    assert_includes error.string, "清单刷新失败，使用历史缓存（request_failed）"
+    assert_includes error.string, "清单缓存写入失败（IOError）"
+    assert_equal 1, JSON.parse(output.string).fetch("ready")
+  end
+
+  def test_existing_ap_description_is_preserved_through_the_configured_cli_policy
+    fixture = TopologyFixture.new(:h3c, neighbor: "Local Interface Chassis ID Port ID System Name\nGE1/0/1 000f-e25d-ee91 Smartrate-Ethernet1/0/1 room_01\n")
+    fixture.description = "TO_AP-room_01_SE1/0/1"
+    Dir.mktmpdir do |root|
+      path = File.join(root, "topology.yml")
+      File.write(path, { "topology" => { "neighbor_name_prefixes" => ["AP-"] } }.to_yaml)
+      inventory = Struct.new(:devices).new([{ "ip" => fixture.device.host, "vendor" => "H3C" }])
+      output, error = StringIO.new, StringIO.new
+      N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
+        status = N::CLI::Topology.new(argv: ["--plan", "--json", "--quiet"], env: {}, default_config: path, default_directory: root,
+                                    connector_factory: ->(*) { fixture.device }, output: output, error: error).run
+        assert_equal 0, status, error.string
+      end
+      device = JSON.parse(output.string).fetch("devices").first
+      assert_equal 0, device.fetch("changes")
+      assert_equal "matches", device.fetch("neighbors").first.fetch("status")
+      assert_empty device.fetch("commands")
+      refute device.key?("script_file")
+      assert File.file?(device.fetch("device_report"))
+      assert_equal "TO_AP-room_01_SE1/0/1", fixture.description
+      refute(fixture.observed.any? { |command, _| command == fixture.sample.fetch(:enter) })
+    end
+  ensure
+    fixture&.close
+  end
+
+  def test_commands_are_exported_per_device_and_referenced_by_plan_and_reports
+    fixture = TopologyFixture.new(:h3c)
+    Dir.mktmpdir do |root|
+      inventory = Struct.new(:devices).new([{ "ip" => fixture.device.host, "name" => "edge-01", "vendor" => "H3C" }])
+      output, error = StringIO.new, StringIO.new
+      N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
+        status = N::CLI::Topology.new(argv: ["--plan", "--json", "--quiet"], env: {}, default_directory: root,
+                                    connector_factory: ->(*) { fixture.device }, output: output, error: error).run
+        assert_equal 1, status, error.string
+      end
+      summary = JSON.parse(output.string)
+      item = summary.fetch("devices").first
+      script = item.fetch("script_file")
+      assert_equal "edge-01-192.0.2.1.cfg", File.basename(script)
+      assert_equal item.fetch("commands").join("\n") + "\n", File.read(script)
+      assert_equal Digest::SHA256.file(script).hexdigest, item.fetch("script_sha256")
+      assert_equal 0o600, File.stat(script).mode & 0o777
+      assert_equal 0o700, File.stat(File.dirname(script)).mode & 0o777
+      assert_equal "edge-01-192.0.2.1.txt", File.basename(item.fetch("device_report"))
+      assert_includes File.read(item.fetch("device_report")), "edge-01（192.0.2.1）"
+      plan = JSON.parse(File.read(File.join(summary.fetch("directory"), "plan.json"))).fetch("devices").first
+      assert_equal script, plan.fetch("script_file")
+      assert_equal "edge-01", plan.fetch("name")
+      assert_includes File.read(File.join(summary.fetch("directory"), "summary.txt")), script
+      refute(fixture.observed.any? { |command, _| command == fixture.sample.fetch(:enter) })
+    end
+  ensure
+    fixture&.close
+  end
+
+  def test_script_write_failure_prevents_apply_and_keeps_a_failed_summary
+    fixture = TopologyFixture.new(:h3c)
+    Dir.mktmpdir do |root|
+      inventory = Struct.new(:devices).new([{ "ip" => fixture.device.host, "name" => "edge", "vendor" => "H3C" }])
+      writer = C::Storage::AtomicFile.method(:write)
+      failing = lambda do |path, *args|
+        raise IOError, "private export failure" if path.end_with?(".cfg")
+
+        writer.call(path, *args)
+      end
+      N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
+        C::Storage::AtomicFile.stub(:write, failing) do
+          status = N::CLI::Topology.new(argv: ["--apply", "--quiet"], env: {}, default_directory: root,
+                                      connector_factory: ->(*) { fixture.device }, output: StringIO.new, error: StringIO.new).run
+          assert_equal 2, status
+        end
+      end
+      report = JSON.parse(File.read(Dir.glob(File.join(root, "*", "summary.json")).fetch(0)))
+      assert_equal false, report.fetch("success")
+      assert_equal "IOError", report.fetch("orchestration_error_type")
+      refute(fixture.observed.any? { |command, _| command == fixture.sample.fetch(:enter) })
+    end
+  ensure
+    fixture&.close
+  end
+
+  def test_default_result_is_a_compact_chinese_summary_with_explicit_pending_reasons
+    fixture = TopologyFixture.new(:h3c, neighbor: "Local Interface Chassis ID Port ID System Name\nGE1/0/1 000f-e25d-ee91 000f-e25d-ee91 -\n")
+    Dir.mktmpdir do |root|
+      inventory = Struct.new(:devices).new([{ "ip" => fixture.device.host, "name" => "edge", "vendor" => "H3C" }])
+      output, error = StringIO.new, StringIO.new
+      N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
+        status = N::CLI::Topology.new(argv: ["--plan"], env: {}, default_directory: root,
+                                    connector_factory: ->(*) { fixture.device }, output: output, error: error).run
+        assert_equal 1, status
+      end
+      assert_includes output.string, "采集完成 1 台"
+      assert_includes output.string, "失败 0 台"
+      assert_includes output.string, "待核实 1 个"
+      assert_includes output.string, "邻居未提供名称 1 个接口"
+      assert_includes output.string, "存在待修正或待核实项"
+      assert output.string.lines.size <= 10
+      refute_includes output.string + error.string, "unverified"
+      refute_includes output.string, "192.0.2.1\t"
+      assert_includes error.string, "含待核实接口 1 台"
+      report = JSON.parse(File.read(Dir.glob(File.join(root, "*", "summary.json")).fetch(0)))
+      assert_equal "unverified", report.fetch("devices").first.fetch("status")
+      assert_equal 0, report.fetch("statistics").fetch("failed")
+    end
+  ensure
+    fixture&.close
+  end
+
+  def test_shared_configuration_from_nc_config_is_visible_and_keeps_ap_descriptions
+    fixture = TopologyFixture.new(:h3c, neighbor: "Local Interface Chassis ID Port ID System Name\nGE1/0/1 000f-e25d-ee91 Smartrate-Ethernet1/0/1 room_01\n")
+    fixture.description = "TO_AP-room_01_SE1/0/1"
+    Dir.mktmpdir do |root|
+      path = File.join(root, "backup.yml")
+      File.write(path, { "backup" => { "parallel" => 50 }, "topology" => { "neighbor_name_prefixes" => ["AP-"] } }.to_yaml)
+      inventory = Struct.new(:devices).new([{ "ip" => fixture.device.host, "vendor" => "H3C" }])
+      output, error = StringIO.new, StringIO.new
+      N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
+        status = N::CLI::Topology.new(argv: [], env: { "NC_CONFIG" => path }, load_env: true,
+                                    default_config: File.join(root, "topology.yml"), default_directory: root,
+                                    connector_factory: ->(*) { fixture.device }, output: output, error: error).run
+        assert_equal 0, status, error.string
+      end
+      assert_includes error.string, "配置：#{path}"
+      assert_includes output.string, "无需修改 1 台"
+      refute File.exist?(File.join(root, "topology.yml"))
+      assert_empty Dir.glob(File.join(root, "*", "scripts", "*.cfg"))
+    end
+  ensure
+    fixture&.close
+  end
+
   private
 
   def audit_factory(completed, interrupt: false)

@@ -71,6 +71,7 @@ module Net
           end
         end
 
+        # 以设备的有效服务器和原生文件名构造本批次冲突索引。
         def target_key(device) = [@transfers[device.host]&.server, device.tftp_filename]
 
         # 采样模式按采样顺序仲裁目标，全量模式直接扫描清单；输出仍保留清单顺序。

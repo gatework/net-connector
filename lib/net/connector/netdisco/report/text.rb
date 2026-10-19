@@ -9,14 +9,15 @@ module Net
       class Report
         # 将批次结果写为人类可读的文本摘要。
         class Text
-          def self.write(directory:, report:, plan:, concurrency:)
+          # 生成可读批次与失败分类摘要，并原子写入私有文本报告。
+          def self.write(directory:, report:, plan:, parallel:)
             summary = report.statistics
             failed = report.outcomes.reject { |item| item.success? || %i[filtered sample_limit].include?(item.status) }
             groups = failed.group_by { |item| item.error_code || item.status }
             lines = ["网络设备备份报告", "=" * 72,
                      "开始时间：#{report.started_at.getlocal("+08:00").strftime("%Y-%m-%d %H:%M:%S %:z")}",
                      "结束时间：#{report.finished_at.getlocal("+08:00").strftime("%Y-%m-%d %H:%M:%S %:z")}",
-                     "清单：#{plan.inventory.size} 台；本次：#{plan.ready.size} 台；并发：#{concurrency}",
+                     "清单：#{plan.inventory.size} 台；本次：#{plan.ready.size} 台；并发：#{parallel}",
                      "成功：#{summary[:succeeded]}；部分成功：#{summary[:partial]}；失败：#{summary[:failed]}；跳过：#{summary[:skipped]}",
                      "耗时：#{(report.duration_ms.to_f / 1000).round(1)} 秒；批次状态：#{summary[:status]}",
                      "成功策略：#{report.policy}；策略通过：#{report.policy_success?}",
@@ -26,11 +27,15 @@ module Net
                      "-" * 72, "未完成设备："]
             lines.concat(failure_lines(failed))
             lines << "无" if failed.empty?
-            lines << "TFTP 成功仅表示设备报告上传完成；服务器文件核验结果请查看 summary.json。" if report.mode == :tftp
+            if report.mode == :tftp
+              verification = summary.fetch(:verification)
+              lines << "TFTP 服务器文件：已核验 #{verification[:verified]}，未核验 #{verification[:unverified]}。"
+            end
             lines += ["=" * 72, "备份目录：#{directory}", "完整明细：#{File.join(directory, "summary.json")}"]
             Net::Connector::Storage::AtomicFile.write(File.join(directory, "summary.txt"), lines.join("\n") + "\n")
           end
 
+          # 格式化未完成设备列表，清除名称中的终端控制符。
           def self.failure_lines(failed)
             failed.map do |item|
               label = item.device.name.to_s.gsub(/[[:cntrl:]]/, " ")

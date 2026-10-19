@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
+require_relative "../parallel"
+
 module Net
   module Connector
-    module Concurrency
+    module Parallel
       # 后台观察线程属于调用作用域；停止、等待和异常交付不能盖掉前台原故障。
       module Observer
         # task 自行等待停止信号，stop 只负责唤醒；正常前台也必须观察后台失败。
@@ -38,6 +40,7 @@ module Net
           value
         end
 
+        # 在自有后台线程运行观察任务，将异常通过完成队列交给前台所有者。
         def self.observe(task, completion)
           failure = nil
           Thread.handle_interrupt(Exception => :immediate) { task.call }
@@ -48,6 +51,7 @@ module Net
         end
         private_class_method :observe
 
+        # 唤醒并等待观察线程；唤醒失败仍终止自有线程，保留首个收尾错误。
         def self.finish(thread, stop)
           failure = nil
           begin

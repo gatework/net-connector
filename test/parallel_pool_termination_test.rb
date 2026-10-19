@@ -2,13 +2,13 @@
 
 require "minitest/autorun"
 require "timeout"
-require_relative "../lib/net/connector/concurrency/pool"
+require_relative "../lib/net/connector/parallel/pool"
 
-class ConcurrencyPoolTerminationTest < Minitest::Test
+class ParallelPoolTerminationTest < Minitest::Test
   def test_worker_exit_reports_incomplete_work_instead_of_successful_nil_results
     visited = []
     error = assert_raises(RuntimeError) do
-      Net::Connector::Concurrency::Pool.new(concurrency: 1).map([1, 2]) do |item|
+      Net::Connector::Parallel::Pool.new(parallel: 1).map([1, 2]) do |item|
         visited << item
         Thread.exit
       end
@@ -22,7 +22,7 @@ class ConcurrencyPoolTerminationTest < Minitest::Test
     cleaned = Queue.new
     blocked = Queue.new
     runner = Thread.new do
-      Net::Connector::Concurrency::Pool.new(concurrency: 2).map([1, 2]) do
+      Net::Connector::Parallel::Pool.new(parallel: 2).map([1, 2]) do
         started << Thread.current
         begin
           blocked.pop
@@ -46,6 +46,6 @@ class ConcurrencyPoolTerminationTest < Minitest::Test
   end
 
   def test_nil_task_results_remain_valid
-    assert_equal [nil, nil], Net::Connector::Concurrency::Pool.new(concurrency: 1).map([1, 2]) { nil }
+    assert_equal [nil, nil], Net::Connector::Parallel::Pool.new(parallel: 1).map([1, 2]) { nil }
   end
 end

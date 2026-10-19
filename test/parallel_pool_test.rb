@@ -3,19 +3,19 @@
 require "minitest/autorun"
 require "open3"
 require "timeout"
-require_relative "../lib/net/connector/concurrency/pool"
+require_relative "../lib/net/connector/parallel/pool"
 
-class ConcurrencyPoolTest < Minitest::Test
-  Pool = Net::Connector::Concurrency::Pool
+class ParallelPoolTest < Minitest::Test
+  Pool = Net::Connector::Parallel::Pool
 
   def test_environment_default_and_explicit_override
-    assert_equal 4, Pool.environment_concurrency(env: {})
-    assert_equal 7, Pool.environment_concurrency(env: { "NC_CONCURRENCY" => "7" })
-    assert_equal 50, Pool.environment_concurrency(env: { "NC_CONCURRENCY" => "50" })
-    [nil, false, 3, "", "0", "-1", "1.5", "51", " 2 "].each do |value|
-      assert_raises(ArgumentError) { Pool.environment_concurrency(env: { "NC_CONCURRENCY" => value }) }
+    assert_equal 4, Pool.environment_parallel(env: {})
+    assert_equal 7, Pool.environment_parallel(env: { "NC_PARALLEL" => "7" })
+    assert_equal 50, Pool.environment_parallel(env: { "NC_PARALLEL" => "50" })
+    [nil, false, 3, "", "0", "-1", "1.5", "501", " 2 "].each do |value|
+      assert_raises(ArgumentError) { Pool.environment_parallel(env: { "NC_PARALLEL" => value }) }
     end
-    assert_equal [6], Pool.new(concurrency: 1).map([3]) { |value| value * 2 }
+    assert_equal [6], Pool.new(parallel: 1).map([3]) { |value| value * 2 }
   end
 
   def test_bounds_parallel_work_and_returns_values_in_input_order
@@ -24,7 +24,7 @@ class ConcurrencyPoolTest < Minitest::Test
     mutex = Mutex.new
     active = peak = 0
     runner = Thread.new do
-      Pool.new(concurrency: 2).map([0, 1, 2, 3]) do |index|
+      Pool.new(parallel: 2).map([0, 1, 2, 3]) do |index|
         mutex.synchronize { active += 1; peak = [peak, active].max }
         started << index
         release.pop
@@ -46,9 +46,9 @@ class ConcurrencyPoolTest < Minitest::Test
 
   def test_empty_and_invalid_inputs_do_not_create_threads
     Thread.stub(:new, ->(*) { flunk "must not create threads" }) do
-      assert_empty Pool.new(concurrency: 1).map([]) { flunk "no tasks" }
-      assert_raises(ArgumentError) { Pool.new(concurrency: 1).map(nil) {} }
-      assert_raises(ArgumentError) { Pool.new(concurrency: 1).map([1]) }
+      assert_empty Pool.new(parallel: 1).map([]) { flunk "no tasks" }
+      assert_raises(ArgumentError) { Pool.new(parallel: 1).map(nil) {} }
+      assert_raises(ArgumentError) { Pool.new(parallel: 1).map([1]) }
     end
   end
 
@@ -74,7 +74,7 @@ class ConcurrencyPoolTest < Minitest::Test
     end
     Thread.stub(:new, spawn) do
       raised = assert_raises(ThreadError) do
-        Pool.new(concurrency: 2).map([1, 2]) do |item|
+        Pool.new(parallel: 2).map([1, 2]) do |item|
           calls << item
           blocker.pop
         end
@@ -96,7 +96,7 @@ class ConcurrencyPoolTest < Minitest::Test
       thread_new.call(&operation)
     end
     Thread.stub(:new, spawn) do
-      assert_equal [2, 4, 6], Pool.new(concurrency: 2).map(items) { |item| item * 2 }
+      assert_equal [2, 4, 6], Pool.new(parallel: 2).map(items) { |item| item * 2 }
     end
     assert_equal [99], items
   end
@@ -116,7 +116,7 @@ class ConcurrencyPoolTest < Minitest::Test
     end
     Thread.stub(:new, spawn) do
       raised = assert_raises(Interrupt) do
-        Pool.new(concurrency: 2).map([:blocked, :failed]) do |item|
+        Pool.new(parallel: 2).map([:blocked, :failed]) do |item|
           if item == :failed
             started.pop
             raise original
@@ -165,7 +165,7 @@ class ConcurrencyPoolTest < Minitest::Test
 
     Thread.stub(:new, spawn) do
       operation = ->(_) { raise original }
-      raised = assert_raises(IOError) { Pool.new(concurrency: 1).map([1], &operation) }
+      raised = assert_raises(IOError) { Pool.new(parallel: 1).map([1], &operation) }
       assert_same original, raised
       assert_nil raised.cause
     end
@@ -192,7 +192,7 @@ class ConcurrencyPoolTest < Minitest::Test
     end
     runner = thread_new.call do
       Thread.stub(:new, spawn) do
-        Pool.new(concurrency: 1).map([1]) { |item| calls << item }
+        Pool.new(parallel: 1).map([1]) { |item| calls << item }
       end
     rescue Interrupt => error
       error
@@ -219,7 +219,7 @@ class ConcurrencyPoolTest < Minitest::Test
       blocker = Queue.new
       cleaned = Queue.new
       runner = Thread.new do
-        Pool.new(concurrency: 2).map([:blocked, :failed]) do |item|
+        Pool.new(parallel: 2).map([:blocked, :failed]) do |item|
           if item == :failed
             started.pop
             raise original
@@ -270,7 +270,7 @@ class ConcurrencyPoolTest < Minitest::Test
     end
     runner = thread_new.call do
       Thread.stub(:new, spawn) do
-        Pool.new(concurrency: 3).map([:blocked, :blocked, :failed]) do |item|
+        Pool.new(parallel: 3).map([:blocked, :blocked, :failed]) do |item|
           if item == :failed
             2.times { started.pop }
             raise original
@@ -300,7 +300,7 @@ class ConcurrencyPoolTest < Minitest::Test
   def test_cancelled_task_cleanup_exception_does_not_escape_global_abort_policy
     # kill 也会执行设备 ensure；其异常不得覆盖原中断或异步逃逸到宿主主线程。
     source = <<~'CODE'
-      require "net/connector/concurrency/pool"
+      require "net/connector/parallel/pool"
       Thread.abort_on_exception = true
       failure = Interrupt.new("original interruption")
       ready = Queue.new
@@ -308,7 +308,7 @@ class ConcurrencyPoolTest < Minitest::Test
       blocker = Queue.new
       runner = Thread.new do
         begin
-          Net::Connector::Concurrency::Pool.new(concurrency: 2).map([:blocked, :failed]) do |item|
+          Net::Connector::Parallel::Pool.new(parallel: 2).map([:blocked, :failed]) do |item|
             if item == :failed
               ready.pop
               raise failure
@@ -340,12 +340,12 @@ class ConcurrencyPoolTest < Minitest::Test
   def test_failure_returns_to_calling_thread_even_with_global_abort_enabled
     # 在子进程启用宿主全局策略，避免旧实现异步中断主线程导致测试进程提前退出。
     source = <<~'CODE'
-      require "net/connector/concurrency/pool"
+      require "net/connector/parallel/pool"
       Thread.abort_on_exception = true
       failure = Interrupt.new("owned interruption")
       runner = Thread.new do
         begin
-          Net::Connector::Concurrency::Pool.new(concurrency: 1).map([1]) { raise failure }
+          Net::Connector::Parallel::Pool.new(parallel: 1).map([1]) { raise failure }
         rescue Interrupt => error
           raise "wrong exception" unless error.equal?(failure)
           :observed

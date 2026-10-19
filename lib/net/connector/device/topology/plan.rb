@@ -7,6 +7,7 @@ module Net
     class Topology
       # 审批树在领域边界固定；单设备与批量操作共享同一不可变计划。
       Plan = Data.define(:host, :vendor, :evidence, :changes, :commands, :scope) do
+        # 校验并冻结主机、厂商、证据、变更和命令，形成可审批的计划。
         def initialize(host:, vendor:, evidence:, changes:, commands:, scope: :device)
           unless host.is_a?(String) && vendor.is_a?(Symbol) && evidence.is_a?(Hash) &&
                  changes.is_a?(Array) && changes.all? { |change| change.instance_of?(Change) } &&
@@ -19,10 +20,12 @@ module Net
                 commands: commands.map { |command| command.frozen? ? command : command.dup.freeze }.freeze, scope: scope)
         end
 
+        # 返回经校验的更新快照，未更新时沿用当前对象。
         def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
 
         private
 
+        # 校验接口证据形状并逐层复制，阻止审批后修改邻居和旧描述。
         def copy_evidence(evidence)
           evidence.to_h do |interface, fields|
             unless interface.is_a?(String) && fields.is_a?(Array) && fields.size == 3 && fields.all?(String)

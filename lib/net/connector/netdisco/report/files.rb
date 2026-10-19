@@ -10,10 +10,10 @@ module Net
         # 示例与批次入口共享唯一摘要结构；保存结果先于终端成功提示。
         class Files
           # 文本和 JSON 分别提交；失败时尝试保存诊断，并保留已提交的 JSON 位置。
-          def self.write(report, directory:, plan:, concurrency:)
+          def self.write(report, directory:, plan:, parallel:)
             destination = File.join(directory, "summary.json")
             finalized = report.with(report_location: destination)
-            Text.write(directory: directory, report: finalized, plan: plan, concurrency: concurrency)
+            Text.write(directory: directory, report: finalized, plan: plan, parallel: parallel)
             Storage::AtomicFile.write(destination, JSON.pretty_generate(finalized.summary))
             finalized
           rescue StandardError => error
@@ -29,13 +29,14 @@ module Net
               failed = saved if committed_location(persistence_error, destination)
             end
             begin
-              Text.write(directory: directory, report: failed, plan: plan, concurrency: concurrency)
+              Text.write(directory: directory, report: failed, plan: plan, parallel: parallel)
             rescue StandardError
               # 文本输出不能覆盖首次保存失败。
             end
             failed
           end
 
+          # 仅从本库可信写入回执确认摘要文件已经提交的位置。
           def self.committed_location(error, destination)
             destination if Storage::AtomicFile.receipt_error?(error) && error.receipt.committed? && error.receipt.path == File.expand_path(destination)
           end

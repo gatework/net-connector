@@ -7,6 +7,7 @@ module Net
     class Command
       # 一条已完成命令的结果；后续命令失败时仍保留已完成步骤。
       class Result
+        # 只读提供单条已完成命令的输出、提示符与耗时。
         attr_reader :command, :output, :prompt, :duration
 
         # 保存命令输出、提示符和耗时，并冻结结果。

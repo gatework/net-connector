@@ -218,7 +218,7 @@ class NetdiscoReportingTest < Minitest::Test
   def test_worker_duration_uses_monotonic_time_even_when_audit_time_moves_backwards
     wall = Time.utc(2026, 9, 27, 12)
     clock = 10.0
-    worker = Netdisco::Worker.new(concurrency: 1)
+    worker = Netdisco::Worker.new(parallel: 1)
     outcomes = [nil]
     Time.stub(:now, -> { wall }) do
       worker.stub(:monotonic, -> { clock }) do

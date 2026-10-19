@@ -8,6 +8,7 @@ module Net
     class TftpTarget
       MAX_PATH_BYTES = 220
 
+      # 读取已验证的目标服务器和相对上传路径。
       attr_reader :host, :path
 
       # 校验并保存 TFTP 服务器、远端路径及显式文件名标记。

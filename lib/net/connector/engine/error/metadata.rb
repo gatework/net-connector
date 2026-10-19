@@ -16,6 +16,7 @@ module Net
              RangeError KeyError IndexError NoMethodError NameError FrozenError NotImplementedError
              Timeout::Error IO::TimeoutError Errno::EIO Errno::EACCES Errno::EPERM Errno::ENOSPC Errno::EROFS
              Errno::ENOENT Errno::ENOTDIR Errno::EISDIR Errno::ELOOP Errno::EINVAL Errno::ENOSYS
+             Errno::EMFILE Errno::ENFILE Errno::ENOMEM Errno::EAGAIN
              Errno::ENOTSUP Errno::EOPNOTSUPP Errno::ETIMEDOUT Errno::ECONNREFUSED Errno::ECONNRESET
              Net::Connector::RemoteBackup::CompletionError
              Net::Connector::Storage::AtomicFile::WriteError
@@ -40,10 +41,13 @@ module Net
 
         module_function
 
+        # 仅接受白名单错误码，过滤任意外部诊断文本。
         def code(value) = CODES.include?(value) ? value : nil
 
+        # 仅接受已声明的执行阶段，未知阶段返回空值。
         def phase(value) = PHASES.include?(value) ? value : nil
 
+        # 判断类型名是否为库允许公开的异常名称。
         def known_type?(name) = name.instance_of?(String) && TYPES.include?(name)
 
         # 显示名白名单不授予复制私有字段的权限；外部子类可以重写 Class.name。
@@ -54,6 +58,7 @@ module Net
           false
         end
 
+        # 将已知异常类型复制为安全文本，未知类型统一归为普通错误。
         def type(name)
           return if name.nil?
 

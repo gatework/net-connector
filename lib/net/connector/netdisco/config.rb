@@ -30,14 +30,15 @@ module Net
                           "db_connect_timeout" => ["ND_DB_CONNECT_TIMEOUT", :integer] },
           "topology" => { "mode" => ["NC_TOPOLOGY_MODE", :string],
                           "cache_mode" => ["NC_TOPOLOGY_CACHE_MODE", :string],
-                          "concurrency" => ["NC_TOPOLOGY_CONCURRENCY", :integer],
+                          "parallel" => ["NC_TOPOLOGY_PARALLEL", :integer],
                           "directory" => ["NC_TOPOLOGY_DIRECTORY", :string],
                           "limit" => ["NC_TOPOLOGY_LIMIT", :optional_integer],
                           "description_format" => ["NC_TOPOLOGY_DESCRIPTION_FORMAT", :string],
+                          "neighbor_name_prefixes" => ["NC_TOPOLOGY_NEIGHBOR_NAME_PREFIXES", :list],
                           "abbreviate_ports" => ["NC_TOPOLOGY_ABBREVIATE", :boolean],
                           "lowercase_ports" => ["NC_TOPOLOGY_LOWERCASE", :boolean] },
           "backup" => { "directory" => ["NC_BACKUP_DIRECTORY", :string],
-                        "concurrency" => ["NC_CONCURRENCY", :integer],
+                        "parallel" => ["NC_PARALLEL", :integer],
                         "limit_per_vendor" => ["NC_SAMPLE_PER_VENDOR", :integer] },
           "inventory" => { "include_hosts" => ["NC_INCLUDE_HOSTS", :list],
                            "exclude_hosts" => ["NC_EXCLUDE_HOSTS", :list],
@@ -123,7 +124,7 @@ module Net
 
             value.to_s
           when :list
-            unless value.is_a?(Array) && value.all? { |item| item.is_a?(String) && !item.empty? && !item.include?(",") }
+            unless value.is_a?(Array) && value.all? { |item| item.is_a?(String) && !item.strip.empty? && !item.include?(",") }
               raise ArgumentError, "#{section}.#{name} must be a list of strings without commas"
             end
 

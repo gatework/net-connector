@@ -8,6 +8,7 @@ module Net
       class Operations
         # 一次操作的结果按请求顺序返回，回调故障与设备故障分别记录。
         Batch = Data.define(:operation, :outcomes, :callback_errors, :started_at, :finished_at) do
+          # 校验操作类型与结果容器，复制并冻结批次时间及通知故障。
           def initialize(operation:, outcomes:, callback_errors:, started_at:, finished_at:)
             unless %i[execute_scripts sync_interface_descriptions plan_interface_descriptions apply_interface_descriptions].include?(operation)
               raise ArgumentError, "operation batch contains an invalid operation"
@@ -31,10 +32,13 @@ module Net
             self.class.new(**fields.merge(attributes))
           end
 
+          # 仅当存在任务、所有设备成功且没有通知故障时返回成功。
           def success? = !outcomes.empty? && outcomes.all?(&:success?) && callback_errors.empty?
 
+          # 按逐设备状态统计本次操作数量。
           def counts = outcomes.map(&:status).tally
 
+          # 区分空任务、完整成功与未完成的操作批次。
           def status = outcomes.empty? ? :no_devices : (success? ? :succeeded : :incomplete)
 
           # 清单总数指本批调度设备；部分完成与缺少凭据均计入失败，通知故障单独计数。
@@ -54,16 +58,19 @@ module Net
             end.freeze
           end
 
+          # 生成不含命令正文和认证字段的公开批次结果。
           def to_h
             { operation: operation, status: status, success: success?, summary: summary, counts: counts,
               started_at: started_at.iso8601, finished_at: finished_at.iso8601,
               outcomes: outcomes.map(&:to_h), callback_errors: callback_errors }
           end
 
+          # 返回对象的安全摘要，不展开正文或认证凭据。
           def inspect = "#<#{self.class} operation=#{operation.inspect} counts=#{counts.inspect}>"
 
           private
 
+          # 校验并复制主机与白名单异常类型，隔离任意回调对象。
           def copy_callback_error(entry)
             unless entry.is_a?(Hash) && entry.keys.sort == %i[error_type host] && entry[:host].is_a?(String)
               raise ArgumentError, "callback errors must contain a host and error type"

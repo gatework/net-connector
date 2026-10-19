@@ -9,8 +9,10 @@ module Net
   module Connector
     # SSH 只写会话副本；认证后在跨进程锁内合并，网络等待不占用共享文件锁。
     class KnownHosts
+      # 读取本次连接使用的私有主机密钥快照路径。
       attr_reader :path
 
+      # 建立本次连接的私有主机密钥快照，初始化失败时清理已取得的资源。
       def initialize(configuration, replace: false)
         destination = configuration.known_hosts || File.join(Dir.home, ".ssh", "known_hosts")
         FileUtils.mkdir_p(File.dirname(destination), mode: 0o700)
@@ -30,6 +32,8 @@ module Net
         raise
       end
 
+      # 在目标文件锁内合并新增信任；检测并发密钥变化后原子写回。
+      # 会话只写私有快照；登记时重读共享信任并检查冲突，避免并发连接覆盖已有主机密钥。
       def commit
         # 纯会话引擎加载不触及文件业务；实际登记信任时才加载持久化协议。
         require_relative "../storage/atomic_file"
@@ -56,6 +60,7 @@ module Net
         end
       end
 
+      # 关闭并删除私有密钥快照，延迟取消直至清理完成。
       def close
         failure = nil
         # 清除引用至删除快照期间延后异步取消，不能留下失去所有者的临时文件。
@@ -99,6 +104,7 @@ module Net
         raise failure, cause: nil if failure
       end
 
+      # 清除快照引用并删除临时文件，清理错误不覆盖较早的失败。
       def close_snapshot
         file = @file
         @file = nil
@@ -121,6 +127,7 @@ module Net
         nil
       end
 
+      # 通过同一安全文件描述符读取共享信任，文件缺失时视为空。
       def read_shared
         File.open(@destination, File::RDONLY | File::NOFOLLOW | File::NONBLOCK) do |file|
           raise unsafe_file_error, cause: nil unless file.stat.file?
@@ -133,10 +140,12 @@ module Net
         raise unsafe_file_error, cause: nil
       end
 
+      # 构造不暴露文件内容的主机密钥文件安全错误。
       def unsafe_file_error
         ConnectionError.new("known_hosts must be a managed regular file", code: :known_hosts_unsafe, host: @host, phase: :login)
       end
 
+      # 核对最新共享信任与会话快照，拒绝并发登记期间出现的密钥变化。
       def reject_changed_key!(current_path)
         current = host_keys(current_path)
         staged = host_keys(path)
@@ -145,6 +154,7 @@ module Net
         raise ConnectionError.new("host key changed during concurrent registration", code: :host_key_changed)
       end
 
+      # 调用 ssh-keygen 查询当前主机的唯一公钥条目。
       def host_keys(path)
         output, status = Open3.capture2e("ssh-keygen", "-f", path, "-F", @host)
         raise IOError, "reading device host key failed" unless [0, 1].include?(status.exitstatus)
@@ -152,11 +162,13 @@ module Net
         output.lines("\n").reject { |line| line.start_with?("#") }.map { |line| line.split[1, 2] }.uniq
       end
 
+      # 从指定快照中移除当前主机条目，不直接修改共享信任文件。
       def remove_host(path)
         _output, status = Open3.capture2e("ssh-keygen", "-f", path, "-R", @host)
         raise IOError, "removing device host key failed" unless status.success?
       end
 
+      # 取得私有信任文件锁并核对目录项身份，串行合并并发登记。
       def with_lock
         lock_path = @destination + ".nc-lock"
         File.open(lock_path, File::RDWR | File::CREAT | File::NOFOLLOW | File::NONBLOCK, 0o600) do |file|

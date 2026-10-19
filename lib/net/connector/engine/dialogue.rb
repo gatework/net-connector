@@ -7,6 +7,7 @@ module Net
   module Connector
     # 每台设备一份不可变对话语法，由厂商方法组装而不是合并默认值。
     class Dialogue
+      # 只读提供各阶段提示符、错误回显和允许的交互规则。
       attr_reader :login_prompt, :command_prompt, :password_prompt, :username_prompt, :enable_prompt,
                   :authentication_errors, :command_errors, :login_interactions, :command_interactions
 

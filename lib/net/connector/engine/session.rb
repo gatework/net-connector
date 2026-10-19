@@ -13,6 +13,7 @@ module Net
     class Session
       MAX_ERROR_OUTPUT_BYTES = 4096
 
+      # 读取当前会话配置、自有传输与解析组件，以及连接状态和已知提示符。
       attr_reader :configuration, :transport, :reader, :redactor, :state, :prompt
 
       # 创建认证、响应读取、脱敏和日志对象，并把会话置于关闭状态。
@@ -31,10 +32,13 @@ module Net
         @lock = Mutex.new
       end
 
+      # 判断会话状态和传输通道是否仍处于连接状态。
       def connected? = state != :closed && !transport.closed?
 
+      # 读取当前会话已确认的特权状态。
       def privileged? = @privileged
 
+      # 登记当前会话已完成特权认证。
       def mark_privileged! = @privileged = true
 
       # 记录脚本之外的业务结果，例如设备报告的 TFTP 上传状态。
@@ -226,6 +230,7 @@ module Net
         build_error(klass, "#{phase} failed: #{exception.class}", phase: phase, command: command, underlying: exception)
       end
 
+      # 返回对象的安全摘要，不展开正文或认证凭据。
       def inspect = "#<#{self.class} state=#{state} host=#{configuration.host.inspect}>"
 
       private
@@ -311,6 +316,7 @@ module Net
         end
       end
 
+      # 在命令日志范围内执行读写，记录完成或失败但不重复发送命令。
       def execute_command_with_logging(command, timeout:, prompt:, &)
         started = Expect.monotonic
         @log.log_event("command_start")
@@ -328,8 +334,10 @@ module Net
         raise failure, cause: nil
       end
 
+      # 将单调时钟差转换为毫秒，用于事件耗时展示。
       def elapsed_ms(started) = ((Expect.monotonic - started) * 1000).round
 
+      # 记录脚本完成状态及步骤，已执行命令的证据不因诊断失败而消失。
       def log_operation_completion(started, failure, steps: nil)
         fields = { status: failure ? "failed" : "completed", duration_ms: elapsed_ms(started), steps: steps,
                    phase: :script }
@@ -407,6 +415,7 @@ module Net
         end
       end
 
+      # 执行一次登录并记录耗时及结果，恢复策略由外层决定。
       def login_once(started)
         redactor.reset
         @log.open(transport)

@@ -46,12 +46,15 @@ module Net
 
           private
 
+          # 生成 H3C 原生 TFTP 上传命令，并仅为本次传输附加源地址或接口。
           def transfer_command(target, source_file:, source_interface: nil, **)
             super(target, source_file: source_file) + source_interface_suffix(source_interface)
           end
 
+          # 将已校验接口拆分为类型与编号，供设备命令插入参数。
           def interface_parts(value) = /\A([A-Za-z][A-Za-z-]*) ?([0-9][0-9\/.:]*)\z/.match(value)
 
+          # 将源接口策略转换为单次 TFTP 命令后缀，未指定时保留设备默认行为。
           def source_interface_suffix(value)
             return "" if value.nil?
             return " source ip #{IPAddr.new(@device.host)}" if value == "management"

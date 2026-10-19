@@ -8,7 +8,7 @@ require_relative "support/fake_transport"
 
 class ConnectorTest < Minitest::Test
   def test_all_vendor_profiles_load_and_expose_collection_commands
-    assert_equal 11, Net::Connector.vendors.size
+    assert_equal 12, Net::Connector.vendors.size
     Net::Connector.vendors.each do |vendor|
       klass = Net::Connector.vendor_class(vendor)
       assert_kind_of Net::Connector::Base, klass.new(host: "192.0.2.1", username: "admin",

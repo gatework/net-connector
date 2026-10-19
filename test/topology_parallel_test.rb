@@ -5,7 +5,7 @@ require "timeout"
 require_relative "../lib/net/connector"
 require_relative "support/fake_transport"
 
-class TopologyConcurrencyTest < Minitest::Test
+class TopologyParallelTest < Minitest::Test
   def setup
     @description = "original"
     @transport = ConnectorFake.new("switch#")

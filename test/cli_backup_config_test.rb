@@ -24,7 +24,7 @@ class CLIBackupConfigTest < Minitest::Test
     Dir.mktmpdir do |root|
       path = File.join(root, "backup.yml")
       N::CLI::Credentials.stub(:resolve, ->(*) { flunk "initialization queried inventory" }) do
-        status = N::CLI::Backup.new(argv: ["--non-interactive"], env: {}, default_config: path, default_directory: root,
+        status = N::CLI::Backup.new(argv: ["--init", "--non-interactive"], env: {}, default_config: path, default_directory: root,
                                   input: StringIO.new, output: StringIO.new, error: StringIO.new).run
         assert_equal 0, status
       end

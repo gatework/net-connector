@@ -11,7 +11,7 @@ class CLIBackupTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
 
   def test_invalid_policy_does_not_create_a_batch_directory_or_read_credentials
-    [{ "NC_PROTOCOL" => "invalid" }, { "NC_CONCURRENCY" => "0" },
+    [{ "NC_PROTOCOL" => "invalid" }, { "NC_PARALLEL" => "0" },
      { "NC_HOST_KEY_POLICY" => "replace" }].each do |invalid|
       Dir.mktmpdir do |root|
         error = StringIO.new

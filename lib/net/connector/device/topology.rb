@@ -28,8 +28,8 @@ module Net
         end
 
         # 核实各接口，保留缺失/冲突证据并为可确认的接口构造独立计划。
-        def audit_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
-          Topology.new(self).audit_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, &formatter)
+        def audit_interface_descriptions(abbreviate: true, lowercase: false, description_matcher: nil, &formatter)
+          Topology.new(self).audit_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, description_matcher: description_matcher, &formatter)
         end
 
         # 明确确认且现场证据未变化时执行接口描述计划。
@@ -40,6 +40,7 @@ module Net
 
       # 仅承载厂商档案的离线上下文，不能连接、查询或下发设备命令。
       PlanningContext = Data.define(:host, :vendor, :profile) do
+        # 读取拓扑策略所需的设备配置采集命令。
         def config_commands = profile.config_commands
       end
       private_constant :PlanningContext
@@ -68,6 +69,7 @@ module Net
         validate_change_support!(planning_strategy(host: host, vendor: vendor), host: host, phase: phase)
       end
 
+      # 构造仅用于离线校验和命令生成的厂商策略，不连接设备。
       def self.planning_strategy(host:, vendor:)
         profile = Net::Connector.vendor_class(vendor).profile
         (profile.topology_strategy || Strategy).new(PlanningContext.new(host: host, vendor: vendor, profile: profile))
@@ -157,14 +159,15 @@ module Net
         end
       end
 
-      def audit_interface_descriptions(abbreviate: true, lowercase: false, &formatter)
+      # 在同一会话内采集邻居和描述，返回逐接口证据与候选修正计划。
+      def audit_interface_descriptions(abbreviate: true, lowercase: false, description_matcher: nil, &formatter)
         unless [abbreviate, lowercase].all? { |value| value == true || value == false }
           raise ArgumentError, "description formatting options must be boolean"
         end
         formatter ||= ->(peer) { InterfaceDescription.format(peer, abbreviate: abbreviate, lowercase: lowercase) }
         @device.with_operation(:plan) do
           AuditBuilder.new(host: @device.host, vendor: @device.vendor, strategy: @strategy,
-                           neighbors: neighbors, descriptions: interface_descriptions, formatter: formatter).call
+                           neighbors: neighbors, descriptions: interface_descriptions, formatter: formatter, description_matcher: description_matcher).call
         end
       end
 
@@ -182,7 +185,7 @@ module Net
                        InterfaceDescription.format(neighbor, abbreviate: abbreviate, lowercase: lowercase)
                      end
           InterfaceDescription.validate!(proposed)
-          next if old == proposed
+          next if InterfaceDescription.equivalent?(old, proposed)
 
           Change.new(interface: @strategy.configuration_interface(neighbor.local_interface), old_description: old,
                      new_description: proposed, neighbor: neighbor)
@@ -292,6 +295,7 @@ module Net
         Stages.build(strategy: @strategy, host: @device.host, changes: changes)
       end
 
+      # 执行单个配置阶段并累计完成步骤，失败仍保留此前已执行事实。
       def execute_stage(script, steps)
         result = @device.execute_script(script)
         steps.concat(result.steps)
@@ -313,9 +317,11 @@ module Net
       # 汇总邻居身份和当前描述，并要求每个目标接口都有配置证据。
       def evidence_for(discovered, current)
         interfaces = discovered.group_by { |neighbor| @strategy.interface_key(neighbor.local_interface) }
-        if interfaces.any? { |_interface, peers| peers.size != 1 || peers.first.neighbor_name.empty? ||
-          peers.first.neighbor_interface.empty? }
-          raise ParsingError.new("neighbor identity is incomplete or ambiguous", code: :ambiguous_neighbor,
+        interfaces.each_value do |peers|
+          issue = peers.size != 1 ? :ambiguous_neighbor : peers.first.identity_issue
+          next unless issue
+
+          raise ParsingError.new("neighbor identity is incomplete or ambiguous", code: issue,
                                  host: @device.host, phase: :plan)
         end
         unless interfaces.keys.all? { |interface| current.key?(interface) }

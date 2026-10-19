@@ -28,7 +28,21 @@ bundle exec ruby -Itest -e 'Dir["test/examples*_test.rb"].sort.each { |file| req
 | `topology.rb` / `topology.yml` | 邻居发现、描述审计、只读规划和显式应用 |
 | `inventory.yml` | PostgreSQL 查询、缓存、筛选及备份策略 |
 
-备份入口默认注入同目录 `backup.yml` 和 `backups/`；拓扑入口注入 `topology.yml` 和 `topology_reports/`。YAML 和显式 CLI 可覆盖默认目录。首次找不到指定配置时，创建无凭据、私有权限的 YAML 后停止，检查后再次运行；已有文件不覆盖。TTY 会询问是否交互配置，`--interactive` / `--non-interactive` 显式控制，EOF 或取消不发布半份配置。非终端默认不消费标准输入。`--help`、`--help-all`、`--examples` 均不读取清单或创建配置。
+`backup.example.yml` 是可提交的公开参考模板；现场 `backup.yml` 不进入 Git，由首次运行向导生成或自行配置。备份入口默认使用同目录 `backup.yml` 和 `backups/`；拓扑入口使用 `topology.yml` 和 `topologys/`。`--config` 优先于 `NC_CONFIG`，后者优先于入口默认配置；若 `NC_CONFIG` 指向共享文件，三个入口均沿用该文件。输出目录可由 YAML、环境默认值或 `--directory` 设置。
+
+首次缺少 YAML 或项目根目录 `.env` 时，真实终端会分别询问是否创建，默认选择否。拒绝必需 YAML 后停止；`.env` 可不创建，直接使用进程环境中的凭据。选择创建 YAML 后，可进一步选择逐项填写公共参数。已有文件不覆盖，新文件权限为 `0600`，创建后立即退出，不读取清单或连接设备。每个文件独立原子发布，取消不会留下半份文件。
+
+自动化中默认不问答、不消费标准输入，也不自动创建文件；需要初始化时显式执行：
+
+```sh
+ruby examples/backup.rb --init --non-interactive -p 8
+ruby examples/backup_tftp.rb --init --non-interactive
+ruby examples/topology.rb --init --non-interactive
+```
+
+`--init` 只创建缺失文件并退出；`--interactive` 要求终端，`--non-interactive` 禁用问答。`--help`、`--help-all`、`--examples` 均不读取清单、不创建文件。初始化 YAML 会保留已识别的公共环境变量和本次参数，默认并发 4（支持 1～500）、SSH 接受首次主机密钥但拒绝已变更密钥、清单缓存 3 天、清单读取预算 300 秒、拓扑只读 `plan`。密码不复制到生成文件，环境模板仅列出待填写的凭据变量；含 `#` 或 `$` 的密码使用单引号包裹。
+
+生成后填写 `netdisco.url` 或 `ND_URL`，并设置实际清单和设备凭据。TFTP 需配置真实 `tftp.server` 或 `tftp.servers`，以及实际文件核验/归档目录；不生成假服务器、VRF、源接口或固定启动文件名。配置初始化不代表认证或备份验证通过。
 
 以下命令从项目根目录运行：
 
@@ -37,7 +51,7 @@ bundle exec ruby examples/backup.rb --help
 bundle exec ruby examples/backup.rb --examples
 bundle exec ruby examples/backup.rb --plan --host 192.0.2.10
 bundle exec ruby examples/backup.rb --inventory-only --name edge --cache-only
-bundle exec ruby examples/backup.rb --hosts 192.0.2.0/24 --exclude-name wlc --concurrency 8
+bundle exec ruby examples/backup.rb --hosts 192.0.2.0/24 --exclude-name wlc --parallel 8
 bundle exec ruby examples/backup.rb --sample 3 --verbose
 bundle exec ruby examples/backup.rb --config examples/inventory.yml --plan
 ```
@@ -78,12 +92,43 @@ bundle exec ruby examples/backup_tftp.rb --tftp-root /srv/tftp --success-policy 
 
 有本机或挂载根目录时，以 hostname-IP 文件名上传，核验实际回执路径、非空文件、文件变化及 SHA-256，分别保存服务器 `archive/<批次>/` 和本地 `<批次>/tftp/` 副本；同名旧文件先存入 `previous/`。两份归档核验成功后清理服务器暂存文件，历史副本继续保留。无本机目录时，普通设备使用带批次后缀的远端名，保留 `device_reported`，不冒充已核验或已有本地配置副本。PAN-OS 固定 `running-config.xml`，需要本机根目录才能安全保留历史，否则不上传。`verified` 要求全部选中设备具有匹配的服务器目录并通过核验。
 
+## SSH 服务器核验与归档
+
+当 TFTP 目录只在远端服务器时，`tftp.verification_roots` 可按服务器绑定无密码 URI：
+
+```yaml
+tftp:
+  server: 192.0.2.10
+  verification_roots:
+    "192.0.2.10": ssh://archive@192.0.2.10/srv/tftp
+```
+
+远端需要 Python 3、POSIX 文件锁及该目录的读写权限，客户端使用本机 OpenSSH。
+主机密钥须已受信任。密码认证在项目根目录 `.env` 中配置 `NC_TFTP_SSH_PASSWORD`；
+未配置时只尝试可用的 SSH 密钥/agent。脚本从不弹出服务器密码提示。
+没有可用凭据时退出码为 2，明确提示凭据配置方式，且不连接设备。
+密码通过不记录日志的私有终端交互发送，不进入 YAML、SSH 命令参数、计划或报告。
+服务器连接失败时在设备任务开始前停止，本次批次不会逐台重试服务器认证。
+
+归档在同一服务器锁内保存旧文件、执行设备上传、核验变化和 SHA-256，再保留服务器与本地两份副本；
+两份核验后才清理暂存文件。PAN-OS 固定文件名串行处理，归档失败保留回执与已保存的路径，不重传。
+SSH 归档最多并行 4 台，单文件上限 64 MiB；服务器归档路径在报告中以 `ssh://` URI 表示。
+`--success-policy verified` 可要求本批设备全部通过服务器文件核验。
+
 ## 拓扑发现与应用
+
+拓扑与备份入口共用 `--help` 常用帮助、`--help-all` 完整参数和 `--examples` 范例；支持相同的配置初始化、名称/IP/厂商筛选、缓存控制、`--parallel 1..500`、进度和 `--json` 输出。`--directory` 指定拓扑报告目录。`--inventory-only` 只预览清单，`--limit N` 限制本次可发现设备数。
+
+拓扑默认只打印批次进度、中文设备/接口统计和报告位置；未知邻居名称属于待核实项，连接或命令失败单独计数。`--verbose` 才显示逐设备详情。JSON 保留原状态码，新增 `statistics`；有变更或未核实证据仍返回退出码 1。启动时显示实际配置路径；`NC_CONFIG`（包括 `.env` 中的值）优先于示例默认文件，共享 `backup.yml` 时须将拓扑策略放入其 `topology` 段。
+
+每个批次按设备输出 `scripts/设备名-IP.cfg`（一行一条设备 CLI 命令）和 `devices/设备名-IP.txt`（状态、描述比较与未核实项）。文件名沿用配置备份的设备名/IP 清理规则，同名不同 IP 不冲突。只有已核实且有变更的设备生成 `.cfg`，无变更、发现模式或失败设备仅保留说明。`plan.json` 和 `summary.json` 同时记录文件路径与命令文件 SHA-256；终端会打印脚本及设备报告目录。脚本是审批计划的文本导出，生成不代表已经执行，应用仍须现场重验；导出失败不会开始应用。
+
+已有描述语义一致时保留原文：大小写和同类型接口别名（如 G/GE/Gi、SE/Smartrate-Ethernet）不会触发改写；名称、端口编号或速率变化仍产生候选变更。`topology.neighbor_name_prefixes` 可声明历史名称前缀；示例设置 `["AP-"]`，仅比较时容忍前缀，新描述仍按 `description_format` 生成。未知邻居名称/端口（如 `-`、`unknown`）保留为 `unverified` 问题，不使用 chassis ID 或现有描述猜测身份。MAC 是合法的 LLDP Port ID，有明确名称时保留该原始证据。
 
 默认只读 `--plan`，清单可来自缓存，但邻居和当前描述读取现场。`--discover` 只读发现；`--apply` 显式执行本次现场生成的计划，先持久化 `plan.json` 和 SHA-256，再重验目标邻居身份与原描述，修改后回读符合预期才保存。YAML `mode: apply` 本身不授予写入权限。
 
 ```sh
-bundle exec ruby examples/topology.rb --discover --name edge --exclude-name core --concurrency 8
+bundle exec ruby examples/topology.rb --discover --name edge --exclude-name core --parallel 8
 bundle exec ruby examples/topology.rb --plan --name-match glob --name 'edge-*' --limit 5
 bundle exec ruby examples/topology.rb --plan --host 192.0.2.10
 bundle exec ruby examples/topology.rb --apply --host 192.0.2.10
@@ -95,8 +140,16 @@ bundle exec ruby examples/topology.rb --apply --host 192.0.2.10
 
 ## 进度、报告与退出码
 
-默认人类可读结果，进度写 stderr；`--json` 将结果 JSON 写 stdout，配合 `--quiet` / `--no-progress` 关闭进度。`--verbose` 显示逐台事件，默认并发 4，范围 1–50，备份默认全量，抽样须显式 `--sample` 或 YAML 设置。
+默认人类可读结果，进度写 stderr；`--json` 将结果 JSON 写 stdout，配合 `--quiet` / `--no-progress` 关闭进度。`--verbose` 显示逐台事件，默认并发 4，范围 1–500，备份默认全量，抽样须显式 `--sample` 或 YAML 设置。
 
 唯一私有批次目录保存计划、JSON/文本汇总、`events.jsonl` 和会话日志；拓扑文本报告包含逐接口当前/预期描述、原因及建议命令。设备条目包含状态、诊断和耗时，保存或关闭失败不会抹掉设备回执；拓扑中断会保存已经登记的设备结果。进度输出故障进入最终结果，不重放设备操作，不自动回滚其他设备。`--stdin-credentials` 读取一行凭据 JSON；备份执行及拓扑 apply 还需下一行 `RUN`。
 
 退出码：0 完成（拓扑 plan 要求无偏差）；1 偏差或未完成；2 参数/清单/编排错误；130 中断。拓扑 discover 成功发现时允许有偏差仍返回 0。备份默认成功策略 `selected`，仅允许主动过滤和抽样跳过；未知厂商、缺少凭据、失败、部分结果或报告错误均非零。`verified` 还需服务器文件核验。
+
+公开模板为 `backup.example.yml`；复制为 `backup.yml` 后填写本机策略。运行中的 `backup.yml` 不进入 gem，避免将现场地址发布到安装包。
+
+```sh
+cp examples/backup.example.yml examples/backup.yml
+```
+
+已有 `backup.yml` 时保留原文件，不重复复制。

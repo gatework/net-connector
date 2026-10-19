@@ -194,15 +194,15 @@ batch = Net::Connector::Netdisco::Batch.new(mode: :backup, outcomes: outcomes, s
 report = batch.build_report(policy: :selected)
 raise "Installed selected policy failed" unless report.policy_success? && !report.success? && report.status == :incomplete
 raise "Installed v2 coverage missing" unless report.summary.fetch(:schema_version) == 2 && !report.summary.fetch(:coverage).fetch(:complete)
-options = Net::Connector::Netdisco::CLI::Options.parse(argv: ["--concurrency", "2", "--refresh-inventory"])
-raise "Installed backup options missing" unless options.fetch(:environment).fetch("NC_CONCURRENCY") == "2"
+options = Net::Connector::Netdisco::CLI::Options.parse(argv: ["--parallel", "2", "--refresh-inventory"])
+raise "Installed backup options missing" unless options.fetch(:environment).fetch("NC_PARALLEL") == "2"
 raise "Installed inventory refresh option missing" unless options.fetch(:force_refresh)
 
 # 安装后的公共并发、配置编排和清单缓存走真实入口，设备仍使用本地 PTY。
-pool = Net::Connector::Concurrency::Pool.new(concurrency: 2)
+pool = Net::Connector::Parallel::Pool.new(parallel: 2)
 raise "Installed execution pool lost ordering" unless pool.map([2, 1]) { |item| item * 2 } == [4, 2]
-settings = Net::Connector::Netdisco::Settings.new(env: { "NC_CONCURRENCY" => "2", "ND_CACHE_TTL" => "3600" })
-raise "Installed concurrency environment missing" unless settings.snapshot.concurrency == 2
+settings = Net::Connector::Netdisco::Settings.new(env: { "NC_PARALLEL" => "2", "ND_CACHE_TTL" => "3600" })
+raise "Installed parallel environment missing" unless settings.snapshot.parallel == 2
 raise "Installed cache environment missing" unless settings.snapshot.inventory_cache_options.fetch(:ttl) == 3600
 Dir.mktmpdir do |cache_directory|
   calls = 0

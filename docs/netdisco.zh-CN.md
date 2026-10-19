@@ -50,7 +50,7 @@ exit 1 unless batch.success?
 
 gem 安装后的命令为 `net-backup`；源码入口为 `bin/net-backup`，可在项目目录运行 `bundle exec bin/net-backup --help`。原命令 `net-connector-backup` 已改名。
 
-命令行程序 `net-backup` 的 YAML 文件只允许非敏感设置；Netdisco 和设备凭据留在环境变量中。`ND_URL` 从环境覆盖 YAML 地址，`NC_CONCURRENCY` 覆盖 YAML 并发数；其他非敏感策略通过 YAML 或 CLI 设置。批量示例也支持 `NC_CONFIG`，可从 [完整配置示例](../examples/backup.yml) 开始。只有传入 `--config FILE` 或设置 `NC_CONFIG` 时才加载文件：
+命令行程序 `net-backup` 的 YAML 文件只允许非敏感设置；Netdisco 和设备凭据留在环境变量中。`ND_URL` 从环境覆盖 YAML 地址，`NC_PARALLEL` 覆盖 YAML 并发数；其他非敏感策略通过 YAML 或 CLI 设置。批量示例也支持 `NC_CONFIG`，可从 [完整配置示例](../examples/backup.yml) 开始。只有传入 `--config FILE` 或设置 `NC_CONFIG` 时才加载文件：
 
 ```yaml
 netdisco:
@@ -64,7 +64,7 @@ netdisco:
   allow_insecure_http: false
 backup:
   directory: /var/backups/network
-  concurrency: 4
+  parallel: 4
 inventory:
   include_vendors: [h3c, huawei, cisco_ios]
   host_overrides:
@@ -138,7 +138,7 @@ CLI 的计划与批次摘要使用 JSON。默认 `--success-policy strict` 使�
 
 显式使用 `--success-policy selected` 后，CLI 按上述 selected 规则决定退出码，保留严格的 `status: incomplete` 与跳过计数，另列 `policy_success`。例如 `net-backup --config config.yml --host 192.0.2.7 --success-policy selected`。成功策略由本次 CLI/API 参数指定，不改变已批准的清单选择，也不触发重试。
 
-本地批量示例和 TFTP 批量示例默认全量；显式 `--sample N` 或 YAML `backup.limit_per_vendor` 才限制每厂商数量（示例允许 1 至 5）。优先级为 CLI > YAML。并发默认 4，可用 `--concurrency N`、环境变量 `NC_CONCURRENCY` 或 YAML `backup.concurrency` 覆盖，优先级依次降低。两类示例在备份目录下创建唯一批次目录。TFTP 批量示例在可访问服务器目录时使用 hostname-ip 远端文件名并逐批归档；无法访问服务器目录时使用带批次标识的远端文件名，避免覆盖旧文件；上传完成与服务器文件验证是不同状态。
+本地批量示例和 TFTP 批量示例默认全量；显式 `--sample N` 或 YAML `backup.limit_per_vendor` 才限制每厂商数量（示例允许 1 至 5）。优先级为 CLI > YAML。并发默认 4，可用 `--parallel N`、环境变量 `NC_PARALLEL` 或 YAML `backup.parallel` 覆盖，优先级依次降低。两类示例在备份目录下创建唯一批次目录。TFTP 批量示例在可访问服务器目录时使用 hostname-ip 远端文件名并逐批归档；无法访问服务器目录时使用带批次标识的远端文件名，避免覆盖旧文件；上传完成与服务器文件验证是不同状态。
 
 全量 TFTP 计划保存为 `plan.json`。目标文件名通常为 `<设备名>-<IP>.cfg`，Radware 用 `.tgz`，山石用 `.dat`。可访问本机 TFTP 服务器目录时，批量示例直接使用 `<设备名>-<IP>.<扩展名>` 上传，并在服务器的 `archive/<批次>/` 与本地 `<批次目录>/tftp/` 各保留一份；上传前已有的同名文件先保存到新归档目录的 `previous/`。无法访问服务器目录时，远端文件名增加东八区批次标识及同秒序号，避免覆盖旧文件；实际文件名见 `summary.json` 的 `remote_path`。计划仍检查同批目标名冲突。PAN-OS 固定使用 `running-config.xml`，还要求 `Sent ... bytes` 完成行；为避免下次上传覆盖它，运行批量示例时必须能访问本机 TFTP 服务器目录，否则该设备会明确失败且不会发起上传。H3C 从 `display startup` 发现源文件，可用 YAML `tftp.h3c_source_file` 覆盖；华为默认 `flash:/startup.cfg`。Nexus 9000 默认 VRF 为 `management`，山石为 `mgt-vr`；YAML `tftp.vrfs` 接受按厂商键配置的映射。山石命令在 `vrouter` 参数后追加唯一的 `.dat` 文件名；直接调用山石连接器且不指定 `path:` 时，由设备生成文件名并在结果中返回。通过 `--tftp-root DIR` 或 YAML `tftp.verification_root` 指定本机或已挂载的服务器目录时，批量示例在每台设备完成后核验实际回执路径、非空文件、修改时间和 SHA-256，并立即保存两份历史文件；报告的 `local_file` 和 `server_archive_file` 分别指向本地批次副本和服务器归档副本。核验或归档失败不会报告成功。未提供本机目录时，可命名设备仍使用不覆盖旧文件的远端文件名，回执保留为 `device_reported`，本地批次不包含配置副本。默认示例使用 `selected` 策略；要求服务器文件核验时使用 `--success-policy verified`，并提供本机服务器目录。日志、`events.jsonl` 和逐台结果均以私有权限保存。
 
@@ -149,7 +149,7 @@ CLI 的计划与批次摘要使用 JSON。默认 `--success-policy strict` 使�
 | 环境变量 | 默认值 | 用途 |
 | --- | --- | --- |
 | `ND_URL` | HTTP 模式必填 | Netdisco 服务根地址，可包含租户路径 |
-| `NC_CONCURRENCY` | 默认 4，范围 1 至 50 | 备份、配置批次和接口修正共用的并发数 |
+| `NC_PARALLEL` | 默认 4，范围 1 至 500 | 备份、配置批次和接口修正共用的并发数 |
 | `ND_CACHE_TTL` | 默认 259200 秒（三天） | 清单缓存有效期，须为有限正数，优先于 YAML `netdisco.cache_ttl` |
 | `NC_CONFIG` | 未设置 | CLI / 批量示例的非敏感 YAML 配置文件 |
 | `ND_USERNAME`, `ND_PASSWORD` | 未提供 API 密钥时必填 | 清单 API 登录 |
@@ -181,11 +181,13 @@ ssh:
 
 每台任务开始时仍读取设备凭据，`Settings.from_file` 也保留轮换能力。纯策略快照不保存密码、API key 或凭据解析器。需要让多次 API 调用共用策略时，可传 `Settings.new.for_run(mode: :backup)`。自定义 `credentials:` 解析器仍可逐设备返回连接设置，它显式给出的选项优先于批次默认值，由调用方负责一致性；注入的 `inventory:` 生命周期也由调用方管理。传入 `plan:` 的执行不会重新拉取或筛选已批准清单。`fleet.devices` 可在不连接设备时检查映射。
 
-快照中的备份、缓存、日志、TFTP 核验目录、SSH known-hosts 路径及显式 PostgreSQL CA 证书路径，以创建快照时的工作目录为基准，默认路径和后续相对路径覆盖也沿用这一基准。`~/` 开头的路径及 `~` 使用快照创建时的主目录。PostgreSQL CA 路径保留 libpq 的字面路径语义，不展开波浪号；`sslrootcert: system` 仍表示系统信任库，`./system` 则表示文件。未固定的活设置仍按调用时的当前工作目录和主目录解析路径。
+快照中的备份、缓存、日志、本地 TFTP 核验目录、SSH known-hosts 路径及显式 PostgreSQL CA 证书路径，以创建快照时的工作目录为基准，默认路径和后续相对路径覆盖也沿用这一基准。`~/` 开头的路径及 `~` 使用快照创建时的主目录。TFTP 的 `ssh://user@host/绝对目录` 核验 URI 保留原值，不作本地路径展开，且必须启用历史归档；SSH 认证、远端要求和并发限制见[示例设置](../examples/README.md#ssh-服务器核验与归档)。PostgreSQL CA 路径保留 libpq 的字面路径语义，不展开波浪号；`sslrootcert: system` 仍表示系统信任库，`./system` 则表示文件。未固定的活设置仍按调用时的当前工作目录和主目录解析路径。
 
 地址和厂商覆盖规则规范化后，同一键不能指向不同连接器；指向同一连接器的别名可以并存。必需的厂商标签规范化后也不能为空。非法规则在连接设备前拒绝。
 
 ## 批量示例与进度
+
+批次连接设备前会为 SSH 管道、设备伪终端、日志及文件锁预留文件描述符额度；需要时只在本进程硬上限内提高软额度，不修改终端和系统配置。硬上限不足时先停止整批，并提示调整 `ulimit -n` 或降低 `--parallel`。SSH 归档连接按各服务器实际设备数分配，连接预检最多四条同时进行。
 
 `examples/backup.rb` 和 `examples/backup_tftp.rb` 默认全量备份符合筛选条件的设备，并在终端原地刷新两行进度（登录、采集、排队、成功和未完成数，以及耗时、平均吞吐、预计剩余时间）；失败单独输出，结束后显示汇总和报告路径。重定向时每 25 台输出一次进度，避免刷屏。`--verbose` 显示逐条登录和命令事件，`--json` 才在 STDOUT 输出 JSON；完整计划和结果始终保存在批次目录。`--no-progress` 关闭人类进度。百分比表示任务完成比例，不是成功率。
 
@@ -194,10 +196,10 @@ ruby examples/backup.rb             # 全量，默认并发 4
 ruby examples/backup.rb --sample 3  # 每厂商最多 3 台
 ruby examples/backup.rb --verbose  # 详细命令过程
 ruby examples/backup.rb --json > result.jsonl
-ruby examples/backup.rb --concurrency 10 --username backup-user --ask-password
+ruby examples/backup.rb --parallel 10 --username backup-user --ask-password
 ```
 
-批量示例支持 `--concurrency`（1 至 50）、`--username`、`--password`、`--enable-password`、`--netdisco-url`、`--netdisco-username`、`--netdisco-password`、`--directory` 和 `--config`。命令行优先于环境变量与 YAML；显式设备凭据逐字段覆盖对应厂商凭据。指定 Netdisco 用户名或密码时不再沿用环境中的 API key。密码可使用 `--ask-password` / `--ask-netdisco-password` 隐藏输入，避免命令行密码进入 shell 历史或进程参数；自动化仍可用环境变量或原有 `--stdin-credentials`。`--config` 与 `--directory` 的相对路径基于项目根目录。
+批量示例支持 `--parallel`（1 至 500）、`--username`、`--password`、`--enable-password`、`--netdisco-url`、`--netdisco-username`、`--netdisco-password`、`--directory` 和 `--config`。命令行优先于环境变量与 YAML；显式设备凭据逐字段覆盖对应厂商凭据。指定 Netdisco 用户名或密码时不再沿用环境中的 API key。密码可使用 `--ask-password` / `--ask-netdisco-password` 隐藏输入，避免命令行密码进入 shell 历史或进程参数；自动化仍可用环境变量或原有 `--stdin-credentials`。`--config` 与 `--directory` 的相对路径基于项目根目录。
 
 ## 部署、示例与验证
 
@@ -231,12 +233,12 @@ CI 在 Linux 和 macOS 上覆盖 Ruby 3.2、3.3、3.4、4.0。`script/ci` 扫描
 ```ruby
 require "net/connector/netdisco"
 netdisco = Net::Connector::Netdisco
-options = netdisco::CLI::Options.parse(argv: ["--concurrency", "10"])
+options = netdisco::CLI::Options.parse(argv: ["--parallel", "10"])
 settings = netdisco::CLI::Options.settings(options)
 inventory, credentials = netdisco::CLI::Credentials.resolve(settings)
 directory = Net::Connector::Storage::BatchDirectory.create("./backups")
 # 获得 report 和 plan 后：
-# report = netdisco::Report::Files.write(report, directory: directory, plan: plan, concurrency: 10)
+# report = netdisco::Report::Files.write(report, directory: directory, plan: plan, parallel: 10)
 ```
 
 `CLI::Options.parse` 接受 `argv/input/output/error/program`，不修改传入参数数组；帮助通过返回值 `:help` 通知调用方，非法输入抛出 `ArgumentError`。`CLI::Credentials.resolve` 接受 `input:`，标准输入凭据仅消费一行，RUN 确认由脚本编排负责。模块不加载 `.env` 或切换目录。
@@ -281,7 +283,7 @@ fleet = Net::Connector::Netdisco::Fleet.new
 batch = fleet.execute_scripts(
   scripts: { "192.0.2.1" => ["system-view", "interface GigabitEthernet1/0/1", "description uplink", "quit", "quit"] },
   confirmed: true,
-  concurrency: 4
+  parallel: 4
 )
 puts JSON.pretty_generate(batch.to_h)
 puts "总数=#{batch.summary[:total]} 成功=#{batch.summary[:succeeded]} 失败=#{batch.summary[:failed]}"
@@ -300,4 +302,14 @@ puts "清单 #{batch.summary[:total]}，成功 #{batch.summary[:succeeded]}，�
 
 每台设备独占会话，在操作和关闭完成后发布一个不可变终态。连接、凭据、执行和关闭的普通故障只影响该设备，其他运行中或排队任务继续。整批调度结束后返回完整结果；`summary` 和 `to_h[:summary]` 提供 `total`、`succeeded`、`failed`，满足总数 = 成功 + 失败，并细分 `partial`、`missing_credentials` 和 `callback_errors`。总数是本次请求并调度的设备数量；部分完成与缺少凭据计入失败，回调故障单列，不改写设备执行结果。空批次各项为零且状态为 `no_devices`。库不直接输出终端内容，调用方可将 `to_h` 导出 JSON 报告。设备上的已完成变更不能回滚；全批审批预检和显式中断仍维持原有失败边界。
 
-其他独立任务可加载 `net/connector/concurrency/pool`，通过 `Net::Connector::Concurrency::Pool.new(concurrency: 4).map(items) { |item| ... }` 执行。结果按输入顺序返回，全部线程建立成功才运行块，未处理异常会停止线程池并回到调用线程。业务代码负责决定哪些普通错误转换为单任务结果。显式参数优先于 `NC_CONCURRENCY` 环境变量，默认 4、上限 50。
+其他独立任务可加载 `net/connector/parallel/pool`，通过 `Net::Connector::Parallel::Pool.new(parallel: 4).map(items) { |item| ... }` 执行。结果按输入顺序返回，全部线程建立成功才运行块，未处理异常会停止线程池并回到调用线程。业务代码负责决定哪些普通错误转换为单任务结果。显式参数优先于 `NC_PARALLEL` 环境变量，默认 4、上限 500。
+
+取消批次时退出码为 130，摘要状态为 `interrupted`。已完成设备保留文件与上传回执；未完成槽位分别标记 `interrupted` 和 `not_started`，不会自动重试。`events.jsonl` 的 `artifact` 保存已完成备份或上传的元数据，不包含配置正文。库调用者仍收到原始 `Interrupt`，可从同一 Fleet 的 `last_report` 读取部分结果；新的运行会清除旧报告。
+
+并行入口现为 `net/connector/parallel/pool` 和 `Net::Connector::Parallel::Pool`。旧 `parallel` 加载路径及 `Parallel` 命名空间已移除。内置 TextFSM 模板移至 `lib/net/connector/textfsm/`；使用默认模板目录的调用无需修改，手工拼接旧资源路径的调用需更新。
+
+拓扑描述比较保留语义一致的旧值。`topology.neighbor_name_prefixes: ["AP-"]` 可显式声明历史名称前缀，仅用于比较；默认空列表不猜测名称前缀。未知邻居身份不生成命令，其他已核实接口仍可独立规划。
+
+拓扑示例按备份命名规则输出 `scripts/设备名-IP.cfg` 和 `devices/设备名-IP.txt`，计划与摘要记录路径及命令文件 SHA-256。无变更、发现及失败结果不生成空命令文件。导出失败阻止应用，文本导出不能绕过现场证据重验。
+
+拓扑默认输出中文分类摘要，待核实证据和执行失败分别统计；`--verbose` 显示逐设备事件。JSON 状态码保持稳定并新增 `statistics`，存在待变更或未核实证据时退出码仍为 1。启动显示实际配置文件；`NC_CONFIG` 也优先于拓扑示例默认文件，共享配置须补充对应 `topology` 策略。

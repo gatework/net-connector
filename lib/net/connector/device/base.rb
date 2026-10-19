@@ -25,12 +25,16 @@ module Net
       include Topology::Capability
       include TextFSM::Capability
 
+      # 读取当前设备的固定连接配置与有效命令超时。
       attr_reader :configuration, :command_timeout
 
+      # 将连接、特权和状态查询委托给本设备持有的会话。
       def_delegators :@session, :connected?, :privileged?, :state
+      # 将主机、用户名及日志位置查询委托给固定连接配置。
       def_delegators :@configuration, :host, :username, :log_file
 
       class << self
+        # 设置或读取厂商标识，子类未声明时沿用父类标识。
         def vendor(key = nil)
           return @vendor = key if key
 
@@ -92,6 +96,7 @@ module Net
       # 返回当前连接器使用的不可变设备档案，便于检查厂商声明。
       def profile = self.class.profile || Profile.default
 
+      # 读取当前设备类声明或继承的厂商标识。
       def vendor = self.class.vendor
 
       # 只查询实现能力，不连接设备；不代表现场权限或固件验证成功。
@@ -163,20 +168,27 @@ module Net
         @session.interact(input: input, output: output, escape: escape, timeout: timeout)
       end
 
+      # 返回对象的安全摘要，不展开正文或认证凭据。
       def inspect = "#<#{self.class} host=#{host.inspect} state=#{state}>"
 
       protected
 
+      # 读取设备分页提示的匹配规则。
       def pager_pattern = profile.pager_pattern
 
+      # 读取遇到分页提示时发送的续页文本。
       def pager_response = profile.pager_response
 
+      # 读取设备密码输入提示的匹配规则。
       def password_prompt = profile.password_prompt
 
+      # 读取设备用户名输入提示的匹配规则。
       def username_prompt = profile.username_prompt
 
+      # 读取设备认证失败回显的匹配规则。
       def authentication_error_patterns = profile.authentication_error_patterns
 
+      # 读取设备命令失败回显的匹配规则。
       def command_error_patterns = profile.command_error_patterns
 
       # 返回命令期间需要自动应答的确认对话。
@@ -185,14 +197,19 @@ module Net
       # 返回登录期间需要自动应答的附加对话。
       def login_interactions = profile.login_interactions
 
+      # 读取允许尝试的旧版 SSH 协商参数。
       def legacy_ssh_arguments = profile.legacy_ssh_arguments
 
+      # 读取进入特权视图的命令；未配置时不隐式提权。
       def enable_command = profile.privilege_command
 
+      # 读取特权认证完成提示的匹配规则。
       def enable_prompt = profile.privilege_prompt
 
+      # 读取厂商声明的默认命令超时。
       def default_command_timeout = profile.command_timeout
 
+      # 读取设备交互终端的行列尺寸。
       def terminal_size = profile.terminal_size
 
       # 返回登录完成提示；厂商必须实现。
@@ -268,6 +285,7 @@ module Net
         Result.new(steps: execution ? execution.steps : [], error: error)
       end
 
+      # 组合厂商准备与后处理钩子，建立单次脚本的执行状态。
       def build_execution(operation:, prompt:, after_command:, privilege:)
         finish_step = lambda do |command, response, context|
           self.after_command(command, response, context)

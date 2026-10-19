@@ -8,18 +8,18 @@ class CLIInputTest < Minitest::Test
   Netdisco = Net::Connector::Netdisco
 
   def test_parser_does_not_mutate_arguments_or_process_state
-    args = %w[--concurrency 7 --password private-value]
+    args = %w[--parallel 7 --password private-value]
     before = args.dup
     env = ENV.to_h
     cwd = Dir.pwd
     values = Netdisco::CLI::Options.parse(argv: args)
-    assert_equal "7", values[:environment]["NC_CONCURRENCY"]
+    assert_equal "7", values[:environment]["NC_PARALLEL"]
     assert_equal before, args
     assert_equal env, ENV.to_h
     assert_equal cwd, Dir.pwd
     output = StringIO.new
     assert Netdisco::CLI::Options.parse(argv: ["--help"], output: output)[:help]
-    assert_includes output.string, "--concurrency"
+    assert_includes output.string, "--parallel"
     error = assert_raises(ArgumentError) { Netdisco::CLI::Options.parse(argv: ["--unknown=private-value"]) }
     refute_includes error.message, "private-value"
     assert_nil error.cause

@@ -2,7 +2,7 @@
 # 示例层优先级：CLI > YAML > 环境默认值；进程环境优先于 .env。
 backup:
   directory: ./examples/backups
-  concurrency: 4
+  parallel: 4
   # limit_per_vendor: 3 # 省略时使用全量清单。
 netdisco:
   source: http

@@ -56,6 +56,53 @@ class TftpEvidenceTest < Minitest::Test
     end
   end
 
+  # Anonymized completion messages captured from live H3C and Radware exports.
+  def test_live_file_upload_completion_messages_confirm_transfer
+    ["File uploaded successfully.", "TFTP:     7998 bytes sent in 0 second(s)."].each do |message|
+      with_device(:h3c, "<H3C>", "#{message}\r\n<H3C>") do |device|
+        assert_equal "backup.cfg", backup(device, :h3c, "backup.cfg").path
+      end
+    end
+  end
+
+  def test_live_radware_completion_with_destination_confirms_transfer
+    message = "Current config successfully transferred to 192.0.2.10:backup.tgz"
+    with_device(:radware, ">> Main#", "#{message}\r\n>> Main#") do |device|
+      assert_equal "backup.tgz", backup(device, :radware, "backup.tgz").path
+    end
+  end
+
+  def test_live_pan_os_completion_accepts_the_bitrate_suffix_without_weakening_evidence
+    prompt = "admin@fw(active)>"
+    ["Sent 988965 bytes in 19.2 seconds [411613 bit/s]", "Sent 1 bytes in 0.1 seconds [80 bit/s]"].each do |message|
+      with_device(:palo_alto, prompt, "#{message}\r\n#{prompt}") do |device|
+        assert_equal "running-config.xml", backup(device, :palo_alto, "running-config.xml").path
+      end
+    end
+    ["Sent 0 bytes in 19.2 seconds [0 bit/s]", "Will send 988965 bytes in 19.2 seconds [411613 bit/s]",
+     "Sent 988965 bytes in 19.2 seconds [411613 bit/s] pending"].each do |message|
+      with_device(:palo_alto, prompt, "#{message}\r\n#{prompt}") do |device|
+        error = assert_raises(Net::Connector::DeviceError) { backup(device, :palo_alto, "running-config.xml") }
+        assert_equal :transfer_unconfirmed, error.code
+      end
+    end
+  end
+
+  def test_live_completion_variants_still_require_complete_success_without_failure
+    { h3c: ["File uploaded successfully pending", "TFTP: 0 bytes sent in 0 second(s).",
+            "File uploaded successfully.\r\nTransfer failed."],
+      radware: ["Current config successfully transferred to", "Current config will be transferred to 192.0.2.10:backup.tgz",
+                "Current config successfully transferred to 192.0.2.10:backup.tgz\r\nTransfer failed."] }.each do |vendor, messages|
+      prompt, _, _, path = CASES.fetch(vendor)
+      messages.each do |message|
+        with_device(vendor, prompt, "#{message}\r\n#{prompt}") do |device|
+          error = assert_raises(Net::Connector::DeviceError) { backup(device, vendor, path) }
+          assert_equal(message.include?("Transfer failed.") ? :transfer_failed : :transfer_unconfirmed, error.code)
+        end
+      end
+    end
+  end
+
   def test_future_or_incomplete_transfer_messages_are_not_completion
     { cisco_nxos: ["Copy will complete after validation", "Copy successful.cfg"],
       h3c: ["Transfer completion pending", "Upload successful.cfg"],

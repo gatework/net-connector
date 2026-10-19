@@ -4,6 +4,7 @@ require "ipaddr"
 require_relative "../device/policy"
 require_relative "../../../connector"
 require_relative "../../device/tftp/target"
+require_relative "root"
 
 module Net
   module Connector
@@ -15,6 +16,7 @@ module Net
           private_constant :PlanningContext
 
           Options = Data.define(:server, :verification_root, :source_file, :source_interface, :vrf) do
+            # 校验并冻结有效传输字段，确保设备间不共享可变策略。
             def initialize(**values)
               unless values.values.all? { |value| value.nil? || value.is_a?(String) }
                 raise ArgumentError, "effective TFTP fields must be strings or nil"
@@ -22,9 +24,11 @@ module Net
               super(**values.transform_values { |value| value&.dup&.freeze })
             end
 
+            # 返回经校验的更新快照，未更新时沿用当前对象。
             def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
           end
 
+          # 按厂商实际能力纯校验目标、源文件、接口和 VRF，不创建设备连接。
           def self.validate_options!(transfer, host:, vendor:, path: nil)
             raise ArgumentError, "invalid TFTP options" unless transfer.instance_of?(Options)
 
@@ -47,6 +51,7 @@ module Net
             transfer
           end
 
+          # 预检默认服务器、设备覆盖和路由规则，确保不同服务器不共享核验根目录。
           def initialize(server: nil, servers: {}, verification_root: nil, verification_roots: {},
                          source_files: {}, source_interfaces: {}, vrfs: {})
             @server = server && server_name(server)
@@ -67,7 +72,7 @@ module Net
             @files = Device::Policy.new(source_files, vendors: %i[h3c h3c_wireless huawei]) do |value|
               TftpTarget.validate_source_file!(value) unless value.nil?
             end
-            @interfaces = Device::Policy.new(source_interfaces, vendors: %i[h3c h3c_wireless radware]) do |value|
+            @interfaces = Device::Policy.new(source_interfaces, vendors: %i[h3c h3c_wireless radware centec]) do |value|
               unless value.nil? || (value.is_a?(String) && value.match?(/\A[A-Za-z][A-Za-z0-9_.\/: -]*\z/) && !value.end_with?(" "))
                 raise ArgumentError, "source_interfaces contain an unsafe value"
               end
@@ -87,6 +92,7 @@ module Net
             freeze
           end
 
+          # 按精确主机与厂商解析一次有效传输策略，核验目录只取自该服务器。
           def for(host:, vendor:)
             server = @servers.fetch(address(host), @server)
             Options.new(server: server, verification_root: @roots[server],
@@ -97,6 +103,7 @@ module Net
 
           private
 
+          # 规范化设备覆盖键为精确管理地址，拒绝网段和无效地址。
           def address(value)
             unless value.is_a?(String) && !value.empty? && !value.include?("/")
               raise ArgumentError, "TFTP host overrides require exact IP addresses"
@@ -106,6 +113,7 @@ module Net
             raise ArgumentError, "TFTP host overrides require exact IP addresses", cause: nil
           end
 
+          # 验证并规范化 TFTP 服务器 IP 或主机名，合并等价服务器键。
           def server_name(value)
             target = TftpTarget.new(host: value, path: "preflight.cfg")
             host = target.host.downcase
@@ -116,6 +124,7 @@ module Net
             end
           end
 
+          # 校验设备到服务器的映射，拒绝规范化后的重复设备键。
           def host_servers(values)
             raise ArgumentError, "TFTP servers must map devices to servers" unless values.is_a?(Hash)
 
@@ -127,6 +136,7 @@ module Net
             end.freeze
           end
 
+          # 校验服务器与核验目录映射，拒绝规范化后的重复服务器。
           def server_roots(values)
             raise ArgumentError, "TFTP verification_roots must be a server mapping" unless values.is_a?(Hash)
 
@@ -138,10 +148,13 @@ module Net
             end
           end
 
+          # 区分 SSH 端点和本地目录，规范化路径并拒绝控制字符。
           def root_path(value)
             unless value.is_a?(String) && !value.empty? && !value.match?(/[\r\n\0]/)
               raise ArgumentError, "TFTP verification root must be a literal directory"
             end
+            return Root.resolve(value) { |path| path } if Root.remote?(value)
+
             path = File.expand_path(value)
             (File.exist?(path) ? File.realpath(path) : path).freeze
           end

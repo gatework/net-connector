@@ -3,12 +3,13 @@
 require "ipaddr"
 require "time"
 require "fileutils"
-require_relative "../concurrency/pool"
+require_relative "../parallel/pool"
 require_relative "../device/scope"
 require_relative "../device/topology"
 require_relative "settings"
 require_relative "operations/batch"
 require_relative "device/access"
+require_relative "resources"
 
 module Net
   module Connector
@@ -19,6 +20,7 @@ module Net
         MissingCredentials = Class.new(StandardError)
         private_constant :DEFAULT_SETTING, :MissingCredentials
 
+        # 绑定策略、清单和逐设备接入依赖，校验工厂与回调入口。
         def initialize(settings:, inventory:, credentials: nil, connector_factory: nil)
           raise ArgumentError, "inventory must respond to call" unless inventory.respond_to?(:call)
           raise ArgumentError, "credentials must respond to call" unless credentials.nil? || credentials.respond_to?(:call)
@@ -31,12 +33,12 @@ module Net
         end
 
         # 全批脚本先解析并固定，明确确认后才查询清单和读取逐设备凭据。
-        def execute_scripts(scripts:, confirmed: false, concurrency: DEFAULT_SETTING, on_start: nil, on_result: nil)
+        def execute_scripts(scripts:, confirmed: false, parallel: DEFAULT_SETTING, on_start: nil, on_result: nil)
           validate_confirmation!(confirmed)
           tasks = normalize_mapping(scripts, :scripts) do |script|
             script.is_a?(String) ? Script.parse(script) : (script.is_a?(Script) ? script : Script.new(script))
           end
-          run(:execute_scripts, tasks, concurrency: concurrency, on_start: on_start, on_result: on_result) do |connector, script|
+          run(:execute_scripts, tasks, parallel: parallel, on_start: on_start, on_result: on_result) do |connector, script|
             result = connector.execute_script(script)
             raise TypeError, "configuration operation must return a Result" unless result.is_a?(Result)
 
@@ -45,10 +47,10 @@ module Net
         end
 
         # 一次调用完成邻居发现与描述同步；每台设备独占会话，普通失败互不影响。
-        def sync_interface_descriptions(hosts:, abbreviate: true, lowercase: false, concurrency: DEFAULT_SETTING,
+        def sync_interface_descriptions(hosts:, abbreviate: true, lowercase: false, parallel: DEFAULT_SETTING,
                                         on_start: nil, on_result: nil, &formatter)
           tasks = description_targets(hosts, abbreviate, lowercase)
-          run(:sync_interface_descriptions, tasks, concurrency: concurrency, on_start: on_start, on_result: on_result) do |connector, _|
+          run(:sync_interface_descriptions, tasks, parallel: parallel, on_start: on_start, on_result: on_result) do |connector, _|
             result = connector.sync_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, &formatter)
             raise TypeError, "description synchronization must return a Result" unless result.is_a?(Result)
 
@@ -57,11 +59,11 @@ module Net
         end
 
         # 规划只读取现场证据；格式化回调并发执行，不承担设备连接或审批职责。
-        def plan_interface_descriptions(hosts:, abbreviate: true, lowercase: false, concurrency: DEFAULT_SETTING,
+        def plan_interface_descriptions(hosts:, abbreviate: true, lowercase: false, parallel: DEFAULT_SETTING,
                                         on_start: nil, on_result: nil, &formatter)
           tasks = description_targets(hosts, abbreviate, lowercase)
 
-          run(:plan_interface_descriptions, tasks, concurrency: concurrency, on_start: on_start, on_result: on_result) do |connector, _|
+          run(:plan_interface_descriptions, tasks, parallel: parallel, on_start: on_start, on_result: on_result) do |connector, _|
             result = connector.plan_interface_descriptions(abbreviate: abbreviate, lowercase: lowercase, &formatter)
             raise TypeError, "description planning must return a Net::Connector::Topology::Plan" unless result.is_a?(Net::Connector::Topology::Plan)
 
@@ -70,13 +72,13 @@ module Net
         end
 
         # 审批计划固定并验证；单设备应用仍执行现场重验、读回和保存，不直接重放 commands。
-        def apply_interface_descriptions(plans:, confirmed: false, concurrency: DEFAULT_SETTING, on_start: nil, on_result: nil)
+        def apply_interface_descriptions(plans:, confirmed: false, parallel: DEFAULT_SETTING, on_start: nil, on_result: nil)
           validate_confirmation!(confirmed)
           tasks = normalize_mapping(plans, :plans) { |plan| normalize_plan(plan) }
           tasks.each do |host, plan|
             raise ArgumentError, "plan host does not match its target" unless normalize_host(plan.host) == host
           end
-          run(:apply_interface_descriptions, tasks, concurrency: concurrency, on_start: on_start, on_result: on_result) do |connector, plan|
+          run(:apply_interface_descriptions, tasks, parallel: parallel, on_start: on_start, on_result: on_result) do |connector, plan|
             result = connector.apply_interface_descriptions(plan, confirmed: true)
             raise TypeError, "description application must return a Result" unless result.is_a?(Result)
 
@@ -99,6 +101,7 @@ module Net
           tasks
         end
 
+        # 只有显式确认才允许执行配置写操作。
         def validate_confirmation!(confirmed)
           raise ArgumentError, "configuration changes require confirmed: true" unless confirmed == true
         end
@@ -114,6 +117,7 @@ module Net
           raise ArgumentError, "target contains an invalid IP address", cause: nil
         end
 
+        # 规范化全批主机键并拒绝重复，在设备访问前固定各目标输入。
         def normalize_mapping(mapping, name)
           raise ArgumentError, "#{name} must be a Hash" unless mapping.is_a?(Hash)
 
@@ -142,21 +146,22 @@ module Net
         end
 
         # 策略只固定一次；清单与连接使用同一快照，凭据仍在每台任务开始时动态读取。
-        def run(operation, tasks, concurrency:, on_start:, on_result:)
+        def run(operation, tasks, parallel:, on_start:, on_result:)
           [on_start, on_result].each do |callback|
             raise ArgumentError, "callbacks must respond to call" unless callback.nil? || callback.respond_to?(:call)
           end
-          Concurrency::Pool.validate_concurrency!(concurrency) unless concurrency.equal?(DEFAULT_SETTING)
+          Parallel::Pool.validate_parallel!(parallel) unless parallel.equal?(DEFAULT_SETTING)
           snapshot = @settings.snapshot(mode: :inventory)
-          concurrency = snapshot.concurrency if concurrency.equal?(DEFAULT_SETTING)
-          Concurrency::Pool.validate_concurrency!(concurrency)
+          parallel = snapshot.parallel if parallel.equal?(DEFAULT_SETTING)
+          Parallel::Pool.validate_parallel!(parallel)
           return empty_batch(operation) if tasks.empty?
 
           devices = select_devices(tasks, snapshot)
+          Resources.prepare!(parallel: [parallel, devices.size].min)
           FileUtils.mkdir_p(snapshot.log_directory, mode: 0o700) if snapshot.log_directory
           started_at = Time.now.utc
           callback_errors = Queue.new
-          outcomes = Concurrency::Pool.new(concurrency: concurrency).map(devices) do |device|
+          outcomes = Parallel::Pool.new(parallel: parallel).map(devices) do |device|
             perform(device, snapshot, callback_errors, on_start, on_result) { |connector| yield connector, tasks.fetch(device.host) }
           end
           errors = Array.new(callback_errors.size) { callback_errors.pop }
@@ -164,6 +169,7 @@ module Net
                              started_at: started_at, finished_at: Time.now.utc)
         end
 
+        # 生成不读取清单、不建立连接的空操作批次。
         def empty_batch(operation)
           now = Time.now.utc
           Operations::Batch.new(operation: operation, outcomes: [], callback_errors: [], started_at: now, finished_at: now)
@@ -224,6 +230,7 @@ module Net
           outcome
         end
 
+        # 按固定策略读取设备凭据，缺失时拒绝任务，否则调用连接器工厂。
         def build_connector(device, snapshot)
           options = Device::Access.resolve(device, settings: @settings, credentials: @credentials,
                                                 policy: snapshot, log_directory: snapshot.log_directory)

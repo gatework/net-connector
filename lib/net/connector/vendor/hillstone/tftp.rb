@@ -43,6 +43,7 @@ module Net
             completion_lines(result).find { |line| line.match?(/\AExport\s+ok\s*,\s*target\s+file\s+name\s+\S+\z/i) }
           end
 
+          # 生成山石配置导出命令，仅在显式指定时附带虚拟路由器。
           def transfer_command(target, vrf: nil, **)
             command = "export configuration startup to tftp server #{target.host} vrouter #{vrf || "mgt-vr"}"
             target.explicit_path? ? "#{command} #{target.path}" : command

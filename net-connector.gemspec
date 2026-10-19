@@ -14,10 +14,11 @@ Gem::Specification.new do |spec|
   spec.license = "MIT"
   spec.required_ruby_version = ">= 3.2"
   # 使用明确的发布清单；本地凭据、设备备份、日志和开发产物不能进入安装包。
-  spec.files = Dir["lib/**/*.rb", "lib/net/connector/templates/**/*.textfsm", "lib/net/connector/templates/index",
+  spec.files = Dir["lib/**/*.rb", "lib/net/connector/netdisco/tftp/ssh_archive_worker.py",
+                   "lib/net/connector/textfsm/**/*.textfsm", "lib/net/connector/textfsm/index",
                    "bin/net-backup", "docs/architecture.md", "docs/RELEASING.md", "docs/VERIFICATION.md",
                    "docs/templates.md", "docs/vendors.md", "docs/usage.md", "docs/usage.zh-CN.md", "docs/netdisco.md", "docs/netdisco.zh-CN.md",
-                   "examples/backup.yml", "examples/inventory.yml",
+                   "examples/backup.example.yml", "examples/inventory.yml",
                    "README.md", "README.zh-CN.md", "LICENSE", "CHANGELOG.md", "SECURITY.md", "CONTRIBUTING.md"].sort
   spec.require_paths = ["lib"]
   spec.bindir = "bin"
@@ -31,6 +32,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "fileutils"
   spec.add_dependency "forwardable"
   spec.add_dependency "io-console"
+  spec.add_dependency "io-wait"
   spec.add_dependency "ipaddr"
   spec.add_dependency "json"
   spec.add_dependency "logger"

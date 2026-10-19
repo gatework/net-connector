@@ -172,14 +172,14 @@ class NetdiscoTest < Minitest::Test
     env = { "ND_URL" => "https://inventory.example", "ND_API_KEY" => "token",
             "NC_DEVICE_USERNAME" => "global", "NC_DEVICE_PASSWORD" => "global-secret",
             "NC_HUAWEI_USERNAME" => "huawei", "NC_HUAWEI_PASSWORD" => "vendor-secret",
-            "NC_CONCURRENCY" => "2", "NC_INCLUDE_VENDORS" => "huawei",
+            "NC_PARALLEL" => "2", "NC_INCLUDE_VENDORS" => "huawei",
             "NC_VENDOR_OVERRIDES" => '{"custom maker":"huawei"}',
             "NC_HOST_OVERRIDES" => '{"192.0.2.9":"h3c_wireless"}',
             "NC_DEVICE_RULES" => '[{"vendor":"Cisco","model_prefix":"CustomNX","connector":"cisco_nxos"}]' }
-    policy_keys = %w[NC_CONCURRENCY NC_INCLUDE_VENDORS NC_VENDOR_OVERRIDES NC_HOST_OVERRIDES NC_DEVICE_RULES]
+    policy_keys = %w[NC_PARALLEL NC_INCLUDE_VENDORS NC_VENDOR_OVERRIDES NC_HOST_OVERRIDES NC_DEVICE_RULES]
     defaults = policy_keys.to_h { |key| [key, env.delete(key)] }
     settings = Settings.new(env: env, defaults: defaults)
-    assert_equal 2, settings.concurrency
+    assert_equal 2, settings.parallel
     assert_instance_of Net::Connector::Netdisco::Inventory::Cache, settings.inventory
     device = Net::Connector::Netdisco::Device.from_row({ "ip" => "192.0.2.5", "vendor" => "custom maker" },
                                                        rules: settings.rules)
@@ -212,18 +212,18 @@ class NetdiscoTest < Minitest::Test
     assert_equal({ "cisco_nxos" => "management" }, settings.public_config.fetch(:tftp).fetch(:vrfs))
   end
 
-  def test_backup_rejects_invalid_concurrency_before_creating_directory
+  def test_backup_rejects_invalid_parallel_before_creating_directory
     row = { "ip" => "192.0.2.1", "vendor" => "H3C" }
     fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new([row]),
                       credentials: ->(_) { nil })
     Dir.mktmpdir do |root|
       directory = File.join(root, "backup")
-      assert_raises(ArgumentError) { fleet.backup_all(directory: directory, concurrency: 0) }
+      assert_raises(ArgumentError) { fleet.backup_all(directory: directory, parallel: 0) }
       refute File.exist?(directory)
     end
   end
 
-  def test_concurrency_preflight_rejects_invalid_values_before_any_batch_side_effect
+  def test_parallel_preflight_rejects_invalid_values_before_any_batch_side_effect
     calls = []
     inventory = Object.new
     inventory.define_singleton_method(:devices) { calls << :inventory; [] }
@@ -234,11 +234,11 @@ class NetdiscoTest < Minitest::Test
       fleet = Fleet.new(settings: settings, inventory: inventory, report_store: nil,
                         credentials: ->(_) { calls << :credentials },
                         connector_factory: ->(*) { calls << :connector })
-      [nil, false, "1", 1.0, 0, -1, Settings::MAX_CONCURRENCY + 1].each do |value|
+      [nil, false, "1", 1.0, 0, -1, Settings::MAX_PARALLEL + 1].each do |value|
         [[:backup_all, { directory: directory }],
          [:tftp_backup_all, { server: "192.0.2.10", report_directory: directory }]].each do |method, options|
-          error = assert_raises(ArgumentError) { fleet.public_send(method, **options, concurrency: value) }
-          assert_equal "concurrency must be an Integer in 1..#{Settings::MAX_CONCURRENCY}", error.message
+          error = assert_raises(ArgumentError) { fleet.public_send(method, **options, parallel: value) }
+          assert_equal "parallel must be an Integer in 1..#{Settings::MAX_PARALLEL}", error.message
           assert_empty calls
           refute File.exist?(directory)
           refute File.exist?(logs)
@@ -247,9 +247,9 @@ class NetdiscoTest < Minitest::Test
     end
   end
 
-  def test_worker_accepts_both_concurrency_boundaries
-    [1, Settings::MAX_CONCURRENCY].each do |value|
-      worker = Net::Connector::Netdisco::Worker.new(concurrency: value)
+  def test_worker_accepts_both_parallel_boundaries
+    [1, Settings::MAX_PARALLEL].each do |value|
+      worker = Net::Connector::Netdisco::Worker.new(parallel: value)
       assert_empty worker.run([], outcomes: [], on_error: ->(*) { flunk "unexpected failure" }) { flunk "unexpected task" }
     end
   end
@@ -282,7 +282,7 @@ class NetdiscoTest < Minitest::Test
     fleet = Fleet.new(report_store: nil, inventory: inventory, credentials: ->(_device) { { username: "admin", password: "secret" } },
                       connector_factory: factory)
     Dir.mktmpdir do |directory|
-      batch = fleet.backup_all(directory: directory, concurrency: 2)
+      batch = fleet.backup_all(directory: directory, parallel: 2)
       assert_equal [:backed_up, :failed, :unsupported_vendor, :backed_up], batch.outcomes.map(&:status)
       assert_operator peak, :<=, 2
       assert_operator peak, :>=, 2
@@ -394,7 +394,7 @@ class NetdiscoTest < Minitest::Test
     fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows),
                       credentials: ->(_) { { username: "admin" } }, connector_factory: factory)
     batch = fleet.tftp_backup_all(server: "192.0.2.10", source_files: { h3c: "flash:/startup.cfg" },
-                                  concurrency: 2)
+                                  parallel: 2)
     assert_equal [:reported_uploaded, :reported_uploaded, :remote_filename_collision],
                  batch.outcomes.map(&:status)
     by_host = calls.to_h
@@ -409,7 +409,7 @@ class NetdiscoTest < Minitest::Test
     requested = []
     fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows),
                       credentials: ->(device) { requested << device.host; nil })
-    batch = fleet.tftp_backup_all(server: "192.0.2.10", concurrency: 2)
+    batch = fleet.tftp_backup_all(server: "192.0.2.10", parallel: 2)
     assert_equal 5, batch.counts.fetch(:missing_credentials)
     assert_equal 1, batch.counts.fetch(:sample_limit)
     assert_equal 5, requested.size
@@ -429,11 +429,11 @@ class NetdiscoTest < Minitest::Test
         connector.define_singleton_method(:close) {}
       end
     end
-    settings = Settings.new(env: {}, defaults: { "NC_CONCURRENCY" => "50" })
-    assert_equal 50, settings.concurrency
+    settings = Settings.new(env: {}, defaults: { "NC_PARALLEL" => "50" })
+    assert_equal 50, settings.parallel
     fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows), settings: settings,
                       credentials: ->(_) { { username: "admin" } }, connector_factory: factory)
-    batch = fleet.tftp_backup_all(server: "192.0.2.10", limit_per_vendor: nil, concurrency: 50)
+    batch = fleet.tftp_backup_all(server: "192.0.2.10", limit_per_vendor: nil, parallel: 50)
     assert_equal 6, batch.counts.fetch(:reported_uploaded)
     assert_equal 6, calls.size
   end
@@ -520,7 +520,7 @@ class NetdiscoTest < Minitest::Test
     end
     fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows),
                       credentials: ->(_) { { username: "admin" } }, connector_factory: connector_factory)
-    batch = fleet.tftp_backup_all(server: "192.0.2.10", concurrency: 1,
+    batch = fleet.tftp_backup_all(server: "192.0.2.10", parallel: 1,
                                   on_start: ->(device) { raise IOError, "start log unavailable" if device.host.end_with?(".1") },
                                   on_result: ->(_result) { raise IOError, "result log unavailable" })
     assert_equal 2, calls.size
@@ -625,7 +625,7 @@ class NetdiscoTest < Minitest::Test
     end
     fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows),
                       credentials: ->(_) { { username: "admin" } }, connector_factory: factory)
-    batch = fleet.tftp_backup_all(server: "192.0.2.10", concurrency: 1)
+    batch = fleet.tftp_backup_all(server: "192.0.2.10", parallel: 1)
     assert_equal [:failed, :reported_uploaded], batch.outcomes.map(&:status)
     assert_equal "TypeError", batch.outcomes.first.error_type
   end
@@ -743,7 +743,7 @@ class NetdiscoTest < Minitest::Test
     fleet = Fleet.new(report_store: nil, inventory: Struct.new(:devices).new(rows),
                       credentials: ->(_) { { username: "admin" } }, connector_factory: factory)
     Dir.mktmpdir do |directory|
-      batch = fleet.backup_all(directory: directory, concurrency: 1,
+      batch = fleet.backup_all(directory: directory, parallel: 1,
                                on_result: ->(item) { results << item.device.host },
                                on_change: ->(item) { changes << item.device.host; raise IOError, "notification failed" })
       assert_equal ["192.0.2.1", "192.0.2.2"], results
@@ -764,7 +764,7 @@ class NetdiscoTest < Minitest::Test
           page_size: 250
         backup:
           directory: #{directory}/saved
-          concurrency: 2
+          parallel: 2
           limit_per_vendor: 3
         inventory:
           include_hosts: [192.0.2.1]
@@ -778,16 +778,16 @@ class NetdiscoTest < Minitest::Test
       env = { "ND_PASSWORD" => "private-password",
               "NC_DEVICE_PASSWORD" => "device-secret" }
       settings = Settings.from_file(path, env: env)
-      assert_equal 2, settings.concurrency
+      assert_equal 2, settings.parallel
       assert_equal File.join(directory, "saved"), settings.backup_directory
       assert_equal :h3c, settings.rules.resolve("vendor" => "Custom Vendor")
       assert_equal ["192.0.2.1"], settings.public_config.fetch(:inventory).fetch(:include_hosts)
       output = StringIO.new
       error = StringIO.new
-      status = Net::Connector::Netdisco::CLI.new(argv: ["--config", path, "--show-config", "--concurrency", "4"],
+      status = Net::Connector::Netdisco::CLI.new(argv: ["--config", path, "--show-config", "--parallel", "4"],
                                                  env: env, output: output, error: error).run
       assert_equal 0, status, error.string
-      assert_equal 4, JSON.parse(output.string).fetch("backup").fetch("concurrency")
+      assert_equal 4, JSON.parse(output.string).fetch("backup").fetch("parallel")
       refute_includes output.string, "private-password"
       refute_includes output.string, "device-secret"
 

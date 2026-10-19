@@ -8,6 +8,7 @@ module Net
   module Connector
     # 一条设备命令行，可附带独立截止时间和交互规则。
     class Command
+      # 只读提供命令文本、超时、交互、提示符及脚本来源信息。
       attr_reader :text, :timeout, :interactions, :prompt, :source, :line
 
       # 在任何输入输出前校验命令、提示、交互和敏感标记，并冻结命令。

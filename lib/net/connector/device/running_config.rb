@@ -70,7 +70,7 @@ module Net
         @device.execute_operation(script, name: :running_config, prompt: prompt,
                                   after_command: strategy.method(:validate_response!)) do |result|
           @device.send(:with_config_strategy, strategy) do
-            finish(result)
+            finish(result, strategy)
           end
         end
       end
@@ -78,12 +78,12 @@ module Net
       private
 
       # 只从完成的配置步骤提取非空内容，并保留此前所有步骤。
-      def finish(result)
+      def finish(result, strategy)
         step = @device.send(:config_result_step, result)
         raise build_incomplete_error("configuration collection has no completed configuration step") unless step
 
         content = @device.clean_config(step.output)
-        unless content.is_a?(String) && !content.strip.empty? && config_body?(step)
+        unless content.is_a?(String) && !content.strip.empty? && config_body?(step, strategy)
           raise build_incomplete_error("configuration collection returned empty content")
         end
         Result.new(steps: result.steps, config: content)
@@ -101,13 +101,25 @@ module Net
       end
 
       # 排除命令回显和提示符，确认响应确实包含配置正文。
-      def config_body?(step)
-        body = Terminal::Renderer.render(step.output.delete_suffix(step.prompt.to_s)).strip
-        # 只需确认首个正文行；不为大配置创建全部行对象或重新拼接整份响应。
+      def config_body?(step, strategy)
+        body = if strategy.is_a?(Rendered) && standalone_prompt?(step)
+                 strategy.rendered_response(step.output).delete_suffix(Terminal::Renderer.render(step.prompt)).strip
+               else
+                 Terminal::Renderer.render(step.output.delete_suffix(step.prompt.to_s)).strip
+               end
+        # 安全场景复用已渲染的全文，再扫描到首个非回显正文行即停止。
         body.each_line("\n").with_index.any? do |line, index|
           text = line.strip
           !text.empty? && !(index.zero? && text == step.command.text)
         end
+      end
+
+      # 判断提示符是否位于独立行且仅含可打印字符，确保移除它不会重绘此前正文。
+      def standalone_prompt?(step)
+        prompt = step.prompt.to_s
+        start = step.output.bytesize - prompt.bytesize
+        start.positive? && step.output.getbyte(start - 1) == 10 && step.output.end_with?(prompt) &&
+          prompt.ascii_only? && prompt.match?(/\A[\t\x20-\x7e]+(?:\r?\n)*\z/n)
       end
 
       # 将缺少配置的情况统一映射为可识别的设备错误码。

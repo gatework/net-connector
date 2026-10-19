@@ -41,14 +41,15 @@ module Net
         def partial? = [:saved_with_error, :reported_with_error].include?(status)
 
         # 判断设备是否因为清单或采样规则未执行。
-        def skipped? = !success? && !partial? && status != :failed
+        def skipped? = !success? && !partial? && !%i[failed interrupted].include?(status)
       end
 
       # 汇总一次批量任务的设备结果、回调故障和报告写入状态。
       Batch = Data.define(:mode, :outcomes, :started_at, :finished_at, :callback_errors,
-                          :report_location, :report_error) do
+                          :report_location, :report_error, :interrupted) do
         # 批次拥有容器与审计元数据；调用方只能通过 with 构造新快照。
-        def initialize(mode:, outcomes:, started_at:, finished_at:, callback_errors:, report_location:, report_error:)
+        def initialize(mode:, outcomes:, started_at:, finished_at:, callback_errors:, report_location:, report_error:, interrupted: false)
+          raise ArgumentError, "interrupted must be boolean" unless [true, false].include?(interrupted)
           unless outcomes.is_a?(Array) && outcomes.all? { |outcome| outcome.instance_of?(Outcome) } && callback_errors.is_a?(Array)
             raise ArgumentError, "batch requires outcome and callback error Arrays"
           end
@@ -58,26 +59,28 @@ module Net
           super(mode: mode, outcomes: outcomes,
                 started_at: started_at&.dup&.freeze, finished_at: finished_at&.dup&.freeze,
                 callback_errors: callback_errors.map { |entry| copy_callback_error(entry) }.freeze,
-                report_location: report_location&.dup&.freeze, report_error: report_error&.dup&.freeze)
+                report_location: report_location&.dup&.freeze, report_error: report_error&.dup&.freeze, interrupted: interrupted)
         end
 
+        # 返回经校验的更新快照，未更新时沿用当前对象。
         def with(**attributes) = attributes.empty? ? self : self.class.new(**to_h.merge(attributes))
 
         # 只累计最终计数，不创建与清单等长的中间状态数组。
         def counts = @counts.dup
 
         # 仅在所有设备成功且回调、报告均正常时判定整批成功。
-        def success? = !outcomes.empty? && @counts.fetch(:backed_up, 0) + @counts.fetch(:reported_uploaded, 0) == outcomes.size &&
+        def success? = !interrupted && !outcomes.empty? && @counts.fetch(:backed_up, 0) + @counts.fetch(:reported_uploaded, 0) == outcomes.size &&
                        callback_errors.empty? && report_error.nil?
 
         # 空清单与已尝试但未全部成功的批次分别标记。
-        def status = outcomes.empty? ? :no_devices : (success? ? :succeeded : :incomplete)
+        def status = interrupted ? :interrupted : (outcomes.empty? ? :no_devices : (success? ? :succeeded : :incomplete))
 
         # 显式从原始执行结果构造报告。
         def build_report(policy: :strict) = Report.new(self, policy: policy)
 
         private
 
+        # 复制回调故障的主机与白名单异常类型，不保留原始异常或消息。
         def copy_callback_error(entry)
           unless entry.is_a?(Hash) && (entry[:host].nil? || entry[:host].is_a?(String))
             raise ArgumentError, "callback errors must contain a host and error type"

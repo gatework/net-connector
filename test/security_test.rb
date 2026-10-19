@@ -45,6 +45,10 @@ class SecurityTest < Minitest::Test
       report = JSON.parse(File.read(File.join(directory, "tmp", "security", "source.json")))
       assert_includes report.map { |finding| finding.fetch("file") }, "bin/net-backup"
       assert PackageCheck.allowed_path?("bin/net-backup")
+      assert PackageCheck.allowed_path?("examples/backup.example.yml")
+      refute PackageCheck.allowed_path?("examples/backup.yml")
+      assert PackageCheck.allowed_path?("lib/net/connector/netdisco/tftp/ssh_archive_worker.py")
+      refute PackageCheck.allowed_path?("lib/other_worker.py")
       %w[bin/other bin/../net-backup exe/net-connector-backup].each do |path|
         refute PackageCheck.allowed_path?(path), path
       end

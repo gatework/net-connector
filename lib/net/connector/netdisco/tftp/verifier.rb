@@ -5,6 +5,7 @@ require_relative "../../storage/backup_lock"
 require_relative "../../device/tftp/receipt"
 require_relative "../diagnostic"
 require "tempfile"
+require_relative "root"
 
 module Net
   module Connector
@@ -12,13 +13,17 @@ module Net
       module Tftp
         # 只核验本次设备回执指向的本地服务器文件；远端可读不等于本次上传证据。
         class Verifier
+          # 识别本地或 SSH 核验根目录，本地路径解析为真实目录。
           def initialize(root: nil)
-            @root = root && File.realpath(root)
+            @remote = Root.remote?(root)
+            Root.endpoint(root) if @remote
+            @root = root && !@remote ? File.realpath(root) : nil
           end
 
           # 基线、设备上传和核验共用目标锁；只有上传后变化的文件才属于本次任务。
           def upload_and_verify(device, path: device.tftp_filename)
             outcome = nil
+            raise ArgumentError, "SSH TFTP roots require history archival" if @remote
             raise ArgumentError, "upload requires a block" unless block_given?
 
             TftpTarget.validate_path!(path)
@@ -51,6 +56,7 @@ module Net
 
           private
 
+          # 解析回执中的相对路径，要求其父目录仍位于配置根目录之内。
           def server_path(relative_path)
             path = File.join(@root, relative_path)
             parent = File.realpath(File.dirname(path))
@@ -61,6 +67,7 @@ module Net
             path
           end
 
+          # 只核验上传后变化且稳定的非空文件，记录摘要与大小但不抹去原设备回执。
           def verify(outcome, receipt, started_at:, previous:)
             path = server_path(receipt.path)
             size = nil

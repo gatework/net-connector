@@ -40,9 +40,13 @@ module Net
 
         # 只读策略不提供变更阶段；可写策略必须分别声明退出、验证和保存命令。
         def leave_configuration_commands = nil
+        # 默认不声明读回阶段，由支持修改的厂商明确提供。
         def verification_commands = nil
+        # 默认不声明持久化阶段，避免把运行生效误当作保存成功。
         def persistence_commands = nil
+        # 公共策略不能确认保存成功，必须由厂商依据回显实现。
         def persistence_confirmed?(_result) = false
+        # 返回公共策略不支持描述修改的诊断码。
         def change_error_code = :description_unsupported
 
         # 只读策略可以没有完整性扩展；立即生效的接口块模型会进一步校验解析数量。

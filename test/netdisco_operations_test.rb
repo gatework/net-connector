@@ -124,7 +124,7 @@ class NetdiscoOperationsTest < Minitest::Test
   def test_all_inputs_fail_before_inventory_or_credentials
     invalid_calls = [
       -> { @operations.execute_scripts(scripts: { @hosts.first => ["show"] }) },
-      -> { @operations.execute_scripts(scripts: { @hosts.first => ["show"] }, confirmed: true, concurrency: 0) },
+      -> { @operations.execute_scripts(scripts: { @hosts.first => ["show"] }, confirmed: true, parallel: 0) },
       -> { @operations.execute_scripts(scripts: { @hosts.first => ["show"] }, confirmed: true, on_result: Object.new) },
       -> { @operations.execute_scripts(scripts: { @hosts.first => ["show"], @hosts.last => [Object.new] }, confirmed: true) },
       -> { @operations.execute_scripts(scripts: { "2001:db8::1" => [], "2001:db8:0:0::1" => [] }, confirmed: true) },
@@ -206,7 +206,7 @@ class NetdiscoOperationsTest < Minitest::Test
 
   # 同一批混合各类普通失败，单线程与并发调度都必须为每台设备交付唯一终态。
   def test_mixed_failures_are_isolated_and_report_balances_every_scheduled_device
-    [1, 3].each do |concurrency|
+    [1, 3].each do |parallel|
       hosts = Array.new(5) { |index| "192.0.2.#{index + 1}" }
       devices = hosts.map { |host| Netdisco::Device.from_row({ "ip" => host, "vendor" => "H3C" }, rules: Netdisco::Rules.new) }
       connectors = hosts.to_h { |host| [host, FakeConnector.new] }
@@ -219,7 +219,7 @@ class NetdiscoOperationsTest < Minitest::Test
         connectors.fetch(device.host)
       end
       operation = operations(inventory: ->(_) { devices }, credentials: credentials, factory: factory)
-      batch = operation.execute_scripts(scripts: hosts.to_h { |host| [host, ["change"]] }, confirmed: true, concurrency: concurrency)
+      batch = operation.execute_scripts(scripts: hosts.to_h { |host| [host, ["change"]] }, confirmed: true, parallel: parallel)
       assert_equal(hosts, batch.outcomes.map { |outcome| outcome.device.host })
       assert_equal %i[succeeded failed partial missing_credentials failed], batch.outcomes.map(&:status)
       assert_equal({ total: 5, succeeded: 1, failed: 4, partial: 1, missing_credentials: 1, callback_errors: 0 }, batch.summary)
@@ -252,7 +252,7 @@ class NetdiscoOperationsTest < Minitest::Test
       value
     end
     hosts = @hosts + [host]
-    batch = @operations.execute_scripts(scripts: hosts.to_h { |target| [target, ["change"]] }, confirmed: true, concurrency: 2)
+    batch = @operations.execute_scripts(scripts: hosts.to_h { |target| [target, ["change"]] }, confirmed: true, parallel: 2)
     assert_equal %i[failed succeeded succeeded], batch.outcomes.map(&:status)
     assert_equal({ total: 3, succeeded: 2, failed: 1, partial: 0, missing_credentials: 0, callback_errors: 0 }, batch.summary)
     assert @connectors.values.all?(&:closed)
@@ -393,10 +393,10 @@ class NetdiscoOperationsTest < Minitest::Test
     assert @connectors.fetch(@hosts.first).closed
   end
 
-  def test_configured_concurrency_bounds_device_operations
+  def test_configured_parallel_bounds_device_operations
     started = Queue.new
     release = Queue.new
-    @settings = Netdisco::Settings.new(env: { "NC_CONCURRENCY" => "1" })
+    @settings = Netdisco::Settings.new(env: { "NC_PARALLEL" => "1" })
     @connectors.values.each do |connector|
       connector.define_singleton_method(:execute_script) do |_script|
         started << self

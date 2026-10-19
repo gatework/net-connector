@@ -12,6 +12,7 @@ module Net
           # Alteon 只支持读取端口描述，不提供邻居发现或自动改写。
           def self.supports?(capability) = capability == :interface_descriptions
 
+          # 按 Radware 配置中的引号规则还原端口描述。
           def decode_description(value) = Net::Connector::Topology::QuotedText.decode(value, host: @device.host)
 
           # 从设备配置转储解析端口名称。

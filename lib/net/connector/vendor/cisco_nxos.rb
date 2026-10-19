@@ -20,7 +20,7 @@ module Net
 
           prompts do
             login(/\S+[>#]\s*\z/)
-            command(/\S+#\s*\z/)
+            command(/\S+[>#]\s*\z/)
           end
 
           pager do

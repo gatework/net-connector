@@ -15,25 +15,38 @@ module Net
       module Tftp
         # 设备先上传到服务器根目录，核验后按批次归档；固定文件名不会覆盖历史文件。
         class Archive
+          # 按根目录类型选择本地或 SSH 归档器，上传流程保持相同回执契约。
+          def self.new(directory:, root: nil, ssh_password: nil, parallel: 4)
+            if Root.remote?(root)
+              require_relative "ssh_archive_pool"
+              return SshArchivePool.new(directory: directory, root: root, password: ssh_password, parallel: parallel)
+            end
+
+            super(directory: directory, root: root)
+          end
+
           BATCH_DIRECTORY_NAME = /\A\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:_\d{2})?\z/
           private_constant :BATCH_DIRECTORY_NAME
 
           # 固定名上传无法保留历史时，在设备上传之前拒绝执行。
           class Unavailable < Net::Connector::Error
+            # 构造固定文件名无法安全保留历史的预检错误。
             def initialize(host: nil)
-              super("a local TFTP root is required to retain a fixed-name upload", code: :tftp_history_unavailable,
+              super("a local or SSH TFTP archive root is required to retain a fixed-name upload", code: :tftp_history_unavailable,
                     host: host, phase: :tftp_backup)
             end
           end
 
           # 设备可能已经上传，归档失败不能撤销或重新执行设备命令。
           class Failure < Net::Connector::Error
+            # 构造上传已经发生但归档未完成的错误，不允许据此自动重放。
             def initialize(host: nil)
               super("the uploaded file could not be retained in the batch", code: :tftp_archive_failed,
                     host: host, phase: :tftp_backup)
             end
           end
 
+          # 固定本地报告和服务器根目录，建立归档批次或唯一上传后缀。
           def initialize(directory:, root: nil)
             @report_directory = File.expand_path(directory)
             @server_root = root && File.realpath(root)
@@ -108,6 +121,7 @@ module Net
             raise Failure.new(host: device.host), cause: nil
           end
 
+          # 拒绝符号链接并原子创建服务器批次目录，重跑时递增序号避免覆盖历史。
           def create_server_archive_directory
             parent = File.join(@server_root, "archive")
             raise ArgumentError, "TFTP archive directory must not be a symlink" if File.symlink?(parent)
@@ -145,11 +159,14 @@ module Net
             end
           end
 
+          # 沿用合法报告批次名，否则按固定业务时区生成批次时间名。
           def batch_name
             name = File.basename(@report_directory)
             name.match?(BATCH_DIRECTORY_NAME) ? name : Time.now.getlocal("+08:00").strftime("%Y-%m-%d_%H-%M-%S")
           end
 
+          # 读取并核对已核验文件，分别提交本地与服务器归档，成功后才清理上传文件。
+          # 双端文件分别提交并及时登记路径；只有原上传仍匹配已核验摘要时才删除，失败不重放上传。
           def archive_uploaded_file(outcome)
             receipt = outcome.backup
             saved_paths = { local_path: nil, archive_path: nil }
@@ -193,6 +210,7 @@ module Net
             raise
           end
 
+          # 保留设备及已保存路径回执，将归档收尾失败标为部分成功。
           def archive_failure(outcome, persistence_error: nil)
             error = Failure.new(host: outcome.device.host)
             diagnostic = Diagnostic.from(error, backup: outcome.backup)
@@ -204,6 +222,7 @@ module Net
                          diagnostic: diagnostic)
           end
 
+          # 结合安全设备名、管理地址与原生扩展名生成归档文件名。
           def archive_filename(device, extension)
             "#{device.backup_filename(style: :hostname_ip).delete_suffix(".txt")}#{extension}"
           end

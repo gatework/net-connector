@@ -18,9 +18,11 @@ export NC_DEVICE_PASSWORD='replace-me'
 
 Use `ND_API_KEY` instead of the HTTP username/password pair when available. HTTPS retains standard certificate verification. HTTP is allowed by default for compatibility; set `netdisco.allow_insecure_http: false` to reject it before sending credentials.
 
-`NC_CONCURRENCY` sets the default worker count for backups, configuration scripts and interface changes (1–50, default 4). An explicit API argument or CLI option takes precedence over the environment, then YAML.
+`NC_PARALLEL` sets the default worker count for backups, configuration scripts and interface changes (1–500, default 4). An explicit API argument or CLI option takes precedence over the environment, then YAML.
 
-YAML contains only non-sensitive settings. Unknown fields, Ruby object tags, and credentials in YAML are rejected. Settings precedence is CLI, supported environment variables, YAML, then defaults. Files load only through `--config FILE` or `NC_CONFIG`. Start with [backup.yml](../examples/backup.yml):
+Before connecting devices, batches reserve file descriptor capacity for SSH pipes, PTYs, logs and locks. The process soft limit is raised within its existing hard limit when needed; an insufficient hard limit stops execution with a `ulimit -n` hint. Shell and system limits are not changed. SSH archive connections are sized per server, with up to four simultaneous connection preflights.
+
+YAML contains only non-sensitive settings. Unknown fields, Ruby object tags, and credentials in YAML are rejected. Settings precedence is CLI, supported environment variables, YAML, then defaults. Files load only through `--config FILE` or `NC_CONFIG`. Start with [backup.example.yml](../examples/backup.example.yml):
 
 ```yaml
 netdisco:
@@ -28,7 +30,7 @@ netdisco:
   allow_insecure_http: false
 backup:
   directory: /var/backups/network
-  concurrency: 4
+  parallel: 4
 inventory:
   include_vendors: [h3c, huawei, cisco_ios]
 ssh:
@@ -108,7 +110,7 @@ puts report.report_location
 exit 1 unless report.policy_success?
 ```
 
-`plan_backup` and `plan_tftp_backup` build inventory snapshots. Passing `plan:` preserves the selection and avoids another inventory query; malformed external plans are rejected before credentials, directories, or device I/O. Tasks run with bounded concurrency and retain inventory order. Ordinary device/callback failures do not discard other results; interruption stops workers and cleans resources.
+`plan_backup` and `plan_tftp_backup` build inventory snapshots. Passing `plan:` preserves the selection and avoids another inventory query; malformed external plans are rejected before credentials, directories, or device I/O. Tasks run with bounded parallel and retain inventory order. Ordinary device/callback failures do not discard other results; interruption stops workers and cleans resources.
 
 Fleet returns `Netdisco::Report`, delegating raw execution fields to `report.batch`. `success?` and `status` remain strict; `policy_success?` evaluates the chosen policy. `summary` uses schema 2, with public settings, coverage, per-device diagnostics, timestamps, monotonic durations, and verification. `statistics` omits device detail. `Batch#build_report` only wraps existing execution data.
 
@@ -123,7 +125,7 @@ fleet = Net::Connector::Netdisco::Fleet.new
 batch = fleet.execute_scripts(
   scripts: { "192.0.2.1" => ["system-view", "interface GigabitEthernet1/0/1", "description uplink", "quit", "quit"] },
   confirmed: true,
-  concurrency: 4
+  parallel: 4
 )
 puts JSON.pretty_generate(batch.to_h)
 puts "Total=#{batch.summary[:total]} succeeded=#{batch.summary[:succeeded]} failed=#{batch.summary[:failed]}"
@@ -142,7 +144,7 @@ Interface application calls the existing topology operation, retaining evidence 
 
 Each device publishes one immutable outcome after execution and connection cleanup. Ordinary credential, connection, execution and cleanup failures affect that device while active and queued siblings continue. Once scheduling completes, `summary` and `to_h[:summary]` report `total`, `succeeded` and `failed`, with total = succeeded + failed. Total counts the devices requested and scheduled in this batch; partial completion and missing credentials count as failures and also appear in `partial` and `missing_credentials`. `callback_errors` counts notification faults separately without changing device outcomes. Empty batches report zero counts and `no_devices`. The library returns the report; callers choose terminal output or JSON export. Whole-batch approval validation and interruption retain their existing boundaries, and completed device changes cannot be rolled back.
 
-For other independent tasks, load `net/connector/concurrency/pool` and use `Net::Connector::Concurrency::Pool.new(concurrency: 4).map(items) { |item| ... }`. Results preserve input order, all threads must start before any block runs, and uncaught exceptions stop the pool and propagate to its caller. Business code decides which ordinary errors become per-task results.
+For other independent tasks, load `net/connector/parallel/pool` and use `Net::Connector::Parallel::Pool.new(parallel: 4).map(items) { |item| ... }`. Results preserve input order, all threads must start before any block runs, and uncaught exceptions stop the pool and propagate to its caller. Business code decides which ordinary errors become per-task results.
 
 ## PostgreSQL inventory
 
@@ -193,6 +195,19 @@ Host and vendor overrides reject normalized aliases that select different connec
 
 ## TFTP history and verification
 
+For an SSH-only server, use a password-free root such as `ssh://archive@backup.example/srv/tftp`
+in `tftp.verification_roots`, keyed by the corresponding TFTP server. SSH roots require
+`preserve_history: true` (enabled by the example CLI). The server needs Python 3 and a writable
+archive root. Supply `NC_TFTP_SSH_PASSWORD` through the caller's credential environment,
+or use an available SSH key/agent. The example scripts load this credential from the
+project-root `.env`. Authentication never prompts: missing or rejected credentials
+stop the batch before device connections and print an actionable error. Passwords
+are sent through a private, unlogged PTY and never appear in policy or SSH arguments.
+The remote lock spans upload and verification, existing files are preserved first, and staging
+is removed only after both server and local archives have matching SHA-256 evidence.
+The SSH archive pool allows four concurrent transactions and limits each file to 64 MiB.
+See [example setup](../examples/README.md#ssh-服务器核验与归档).
+
 Direct upload receipts only establish `device_reported`. Fleet can verify a local/mounted TFTP directory via `verification_root:`; the CLI accepts `--tftp-root DIR` or YAML `tftp.verification_root`. A verified receipt requires a current, nonempty regular file matching the actual receipt path, with SHA-256 evidence. Missing evidence prevents `verified` success. A mismatched receipt path is retained as device evidence, but cannot be verified or archived without a baseline for that locked target.
 
 Verification holds a target lock across the pre-upload file-state/time baseline, upload and fingerprint check, including batches without history preservation. An unchanged old file cannot qualify through a future timestamp. The server directory must be writable for lock files and the filesystem-time probe. Result callbacks receive the verified outcome, and file evidence never substitutes for a failed device operation or cleanup.
@@ -209,7 +224,7 @@ Reports distinguish `verification`, `server_file_verified`, `local_file`, `serve
 
 ```sh
 bundle exec ruby examples/backup.rb --json
-bundle exec ruby examples/backup.rb --sample 3 --concurrency 10
+bundle exec ruby examples/backup.rb --sample 3 --parallel 10
 bundle exec ruby examples/backup_tftp.rb --tftp-root /srv/tftp --success-policy verified
 ```
 
@@ -231,7 +246,7 @@ Examples load the project `.env` through `dotenv` without overriding existing en
 | `ND_API_KEY` | Existing API key |
 | `ND_DB_HOST`, `ND_DB_NAME`, `ND_DB_USER`, `ND_DB_PASS` | Required database connection fields |
 | `NC_CONFIG` | Non-sensitive YAML file |
-| `NC_CONCURRENCY` | Default batch worker count; integer 1–50, default 4 |
+| `NC_PARALLEL` | Default batch worker count; integer 1–500, default 4 |
 | `NC_DEVICE_USERNAME`, `NC_DEVICE_PASSWORD` | Default device credentials |
 | `NC_<VENDOR>_USERNAME`, `NC_<VENDOR>_PASSWORD` | Vendor credentials, e.g. `CISCO_IOS` |
 | `NC_ENABLE_PASSWORD`, `NC_<VENDOR>_ENABLE_PASSWORD` | Optional privilege credentials |
@@ -239,3 +254,13 @@ Examples load the project `.env` through `dotenv` without overriding existing en
 Only the variables listed above are supported. There are no legacy aliases. Public settings belong in YAML: budgets under `netdisco`, filters and mappings under `inventory`, script output budget and vendor protocols under `ssh`, and source files/VRFs under `tftp`. Database port, TLS mode, CA path, and connection timeout use `netdisco.db_port`, `db_sslmode`, `db_sslrootcert`, and `db_connect_timeout`. TFTP uses `tftp.server` and `tftp.verification_root`; progress uses `--no-progress`. Removed settings and old prefixes are rejected without echoing their values. Vendor source fields are `h3c_source_file`, `h3c_wireless_source_file`, and `huawei_source_file` under `tftp`.
 
 Scheduling and durable queues belong to the caller. No device command retries are added by batch orchestration. For development gates and evidence limits, see [verification](VERIFICATION.md); for protected extension interfaces and report helpers, see [architecture](architecture.md) (Chinese).
+
+An interrupted batch exits with status 130 and reports `status: interrupted`. Completed artifacts retain their receipts; remaining slots distinguish `interrupted` from `not_started`. Uploads are never replayed. `events.jsonl` includes artifact metadata without configuration bodies. Library callers still receive the original `Interrupt` and may inspect `Fleet#last_report`; a new run clears that report.
+
+The canonical parallel entry is now `net/connector/parallel/pool` / `Net::Connector::Parallel::Pool`. The former `parallel` require paths and `Parallel` namespace have been removed. Built-in TextFSM assets now reside in `lib/net/connector/textfsm/`; default parser lookup follows this automatically, while literal resource paths must be updated.
+
+Topology comparisons preserve semantically equal existing descriptions. Set `topology.neighbor_name_prefixes: ["AP-"]` to explicitly accept a legacy name prefix during comparison; the default empty list makes no prefix assumptions. Unknown neighbor identities produce no commands, while other verified interfaces can still be planned independently.
+
+Topology examples also export `scripts/<name>-<IP>.cfg` for verified changes and `devices/<name>-<IP>.txt` for every result, using the backup filename rules. Plans and summaries reference the files and command SHA-256. No-change, discovery and failed results have no empty command file. Export failure prevents application; exported commands do not bypass live evidence revalidation.
+
+Topology output distinguishes unresolved evidence from execution failures and defaults to a compact Chinese summary. Use `--verbose` for per-device events. JSON keeps status codes and adds `statistics`; pending changes or unresolved evidence still exit with code 1. Startup shows the resolved configuration file: `NC_CONFIG` also takes precedence over the topology example default, so shared configuration must include the appropriate `topology` policy.

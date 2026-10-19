@@ -18,7 +18,7 @@ module Net
 
           prompts do
             login(/(?:\A|(?<=[\r\n]))\S+[>#]\s*\z/)
-            command(/(?:\A|(?<=[\r\n]))\S+#\s*\z/)
+            command(/(?:\A|(?<=[\r\n]))\S+[>#]\s*\z/)
           end
 
           pager do

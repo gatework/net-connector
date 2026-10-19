@@ -8,6 +8,7 @@ module Net
       # 文件同步和目录项同步分别记录；原子可见不等于断电后仍能恢复新目录项。
       module AtomicFile
         Receipt = Data.define(:path, :state, :phase) do
+          # 校验并固定文件写入回执的目标路径、提交状态与执行阶段。
           def initialize(path:, state:, phase:)
             unless path.is_a?(String) && !path.empty? && %i[not_committed committed durable].include?(state) &&
                    %i[resolve_parent temporary_file write file_sync rename directory_open directory_sync cleanup complete].include?(phase)
@@ -16,7 +17,9 @@ module Net
             super(path: path.dup.freeze, state: state, phase: phase)
           end
 
+          # 判断目标目录项是否已完成原子替换。
           def committed? = state != :not_committed
+          # 判断文件及其所在目录是否均已完成持久化同步。
           def durable? = state == :durable
 
           # 阶段更新仍校验状态并冻结路径，Ruby 3.2 也不能绕过初始化约束。
@@ -25,8 +28,10 @@ module Net
 
         # 写入失败仍携带阶段与提交回执，调用方据此区分未替换和已替换文件。
         class WriteError < IOError
+          # 读取文件写入失败时的提交回执、诊断码及底层类型。
           attr_reader :receipt, :code, :underlying_type
 
+          # 保存可信写入回执与底层异常类型，根据提交边界生成安全错误码。
           def initialize(receipt:, underlying_type:)
             raise ArgumentError, "receipt must be a file write receipt" unless receipt.instance_of?(Receipt)
 
@@ -42,6 +47,7 @@ module Net
             super(message)
           end
 
+          # 返回对象的安全摘要，不展开正文或认证凭据。
           def inspect = "#<#{self.class} state=#{receipt.state} phase=#{receipt.phase}>"
         end
 
@@ -50,12 +56,15 @@ module Net
 
         # 目录同步能力缺失只表示持久性未确认，已替换的目标文件仍然保留。
         class DirectorySyncUnsupported < WriteError
+          # 沿用已提交写入错误，并将诊断细化为目录同步能力缺失。
           def initialize(**options)
             super
             @code = :directory_sync_unsupported
           end
 
+          # 返回目录同步能力缺失的说明，明确文件替换已经提交。
           def message = "file replacement is committed; directory synchronization is unsupported"
+          # 字符串转换沿用目录同步诊断，不展开底层异常消息。
           alias to_s message
         end
 

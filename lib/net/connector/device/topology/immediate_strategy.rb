@@ -11,7 +11,9 @@ module Net
       class ImmediateStrategy < Strategy
         include InterfaceBlocks
 
+        # 使用配置采集命令读回即时生效的接口描述。
         def verification_commands = @device.config_commands
+        # 使用厂商保存命令将运行配置写入持久配置。
         def persistence_commands = @device.profile.save_commands
 
         # 完成提示必须来自保存步骤；原文和渲染文本中的失败优先，单独提示符/进度不算确认。

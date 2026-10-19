@@ -32,10 +32,12 @@ module Net
 
           private
 
+          # 生成 NX-OS 的 TFTP URL 导出命令，并按需要启用 VRF 交互。
           def transfer_command(target, vrf: nil, **)
             "copy running-config tftp://#{target.host}/#{target.path} vrf #{vrf || DEFAULT_VRF}"
           end
 
+          # 仅在指定 VRF 时回答设备的路由实例选择提示。
           def transfer_interactions(_target, vrf: nil, **)
             [interaction(/Enter\s+vrf\s*\([^\r\n]*\):\s*\z/i, "#{vrf || DEFAULT_VRF}\n")]
           end

@@ -22,8 +22,10 @@ module Net
 
     # 只携带库自身的提交回执和配置元数据，不携带正文或原始文件系统异常。
     class BackupPersistenceError < Error
+      # 读取已提交备份、写入回执及受控底层故障类型。
       attr_reader :backup, :receipt, :underlying_type
 
+      # 校验已提交文件回执与备份路径，构造携带产物的持久化错误。
       def initialize(backup:, write_error:, host: nil)
         unless backup.instance_of?(Backup) && Storage::AtomicFile.receipt_error?(write_error) &&
                write_error.receipt.committed? && write_error.receipt.path == backup.path
@@ -45,8 +47,10 @@ module Net
 
     # 备份已完成后的路径锁收尾错误；不把未变文件冒充本次完成 fsync 的写入回执。
     class BackupFinalizeError < Error
+      # 读取已完成备份及其路径锁收尾故障类型。
       attr_reader :backup, :underlying_type
 
+      # 保留已完成备份，记录路径锁收尾失败的受控类型。
       def initialize(backup:, underlying:, host: nil)
         raise ArgumentError, "backup must be a completed Backup" unless backup.instance_of?(Backup)
 
@@ -84,6 +88,7 @@ module Net
 
       private
 
+      # 采集配置并比较旧文件摘要，仅在内容或文件安全状态变化时原子替换。
       def collect_and_write(destination)
         contents = @device.running_config.value!
         digest = Digest::SHA256.hexdigest(contents)

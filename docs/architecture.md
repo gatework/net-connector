@@ -11,14 +11,14 @@
 | 设备入口 | 能力组合、会话代理、通用脚本钩子 | `device/base.rb` |
 | 设备档案 | 不可变规则与策略接口校验；Builder 负责声明 DSL | `device/profile.rb`、`device/profile/` |
 | 配置采集与保存 | 采集策略生命周期、完整性校验、显式保存 | `device/running_config.rb`、`device/running_config/`、`device/save_config.rb` |
-| 并发与观察 | 有限并发、后台观察线程的停止与回收 | `concurrency/pool.rb`、`concurrency/observer.rb` |
+| 并发与观察 | 有限并发、后台观察线程的停止与回收 | `parallel/pool.rb`、`parallel/observer.rb` |
 | 设备作用域 | 创建连接器、执行任务、关闭并分别交付值与故障 | `device/scope.rb` |
 | 本地备份 | 采集、摘要比较、文件持久化和完成回执 | `device/local_backup.rb` |
 | TFTP | 参数预检、上传、完成证据、目标和回执 | `device/tftp.rb`、`device/tftp/` |
 | 拓扑 | 邻居发现、接口名称/描述、变更计划与分阶段执行 | `device/topology.rb`、`device/topology/` |
 | 厂商差异 | 档案组装及各项能力的厂商策略 | `vendor/<厂商>.rb`、`vendor/<厂商>/` |
 | 文件存储 | 路径锁、安全读取、私有原子写入、离线配置 | `storage.rb`、`storage/` |
-| 解析 | TextFSM 模板选择、记录转换及异常映射 | `textfsm.rb`、`templates/` |
+| 解析 | TextFSM 模板选择、记录转换及异常映射 | `textfsm.rb`、`textfsm/` |
 | 终端文本 | 严格 UTF-8 字节验证和终端渲染 | `engine/terminal/text.rb`、`engine/terminal/renderer.rb` |
 | 清单来源 | 公共字段、预算与错误；HTTP、PostgreSQL 及缓存 | `netdisco/inventory.rb`、`netdisco/inventory/` |
 | 设备接入 | 动态凭据与批次连接策略的合并 | `netdisco/device/access.rb` |
@@ -445,7 +445,7 @@ end
 
 ## 公共并发、配置批次与清单缓存
 
-`Concurrency::Pool` 只持有线程、启动闸门和完成事件，按输入顺序交付块结果。普通设备失败如何转成结果由业务适配负责；创建并登记线程时延迟异步中断，登记完成后恢复，启动失败不执行任何设备块。工作线程捕获异常并由调用线程同步传播，避免宿主全局线程策略影响无关线程。原 `Netdisco::Worker` 保留备份计时、结果槽位和通知适配，不再自行管理线程。
+`Parallel::Pool` 只持有线程、启动闸门和完成事件，按输入顺序交付块结果。普通设备失败如何转成结果由业务适配负责；创建并登记线程时延迟异步中断，登记完成后恢复，启动失败不执行任何设备块。工作线程捕获异常并由调用线程同步传播，避免宿主全局线程策略影响无关线程。原 `Netdisco::Worker` 保留备份计时、结果槽位和通知适配，不再自行管理线程。
 
 `Device::Scope` 持有单台任务连接器，分别交付业务值与普通故障，收尾不覆盖先前错误或中断。`Netdisco::Operations` 为配置脚本与接口描述同步、规划/应用提供全批预检、固定策略、动态凭据和安全摘要；它保留领域 `Result`、计划和完成步骤，使用独立 `Operations::Batch`，不借用备份路径或上传状态。应用审批计划必须走原拓扑重验、变更、回读、保存流程；有限并发不代表跨设备事务或自动重试安全。
 
@@ -453,7 +453,7 @@ end
 
 `Settings#inventory` 为原始清单适配器包裹 `Inventory::Cache`，默认三天有效。缓存仅保存完整白名单 rows，Rules 和重复地址判定每次重做。身份、SQL 及绑定参数只参与摘要分区，不写入文件；凭据缺失仍在缓存读取前拒绝。过期刷新在有界、按身份的跨进程文件锁内完成，成功后原子替换；失败使用原时间的已验证历史，成功空清单替换旧值。最新查询成功与本地缓存持久化成功是两个事实，不能因写盘失败回退旧数据或重复查询。强刷跳过有效期，不跳过身份、限额、文件校验和失败回退边界。
 
-后台心跳和 HTTP 超时观察使用内部 `Concurrency::Observer` 作用域，前台保留主业务值和原始故障；观察线程的异常同步交付所有者，不受宿主全局线程异常策略影响。创建至登记期间延后中断，停止和等待期间保证线程回收；心跳普通故障转换为显示诊断，正常 HTTP 请求的未知观察故障仍传播。
+后台心跳和 HTTP 超时观察使用内部 `Parallel::Observer` 作用域，前台保留主业务值和原始故障；观察线程的异常同步交付所有者，不受宿主全局线程异常策略影响。创建至登记期间延后中断，停止和等待期间保证线程回收；心跳普通故障转换为显示诊断，正常 HTTP 请求的未知观察故障仍传播。
 
 ## 领域值与更新边界
 

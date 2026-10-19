@@ -7,6 +7,7 @@ module Net
     module Netdisco
       # 精确地址用索引，网段和范围只保存端点；绝不展开地址或发起扫描。
       class AddressFilter
+        # 规范化精确地址并合并同族网段区间，不展开大型地址范围。
         def initialize(values)
           raise ArgumentError, "host lists must be Arrays" unless values.is_a?(Array)
 
@@ -29,8 +30,10 @@ module Net
           raise ArgumentError, "host entries must be IP addresses, networks or ordered ranges", cause: nil
         end
 
+        # 判断是否没有任何地址过滤项。
         def empty? = @exact.empty? && @ranges.empty?
 
+        # 先查精确地址索引，再二分查找已合并区间，判断设备是否匹配。
         def include?(host)
           return false if empty?
           return true if @exact.key?(host)
@@ -51,6 +54,7 @@ module Net
 
         private
 
+        # 将网段或有序地址范围解析为同地址族的起止端点。
         def endpoints(value)
           if value.include?("/")
             range = IPAddr.new(value).to_range

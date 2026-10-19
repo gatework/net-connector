@@ -8,6 +8,7 @@ module Net
     class Script
       include Enumerable
 
+      # 读取脚本的可选来源名称，不展开命令正文。
       attr_reader :name
 
       # 按行过滤空行和整行注释，再构造带来源信息的命令。

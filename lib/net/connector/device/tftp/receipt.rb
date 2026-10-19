@@ -48,6 +48,7 @@ module Net
       # Ruby 3.2 的 Data#with 不调用 initialize；所有更新都重新校验并冻结字段。
       def with(**attributes) = self.class.new(**to_h.merge(attributes))
 
+      # 返回对象的安全摘要，不展开正文或认证凭据。
       def inspect = "#<#{self.class} kind=#{configuration_kind} format=#{format} verification=#{verification}>"
     end
 
@@ -60,8 +61,10 @@ module Net
       }.freeze
       private_constant :MESSAGES
 
+      # 读取已报告完成的 TFTP 回执及随后异常的受控类型。
       attr_reader :receipt, :underlying_type
 
+      # 校验并保留已报告完成的 TFTP 回执，为路径或收尾异常提供产物证据。
       def initialize(receipt:, code: :transfer_finalize_failed, host: nil, underlying: nil)
         unless receipt.instance_of?(TftpReceipt) && MESSAGES.key?(code)
           raise ArgumentError, "TFTP completion error requires a transfer receipt and a known failure code"

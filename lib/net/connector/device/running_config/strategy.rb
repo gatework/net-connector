@@ -28,7 +28,17 @@ module Net
       # 按终端行编辑规则还原配置画面，厂商子类只清理已识别的响应头。
       class Rendered < Strategy
         # 应用终端行编辑规则，还原设备最终显示的配置文本。
-        def clean(text) = Terminal::Renderer.render(text)
+        def clean(text) = rendered_response(text).dup
+
+        # 复用不可变响应的渲染结果；向清理器返回独立副本，防止改写校验证据。
+        def rendered_response(text)
+          return Terminal::Renderer.render(text).freeze unless text.frozen?
+          return @rendered_text if @rendered_source.equal?(text)
+
+          @rendered_text = Terminal::Renderer.render(text).freeze
+          @rendered_source = text
+          @rendered_text
+        end
       end
     end
   end

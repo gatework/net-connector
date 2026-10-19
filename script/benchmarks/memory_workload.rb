@@ -54,7 +54,7 @@ module MemoryBenchmark
     end
 
     def run
-      @spec.fetch("concurrency").times { setup_device }
+      @spec.fetch("parallel").times { setup_device }
       GC.start
       results = measure(@spec.fetch("phase")) { concurrent { |device| perform(device) } }
       retained = results.sum { |result| result.is_a?(Net::Connector::Result) ? result.steps.sum { |step| step.output.bytesize } : 0 }

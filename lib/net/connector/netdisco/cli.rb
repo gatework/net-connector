@@ -93,9 +93,8 @@ module Net
                  else
                    fleet.plan_backup(limit_per_vendor: limit, **refresh)
                  end
-          if options[:host]
-            host = IPAddr.new(options[:host]).to_s
-            raise ArgumentError, "清单中未找到设备 #{options[:host]}" unless plan.inventory.any? { |device| device.host == host }
+          options[:host]&.split(",")&.each do |host|
+            raise ArgumentError, "清单中未找到设备 #{host}" unless plan.inventory.any? { |device| device.host == host }
           end
           plan
         end
@@ -114,12 +113,12 @@ module Net
           reporting = options.slice(:success_policy)
           if options[:tftp]
             fleet.tftp_backup_all(plan: plan, server: settings.tftp_server,
-                                  concurrency: settings.concurrency,
+                                  parallel: settings.parallel,
                                   vrfs: settings.tftp_vrfs,
                                   source_files: settings.tftp_source_files, verification_root: options[:tftp_root] || settings.tftp_root, **reporting)
           else
             fleet.backup_all(plan: plan, directory: settings.backup_directory,
-                             concurrency: settings.concurrency, **reporting)
+                             parallel: settings.parallel, **reporting)
           end
         end
 
@@ -138,7 +137,6 @@ module Net
             args.on("--tftp", "由设备发起 TFTP 备份") { options[:tftp] = true }
             args.on("--export IP", "导出已保存的本地配置") { |value| options[:export] = value }
             args.on("--output FILE", "将导出配置写入私有文件") { |value| options[:output] = value }
-            args.on("--host IP", "按管理地址选择一台设备") { |value| options[:host] = value }
             args.on("--max-script-output-bytes N", Integer, "每个脚本的累计响应字节上限") { |value| options[:max_script_output_bytes] = value }
             args.on("-v", "--version", "显示版本") do
               @output.puts Net::Connector::VERSION
@@ -168,7 +166,7 @@ module Net
           if options[:export] && (options[:source] || options[:query] || options[:query_params])
             raise ArgumentError, "--export 不能与清单查询选项同时使用"
           end
-          if options[:export] && (options[:tftp] || options[:all] || options[:limit] || options[:environment].key?("NC_CONCURRENCY") || options[:host] ||
+          if options[:export] && (options[:tftp] || options[:all] || options[:limit] || options[:environment].key?("NC_PARALLEL") || options[:host] ||
             options[:success_policy] || options[:tftp_root] || options[:max_script_output_bytes] || options[:force_refresh])
             raise ArgumentError, "--export 不能与备份选项同时使用"
           end

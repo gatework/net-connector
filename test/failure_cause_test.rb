@@ -2,8 +2,8 @@
 
 require "minitest/autorun"
 require_relative "../lib/net/connector"
-require_relative "../lib/net/connector/concurrency/observer"
-require_relative "../lib/net/connector/concurrency/pool"
+require_relative "../lib/net/connector/parallel/observer"
+require_relative "../lib/net/connector/parallel/pool"
 require_relative "support/fake_transport"
 
 class FailureCauseTest < Minitest::Test
@@ -49,9 +49,9 @@ class FailureCauseTest < Minitest::Test
         connector.define_singleton_method(:close) {}
         Net::Connector::Device::Scope.call(factory: -> { connector }, &operation)
       when :observer
-        Net::Connector::Concurrency::Observer.run(task: -> {}, stop: -> {}, &operation)
+        Net::Connector::Parallel::Observer.run(task: -> {}, stop: -> {}, &operation)
       when :pool
-        Net::Connector::Concurrency::Pool.new(concurrency: 1).map([:item], &operation)
+        Net::Connector::Parallel::Pool.new(parallel: 1).map([:item], &operation)
       end
     end
   rescue Exception => error # rubocop:disable Lint/RescueException -- 把原始取消转为可验证结果，不能提前终止测试。

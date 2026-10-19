@@ -16,6 +16,7 @@ module Net
       DEFAULT_PRIVILEGE_PROMPT = /#\s*\z/.freeze
       DEFAULT_LEGACY_SSH_ARGUMENTS = ["-1"].freeze
 
+      # 只读提供已冻结的厂商命令、提示符、交互和业务策略声明。
       attr_reader :config_commands, :save_commands,
                   :login_prompt, :command_prompt, :username_prompt, :password_prompt,
                   :privilege_prompt, :pager_pattern, :pager_response,

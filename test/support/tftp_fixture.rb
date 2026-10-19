@@ -9,6 +9,7 @@ module TftpFixture
     huawei: ["<HUAWEI>", "tftp 192.0.2.10 put startup.cfg transfer-complete.cfg", "Transfer completed successfully", "transfer-complete.cfg"],
     hillstone: ["fw#", "export configuration startup to tftp server 192.0.2.10 vrouter mgt-vr backup.cfg", "Export ok,target file name backup.cfg", "backup.cfg"],
     palo_alto: ["admin@fw>", "tftp export configuration to 192.0.2.10 from running-config.xml", "Sent 983442 bytes in 21.2 seconds", "running-config.xml"],
-    radware: [">> Main#", "/cfg/ptcfg 192.0.2.10 -tftp", "Current config successfully tftp'd", "config-uploaded.tgz"]
+    radware: [">> Main#", "/cfg/ptcfg 192.0.2.10 -tftp", "Current config successfully tftp'd", "config-uploaded.tgz"],
+    centec: ["Switch#", "copy running-config tftp://192.0.2.10/backup.cfg", "Sent 3664 bytes in 0.1 seconds", "backup.cfg"]
   }.freeze
 end

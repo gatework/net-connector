@@ -6,6 +6,7 @@ module Net
     class Error < StandardError
       autoload :Metadata, File.expand_path("error/metadata", __dir__)
 
+      # 读取错误的执行上下文及受控诊断元数据。
       attr_reader :code, :host, :phase, :command, :output, :source, :line, :underlying
 
       # 保存错误阶段、命令和输出尾部，并为缺省错误类生成稳定错误码。
@@ -77,6 +78,7 @@ module Net
 
     # 安全保存底层异常，不保留包含凭据的原始消息。
     class UnderlyingError
+      # 读取已脱敏的底层异常类型、消息和调用栈摘要。
       attr_reader :type, :message, :backtrace
 
       # 保存脱敏后的异常类型、消息和调用栈。

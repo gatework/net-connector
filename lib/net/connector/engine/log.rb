@@ -65,10 +65,12 @@ module Net
         end
       end
 
+      # 在操作日志上下文内执行块，退出时恢复此前上下文。
       def with_operation_context(name, &)
         with_context(operation: name || @context[:operation] || :script, &)
       end
 
+      # 在命令日志上下文内执行块，避免相邻命令共享临时元数据。
       def with_command_context(command, &)
         @command_sequence += 1
         with_context(command_id: @command_sequence, phase: :command,
@@ -107,7 +109,7 @@ module Net
                   phase: Error::Metadata.phase(failure.phase) || Error::Metadata.phase(phase),
                   message: failure.message)
       rescue Error
-        # 原始失败已由调用者保留；诊断通道故障不能替换登录、命令或业务错误。
+        # 原始失败已由调用者保留；普通诊断故障不替换业务错误；用户取消仍传播，原错误保留为 cause。
         nil
       end
 
@@ -224,6 +226,7 @@ module Net
           (@configuration.on_event || (@logger && LEVELS.fetch(level) >= @logger.level))
       end
 
+      # 构造安全事件并分发给日志目标和事件回调。
       def write_event(name, level:, **fields)
         return unless enabled?(level)
 
@@ -234,6 +237,7 @@ module Net
         @configuration.on_event&.call(event)
       end
 
+      # 创建逐行回显转换器，将已过滤文本写为当前上下文的日志事件。
       def open_transcript
         @transcript = Transcript.new { |line| write_event("device_output", level: :debug, output: line) }
         @output = RedactingWriter.new(@transcript, @redactor)

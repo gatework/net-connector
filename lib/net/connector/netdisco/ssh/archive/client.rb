@@ -6,7 +6,6 @@ require "open3"
 require "securerandom"
 require "shellwords"
 require "tmpdir"
-require "io/wait"
 require_relative "../../tftp/root"
 require_relative "../authentication"
 require_relative "../../tftp/archive"
@@ -43,7 +42,23 @@ module Net
             MAX_FRAME_BYTES = 90 * 1024 * 1024
             SESSION_LIMIT = 4
             WORKER = File.expand_path("worker.py", __dir__)
-            private_constant :MAX_FRAME_BYTES, :WORKER
+            ACTIVE_CLIENTS = {}
+            ACTIVE_CLIENTS_MUTEX = Mutex.new
+            private_constant :MAX_FRAME_BYTES, :WORKER, :ACTIVE_CLIENTS, :ACTIVE_CLIENTS_MUTEX
+
+            # 退出处理只持有仍需清理的连接；已关闭的批次与凭据可由 GC 回收。
+            at_exit do
+              clients = ACTIVE_CLIENTS_MUTEX.synchronize { ACTIVE_CLIENTS.keys }
+              failure = nil
+              clients.each do |client|
+                begin
+                  client.close
+                rescue Exception => error # rubocop:disable Lint/RescueException -- 一个连接失败仍须关闭其余连接。
+                  failure ||= error
+                end
+              end
+              raise failure if failure
+            end
 
             # 解析归档端点并初始化有界会话槽位；允许注入本地进程启动器验证协议。
             def initialize(directory:, root:, password: nil, launcher: nil)
@@ -127,6 +142,7 @@ module Net
                     primary ||= error
                   ensure
                     @master_directory = @socket = nil
+                    ACTIVE_CLIENTS_MUTEX.synchronize { ACTIVE_CLIENTS.delete(self) }
                   end
                 end
                 raise primary if primary
@@ -199,7 +215,7 @@ module Net
                     @master_failed = true
                     raise AuthenticationUnavailable.new(password_configured: !@password.nil?)
                   end
-                  at_exit { close }
+                  ACTIVE_CLIENTS_MUTEX.synchronize { ACTIVE_CLIENTS[self] = true }
                   prepared = true
                 rescue Exception => error # rubocop:disable Lint/RescueException -- 清理后仍传播最先发生的故障或取消。
                   primary = error
@@ -221,12 +237,12 @@ module Net
               if @password
                 arguments = [*ssh_arguments(batch_mode: false), "-o", "NumberOfPasswordPrompts=1",
                              "-o", "PreferredAuthentications=password,keyboard-interactive", "-o", "PubkeyAuthentication=no",
-                             "-M", "-o", "ControlPersist=60", "-fN", @uri.host]
+                             "-M", "-o", "ControlPersist=yes", "-fN", @uri.host]
                 return false unless SSH::Authentication.respond(arguments, password: @password)
 
                 system(*ssh_arguments, "-O", "check", @uri.host, in: File::NULL, out: File::NULL, err: File::NULL)
               else
-                system(*ssh_arguments, "-M", "-o", "ControlPersist=60", "-fN", @uri.host,
+                system(*ssh_arguments, "-M", "-o", "ControlPersist=yes", "-fN", @uri.host,
                        in: File::NULL, out: File::NULL, err: File::NULL)
               end
             rescue StandardError

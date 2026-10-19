@@ -32,7 +32,6 @@ Gem::Specification.new do |spec|
   spec.add_dependency "fileutils"
   spec.add_dependency "forwardable"
   spec.add_dependency "io-console"
-  spec.add_dependency "io-wait"
   spec.add_dependency "ipaddr"
   spec.add_dependency "json"
   spec.add_dependency "logger"

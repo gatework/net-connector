@@ -105,6 +105,58 @@ class SshArchivePoolTest < Minitest::Test
     threads&.each { |thread| thread.kill; thread.join }
   end
 
+  def test_preflight_preserves_original_failure_and_cause_after_deferred_cleanup_cancellation
+    [IOError, Interrupt].each do |type|
+      failure = type.new("preflight failed")
+      original_cause = RuntimeError.new("preflight cause")
+      cancellation = Interrupt.new("cleanup cancelled")
+      closed = []
+      archives = 2.times.map do |index|
+        Object.new.tap do |archive|
+          archive.define_singleton_method(:prepare) { raise failure, cause: original_cause if index.zero? }
+          archive.define_singleton_method(:close) do
+            closed << index
+            Thread.current.raise(cancellation) if index.zero?
+          end
+        end
+      end
+      pool = T::Client.stub(:new, ->(**) { archives.shift }) do
+        T::Pool.new(directory: "unused", root: "unused", password: nil, parallel: 5)
+      end
+
+      observed = assert_raises(Exception) { pool.prepare }
+      assert_same failure, observed
+      assert_same original_cause, observed.cause
+      assert_equal [0, 1], closed
+    end
+  end
+
+  def test_close_preserves_first_failure_before_deferred_cancellation
+    [IOError.new("first close failure"), nil].each do |failure|
+      original_cause = RuntimeError.new("close cause")
+      cancellation = Interrupt.new("cleanup cancelled")
+      closed = []
+      archives = 2.times.map do |index|
+        Object.new.tap do |archive|
+          archive.define_singleton_method(:close) do
+            closed << index
+            raise failure, cause: original_cause if index.zero? && failure
+
+            Thread.current.raise(cancellation) unless index.zero?
+          end
+        end
+      end
+      pool = T::Client.stub(:new, ->(**) { archives.shift }) do
+        T::Pool.new(directory: "unused", root: "unused", password: nil, parallel: 5)
+      end
+
+      observed = assert_raises(Exception) { pool.close }
+      assert_same failure || cancellation, observed
+      failure ? assert_same(original_cause, observed.cause) : assert_nil(observed.cause)
+      assert_equal [0, 1], closed
+    end
+  end
+
   def test_close_attempts_all_connections_and_preserves_first_failure
     failure = IOError.new("first close failure")
     archives = 2.times.map { Object.new }

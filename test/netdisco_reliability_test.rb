@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "minitest/autorun"
+require "minitest/mock"
 require "stringio"
 require "tmpdir"
 require_relative "../lib/net/connector/netdisco"
@@ -132,6 +133,62 @@ class NetdiscoReliabilityTest < Minitest::Test
   ensure
     thread&.kill
     thread&.join
+  end
+
+  def test_worker_queue_initialization_cancellation_does_not_start_tasks_or_replace_failure
+    worker = Netdisco::Worker.new(parallel: 1)
+    failure = Interrupt.new("cancel before callback queue exists")
+    cause = RuntimeError.new("initial cancellation cause")
+    outcomes = [nil]
+    Queue.stub(:new, -> { raise failure, cause: cause }) do
+      observed = assert_raises(Interrupt) do
+        worker.run([[0, Object.new]], outcomes: outcomes, on_error: ->(*) { flunk "unexpected error callback" }) do
+          flunk "cancelled startup must not execute devices"
+        end
+      end
+      assert_same failure, observed
+      assert_same cause, observed.cause
+    end
+    assert_equal [nil], outcomes
+    assert_nil worker.started_tasks
+    assert_nil worker.callback_errors
+  end
+
+  def test_worker_cleanup_cancellation_preserves_receipts_and_original_failure
+    [nil, Interrupt.new("original task cancellation")].each do |primary|
+      worker = Netdisco::Worker.new(parallel: 1)
+      cancellation = Interrupt.new("cancel while publishing task records")
+      cause = RuntimeError.new("original cancellation cause")
+      device = Struct.new(:host).new("192.0.2.1")
+      result_type = Data.define(:started_at, :finished_at, :duration_ms, :artifact)
+      outcomes = [nil]
+      task_thread = nil
+      trace = TracePoint.new(:c_call) do |event|
+        next unless event.method_id == :freeze && event.self.equal?(worker.started_tasks)
+
+        trace.disable
+        Thread.current.raise(cancellation)
+      end
+      callback = ->(_) { raise primary, cause: cause if primary }
+      observed = trace.enable do
+        assert_raises(Interrupt) do
+          worker.run([[0, device]], outcomes: outcomes, on_error: ->(*) { flunk "unexpected error callback" }, on_result: callback) do
+            task_thread = Thread.current
+            result_type.new(started_at: nil, finished_at: nil, duration_ms: nil, artifact: "completed artifact")
+          end
+        end
+      end
+      assert_same primary || cancellation, observed
+      primary ? assert_same(cause, observed.cause) : assert_nil(observed.cause)
+      assert_equal "completed artifact", outcomes.first.artifact
+      assert_equal [0], worker.started_tasks.keys
+      assert worker.started_tasks.frozen?
+      assert_empty worker.callback_errors
+      assert worker.callback_errors.frozen?
+      refute task_thread.alive?
+    ensure
+      trace&.disable
+    end
   end
 
   def test_tftp_filenames_accept_scoped_ipv6_and_fit_target_limits

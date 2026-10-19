@@ -59,6 +59,9 @@ module Net
                 end
                 raise failure if failure && !primary
               end
+            rescue Exception => error # rubocop:disable Lint/RescueException -- 恢复中断交付后仍保留原操作或首个关闭故障。
+              error = primary || failure || error
+              raise error, cause: error.cause
             end
           end
         end

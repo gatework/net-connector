@@ -1,6 +1,6 @@
 # 配置备份与拓扑示例
 
-这些脚本使用本仓库的 `CLI::Backup`、`CLI::Topology` 与设备接口，支持 Ruby 3.2 或更新版本。先在项目根目录安装依赖，再通过项目 Bundler 运行：
+这些脚本使用本仓库的 `CLI::Backup`、`CLI::Topology` 与设备接口，支持 Ruby 3.4 或更新版本。先在项目根目录安装依赖，再通过项目 Bundler 运行：
 
 ```sh
 bundle install

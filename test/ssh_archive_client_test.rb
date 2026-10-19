@@ -5,6 +5,7 @@ require "minitest/mock"
 require "open3"
 require "tmpdir"
 require "fileutils"
+require "weakref"
 require_relative "../lib/net/connector/netdisco"
 require_relative "../lib/net/connector/netdisco/ssh/archive/client"
 require_relative "support/fake_transport"
@@ -12,6 +13,49 @@ require_relative "support/fake_transport"
 class SshArchiveClientTest < Minitest::Test
   N = Net::Connector::Netdisco
   WORKER = File.expand_path("../lib/net/connector/netdisco/ssh/archive/worker.py", __dir__)
+
+  def test_closed_clients_and_their_credentials_can_be_collected
+    Dir.mktmpdir do |directory|
+      references = Thread.new { 20.times.map { closed_client_reference(directory) } }.value
+      GC.start(full_mark: true, immediate_sweep: true)
+      assert references.none?(&:weakref_alive?), "exit cleanup retained closed clients"
+    end
+  end
+
+  def test_master_lifetime_is_owned_by_close_for_password_and_key_authentication
+    Dir.mktmpdir do |directory|
+      [nil, "private-fixture"].each do |password|
+        archive = N::SSH::Archive::Client.new(directory: directory, root: "ssh://archive@backup.example/srv/tftp", password: password)
+        arguments = []
+        archive.stub(:system, ->(*args, **) { arguments << args; true }) do
+          N::SSH::Authentication.stub(:respond, ->(args, **) { arguments << args; true }) do
+            archive.stub(:prepare_archive, nil) { archive.prepare }
+          end
+        end
+        master = arguments.find { |args| args.include?("-M") }
+        assert_includes master, "ControlPersist=yes"
+      ensure
+        archive&.close
+      end
+    end
+  end
+
+  def test_process_exit_closes_a_still_owned_master
+    Dir.mktmpdir do |directory|
+      script = <<~'RUBY'
+        require "net/connector/netdisco/ssh/archive/client"
+        archive = Net::Connector::Netdisco::SSH::Archive::Client.new(directory: ARGV.fetch(0), root: "ssh://archive@backup.example/srv/tftp")
+        archive.define_singleton_method(:authenticate_master) { true }
+        archive.send(:prepare_master)
+        puts archive.instance_variable_get(:@master_directory)
+      RUBY
+      output, error, status = Open3.capture3(Gem.ruby, "-I", File.expand_path("../lib", __dir__), "-e", script, directory)
+      assert status.success?, error
+      path = output.strip
+      assert_match %r{\A/tmp/nc-tftp-[^/\n]+\z}, path
+      refute File.exist?(path), "process exit left its private master directory"
+    end
+  end
 
   def test_remote_roots_keep_their_uri_without_copying_credentials
     settings = N::Settings.new(env: {}, defaults: N::Config.parse("tftp" => {
@@ -314,6 +358,13 @@ class SshArchiveClientTest < Minitest::Test
   end
 
   private
+
+  def closed_client_reference(directory)
+    archive = N::SSH::Archive::Client.new(directory: directory, root: "ssh://archive@backup.example/srv/tftp", password: "private-fixture")
+    archive.stub(:authenticate_master, true) { archive.stub(:prepare_archive, nil) { archive.prepare } }
+    archive.close
+    WeakRef.new(archive)
+  end
 
   def device(host = "192.0.2.1")
     N::Device.from_row({ "ip" => host, "name" => "edge", "vendor" => "Palo Alto Networks" }, rules: N::Rules.new)

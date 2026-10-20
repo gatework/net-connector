@@ -311,7 +311,7 @@ class FilePersistenceTest < Minitest::Test
 
       output, stderr = StringIO.new, StringIO.new
       status = AtomicFile.stub(:write, ->(*) { raise error }) do
-        Netdisco::CLI.new(argv: ["--directory", directory, "--export", "192.0.2.1", "--output", target],
+        Netdisco::CLI.new(configuration_options: { directories: [] }, argv: ["--directory", directory, "--export", "192.0.2.1", "--output", target],
                           env: {}, output: output, error: stderr).run
       end
       assert_equal 2, status
@@ -328,7 +328,7 @@ class FilePersistenceTest < Minitest::Test
       File.write(source, @secret)
       output, error = StringIO.new, StringIO.new
       status = with_directory_sync_failure(directory) do
-        Netdisco::CLI.new(argv: ["--directory", directory, "--export", "192.0.2.1", "--output", target],
+        Netdisco::CLI.new(configuration_options: { directories: [] }, argv: ["--directory", directory, "--export", "192.0.2.1", "--output", target],
                           env: {}, output: output, error: error, fleet_factory: ->(*) { flunk "export accessed inventory" }).run
       end
       assert_equal 2, status

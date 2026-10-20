@@ -31,12 +31,13 @@ class ParallelLoadingTest < Minitest::Test
   end
 
   def test_parallel_components_load_in_either_order_without_legacy_namespace
-    paths = %w[parallel/pool parallel/observer]
+    paths = %w[resources parallel/pool parallel/observer]
     [paths, paths.reverse].each do |order|
       script = <<~RUBY
         require "json"
         #{order.map { |name| "require #{"net/connector/#{name}".inspect}" }.join("\n")}
         puts JSON.generate(legacy: Net::Connector.const_defined?(:Concurrency, false),
+                           resources: Net::Connector::Resources.prepare!(parallel: 0),
                            result: Net::Connector::Parallel::Pool.new(parallel: 2).map([1, 2]) { |n| n * 2 },
                            observer: Net::Connector::Parallel::Observer.run(task: -> {}, stop: -> {}) { 7 })
       RUBY
@@ -44,6 +45,7 @@ class ParallelLoadingTest < Minitest::Test
       assert status.success?, error
       result = JSON.parse(output)
       refute result.fetch("legacy")
+      assert_nil result.fetch("resources")
       assert_equal [2, 4], result.fetch("result")
       assert_equal 7, result.fetch("observer")
     end

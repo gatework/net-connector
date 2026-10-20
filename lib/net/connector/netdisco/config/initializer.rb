@@ -3,6 +3,7 @@
 require "yaml"
 require "tempfile"
 require_relative "../settings"
+require_relative "../../config"
 
 module Net
   module Connector
@@ -16,7 +17,7 @@ module Net
           end
 
           # 完成默认值校验与可选问答后独占发布新配置，不覆盖已存在文件。
-          def create(path:, document:, interactive: nil, mode: nil)
+          def create(path:, document:, interactive: nil, mode: nil, inherited_parallel: Settings::DEFAULT_PARALLEL)
             raise ArgumentError, "config path must be a nonempty String" unless path.is_a?(String) && !path.empty?
             unless interactive.nil? || [true, false].include?(interactive)
               raise ArgumentError, "interactive must be true, false or nil"
@@ -26,9 +27,10 @@ module Net
             values = YAML.safe_load(YAML.dump(document), aliases: false)
             validate!(values)
             interactive = @input.respond_to?(:tty?) && @input.tty? && @output.respond_to?(:tty?) && @output.tty? if interactive.nil?
-            configure(values, mode: mode) if interactive && answer("进入交互配置？[y/N]", "n").casecmp?("y")
+            configure(values, mode: mode, inherited_parallel: inherited_parallel) if interactive && answer("进入交互配置？[y/N]", "n").casecmp?("y")
             validate!(values)
-            write(path, YAML.dump(values))
+            name = mode == :topology ? "topology" : "backup"
+            write(path, Net::Connector::Config.dump(values, name: name, path: path))
           end
 
           # 发布环境文件模板；不收集或复制进程中的密码，也不覆盖已有文件。
@@ -55,25 +57,29 @@ module Net
             Settings.new(env: {}, defaults: Config.parse(document)).snapshot(mode: :show_config)
           end
 
-          # 读取一行配置回答，空输入沿用默认值，输入结束则中止生成。
-          def answer(label, default)
+          # 显示有效默认值；空输入可由字段选择沿用或保留继承，输入结束则中止生成。
+          def answer(label, default, blank: default)
             @output.print "#{label}#{default.nil? ? "" : " [#{default}]"}："
             @output.flush
             line = @input.gets("\n")
             raise EOFError, "configuration input ended before completion" unless line
 
             value = line.chomp("\n").chomp("\r").strip
-            value.empty? ? default : value
+            value.empty? ? blank : value
           end
 
           # 循环读取并校验单个配置字段，只有合法回答才更新候选配置。
           def field(document, section, key, label, default, list: false)
             values = (document[section] ||= {})
             previous = values.fetch(key, default)
+            label = "#{label}（留空继承）" if key == "parallel" && !values.key?(key)
             loop do
-              text = answer(label, previous.is_a?(Array) ? previous.join(",") : previous&.to_s)
+              displayed = previous.is_a?(Array) ? previous.join(",") : previous&.to_s
+              text = answer(label, displayed, blank: key == "parallel" ? nil : displayed)
+              return if key == "parallel" && text.nil?
+
               value = if list
-                        text.to_s.empty? ? [] : text.split(",").map(&:strip)
+                        text.to_s.empty? ? [] : text.split(",", -1).map(&:strip)
                       elsif key == "parallel"
                         Integer(text, exception: false)
                       else
@@ -91,7 +97,7 @@ module Net
           end
 
           # 按清单来源和业务模式逐项填写非敏感配置。
-          def configure(document, mode: nil)
+          def configure(document, mode: nil, inherited_parallel:)
             field(document, "netdisco", "source", "清单来源 http/postgres", "http")
             if document.dig("netdisco", "source") == "http"
               field(document, "netdisco", "url", "清单 URL", mode.nil? ? "https://netdisco.example.invalid" : nil)
@@ -102,10 +108,10 @@ module Net
             field(document, "inventory", "name_match", "名称匹配 contains/prefix/glob", "contains")
             %w[include_vendors exclude_vendors].each { |key| field(document, "inventory", key, key, [], list: true) }
             if document.key?("topology")
-              field(document, "topology", "parallel", "拓扑并发数 1..500", 4)
+              field(document, "topology", "parallel", "拓扑并发数 1..500", inherited_parallel)
               field(document, "topology", "directory", "拓扑报告目录", "./topologys")
             else
-              field(document, "backup", "parallel", "并发数 1..500", 4)
+              field(document, "backup", "parallel", "并发数 1..500", inherited_parallel)
               field(document, "backup", "directory", "备份目录", "./backups")
               field(document, "tftp", "server", "TFTP 服务器", nil) if mode.nil? || mode == :tftp
             end

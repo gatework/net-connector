@@ -24,7 +24,7 @@ class BackupInterruptionTest < Minitest::Test
       end
       N::Fleet.stub(:new, factory) do
         N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "fixture" } }]) do
-          status = N::CLI::Backup.new(argv: ["--directory", root, "--parallel", "1", "--json", "--quiet"],
+          status = N::CLI::Backup.new(configuration_options: { directories: [] }, argv: ["--directory", root, "--parallel", "1", "--json", "--quiet"],
                                      env: {}, output: output, error: StringIO.new).run
           assert_equal 130, status
         end

@@ -18,12 +18,13 @@ module Net
         class Backup
           # 保存批次模式与调用方 IO，构造阶段不读取清单、不创建目录。
           def initialize(mode: :backup, argv: ARGV, env: ENV, input: $stdin, output: $stdout, error: $stderr,
-                         default_config: nil, default_directory: nil, default_env: nil, load_env: false)
+                         default_config: nil, default_directory: nil, default_env: nil, configuration_options: {})
             raise ArgumentError, "mode must be backup or tftp" unless %i[backup tftp].include?(mode)
 
             @mode, @argv, @env, @input, @output, @error = mode, argv, env, input, output, error
             @default_config, @default_directory = default_config, default_directory
-            @load_env, @default_env = load_env, default_env
+            @default_env = default_env
+            @configuration_options = configuration_options
           end
 
           # 先固定并校验策略，再预览、执行和保存报告；成功判定使用最终报告。
@@ -33,6 +34,12 @@ module Net
             apply_defaults(options)
             return 0 if initialize_config?(options)
 
+            if options[:show_config]
+              settings = CLI::Options.settings(options, env: @env, configuration: @configuration,
+                                               defaults: @default_directory ? { "NC_BACKUP_DIRECTORY" => @default_directory } : {})
+              @output.puts JSON.pretty_generate(settings.public_config.merge(sources: CLI::Options.sources(@configuration, options)))
+              return 0
+            end
             settings, success_policy, server_root, batch_directory = prepare(options)
             inventory, credentials = Credentials.resolve(settings, stdin_credentials: options[:stdin_credentials], input: @input)
             progress = Progress.new(io: @error, enabled: !options[:no_progress], verbose: options[:verbose])
@@ -88,21 +95,17 @@ module Net
             plan.selected.empty? || plan.outcomes.compact.any? { |item| !%i[filtered sample_limit].include?(item.status) } ? 1 : 0
           end
 
-          # 仅为未显式设置的选项补充示例配置和备份目录。
+          # 显式宿主路径仍可注入；示例默认通过共享发现器读取。
           def apply_defaults(options)
-            values = options.fetch(:environment)
-            values["NC_CONFIG"] = @default_config if @default_config && !values.key?("NC_CONFIG") && !@env.key?("NC_CONFIG")
-            return unless @default_directory && !values.key?("NC_BACKUP_DIRECTORY") && !@env.key?("NC_BACKUP_DIRECTORY")
-
-            path = values["NC_CONFIG"] || @env["NC_CONFIG"]
-            document = path && File.file?(path) ? Config.load(path) : {}
-            values["NC_BACKUP_DIRECTORY"] = @default_directory unless document.key?("NC_BACKUP_DIRECTORY")
+            options.fetch(:environment)["NC_CONFIG"] ||= @default_config if @default_config && !@env["NC_CONFIG"]
+            options[:env_file] ||= @default_env if @default_env
+            @configuration = CLI::Options.configuration(options, env: @env, mode: @mode, **@configuration_options)
           end
 
           # 配置不存在时生成并验证初始文件；本次运行到此结束，不继续连接设备。
           def initialize_config?(options)
-            Setup.new(mode: @mode, options: options, env: @env, input: @input, output: @error,
-                      env_path: @default_env, directory: @default_directory, load_env: @load_env).initialize_files?
+            Setup.new(mode: @mode, options: options, input: @input, output: @error,
+                      directory: @default_directory || File.expand_path("backups"), configuration: @configuration).initialize_files?
           end
 
           # 清单离线回退和本地保存故障单独提示，不覆盖设备操作结果。
@@ -117,7 +120,8 @@ module Net
 
           # 预检完成后才创建批次目录；补充日志路径时保持原策略快照与动态凭据来源。
           def prepare(options)
-            settings = CLI::Options.settings(options, env: @env, load_env: @load_env).for_run(mode: @mode)
+            settings = CLI::Options.settings(options, env: @env, configuration: @configuration,
+                                             defaults: @default_directory ? { "NC_BACKUP_DIRECTORY" => @default_directory } : {}).for_run(mode: @mode)
             success_policy = options.fetch(:success_policy, :selected)
             raise ArgumentError, "verified policy requires TFTP mode" if success_policy == :verified && @mode != :tftp
             raise ArgumentError, "--tftp-root requires TFTP mode" if options[:tftp_root] && @mode != :tftp

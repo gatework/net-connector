@@ -99,7 +99,7 @@ class CLITopologyInterruptionTest < Minitest::Test
           connector.define_singleton_method(:close) { calls << :closed }
         end
       end
-      cli = N::CLI::Topology.new(argv: ["--apply", "--no-progress"], env: {}, default_directory: root,
+      cli = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--apply", "--no-progress"], env: {}, default_directory: root,
                                 connector_factory: factory, output: StringIO.new, error: StringIO.new)
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
         yield cli, calls, root

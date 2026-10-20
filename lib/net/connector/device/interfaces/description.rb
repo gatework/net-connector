@@ -1,16 +1,16 @@
 # frozen_string_literal: true
 
-require_relative "interface_name"
+require_relative "name"
 
 module Net
   module Connector
     class Interfaces
       # 描述文本与常见接口视图命令的纯构造方法，不连接或修改设备。
-      module InterfaceDescription
+      module Description
         # 将邻居名称和接口拼成默认描述；统一邻居接口简称，原始发现记录保持不变。
         def self.format(neighbor, abbreviate: true, lowercase: false)
           port = if abbreviate
-                   InterfaceName.short(neighbor.neighbor_interface, lowercase: lowercase)
+                   Name.short(neighbor.neighbor_interface, lowercase: lowercase)
                  else
                    lowercase ? neighbor.neighbor_interface.downcase : neighbor.neighbor_interface
                  end
@@ -25,10 +25,10 @@ module Net
           old_prefix, separator, old_port = current.rpartition("_")
           new_prefix, new_separator, new_port = expected.rpartition("_")
           return false if separator.empty? || new_separator.empty? || !old_prefix.casecmp?(new_prefix)
-          return false unless InterfaceName::RULES.any? { |pattern,| pattern.match?(old_port) } &&
-                              InterfaceName::RULES.any? { |pattern,| pattern.match?(new_port) }
+          return false unless Name::RULES.any? { |pattern,| pattern.match?(old_port) } &&
+                              Name::RULES.any? { |pattern,| pattern.match?(new_port) }
 
-          InterfaceName.key(old_port) == InterfaceName.key(new_port)
+          Name.key(old_port) == Name.key(new_port)
         end
 
         # 生成进入接口、设置描述和退出视图的命令，不执行设备操作。

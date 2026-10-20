@@ -55,7 +55,7 @@ module Net
 
           # 在接口视图设置描述后用 quit 返回系统视图。
           def change_commands(change)
-            Net::Connector::Interfaces::InterfaceDescription.commands(interface: change.interface, description: change.new_description, leave: "quit")
+            Net::Connector::Interfaces::Description.commands(interface: change.interface, description: change.new_description, leave: "quit")
           end
 
           private

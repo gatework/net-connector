@@ -52,7 +52,9 @@ exit 1 unless batch.success?
 
 gem 安装后的命令为 `net-backup`；源码入口为 `bin/net-backup`，可在项目目录运行 `bundle exec bin/net-backup --help`。原命令 `net-connector-backup` 已改名。
 
-命令行程序 `net-backup` 的 YAML 文件只允许非敏感设置；Netdisco 和设备凭据留在环境变量中。`ND_URL` 从环境覆盖 YAML 地址，`NC_PARALLEL` 覆盖 YAML 并发数；其他非敏感策略通过 YAML 或 CLI 设置。批量示例也支持 `NC_CONFIG`，可从 [完整配置示例](../examples/backup.yml) 开始。只有传入 `--config FILE` 或设置 `NC_CONFIG` 时才加载文件：
+地址、名称和厂商筛选拒绝空白条目及逗号分隔的空项。YAML `[]` 与环境变量的空字符串可显式清空筛选；无效文本不会被当作全量选择。先应用高优先级覆盖，再校验最终筛选值。
+
+命令行程序 `net-backup` 的 YAML 文件只允许非敏感设置；Netdisco 和设备凭据留在环境变量中。CLI 值优先级为：命令行参数 > 原进程环境 > 分层 YAML > 分层 `.env` > 内置默认值；支持 `Config::FIELDS` 中的规范公开环境变量。原进程的共享 `NC_PARALLEL` 也覆盖 YAML 的 `topology.parallel`；同层同时设置时，专用 `NC_TOPOLOGY_PARALLEL` 优先，CLI `--parallel` 最高。库的 `Settings.from_env` / `Settings.from_file` 保留显式加载契约。批量示例也支持 `NC_CONFIG`，可从 [完整配置示例](../examples/backup.yml) 开始。自动逐层加载配置；`--config FILE` 或 `NC_CONFIG` 作为最后一层，不丢弃低层未覆盖字段：
 
 ```yaml
 netdisco:
@@ -179,7 +181,7 @@ ssh:
   max_script_output_bytes: 16777216
 ```
 
-`Fleet` 每次规划或执行前通过 `Settings#snapshot(mode:)` 固定非敏感设置，包括筛选规则、目录、并发、协议、主机密钥、日志、TFTP 参数和清单预算。执行中修改 ENV 不改变当批策略；再次调用会读取新值。CLI 一次调用的规划与执行共用策略，优先级为 CLI > 常用环境变量 > YAML > 默认值。`Settings#validate!(mode:)` 复用连接配置及 Planner 的枚举和范围规则；`--show-config` 会拒绝非法设置，`--export` 只验证离线目录，不要求清单地址或认证。
+`Fleet` 每次规划或执行前通过 `Settings#snapshot(mode:)` 固定非敏感设置，包括筛选规则、目录、并发、协议、主机密钥、日志、TFTP 参数和清单预算。执行中修改 ENV 不改变当批策略；再次调用会读取新值。CLI 一次调用的规划与执行共用策略，优先级为 CLI > 进程环境 > YAML > `.env` > 默认值。`Settings#validate!(mode:)` 复用连接配置及 Planner 的枚举和范围规则；`--show-config` 会拒绝非法设置，`--export` 只验证离线目录，不要求清单地址或认证。
 
 每台任务开始时仍读取设备凭据，`Settings.from_file` 也保留轮换能力。纯策略快照不保存密码、API key 或凭据解析器。需要让多次 API 调用共用策略时，可传 `Settings.new.for_run(mode: :backup)`。自定义 `credentials:` 解析器仍可逐设备返回连接设置，它显式给出的选项优先于批次默认值，由调用方负责一致性；注入的 `inventory:` 生命周期也由调用方管理。传入 `plan:` 的执行不会重新拉取或筛选已批准清单。`fleet.devices` 可在不连接设备时检查映射。
 
@@ -201,7 +203,7 @@ ruby examples/backup.rb --json > result.jsonl
 ruby examples/backup.rb --parallel 10 --username backup-user --ask-password
 ```
 
-批量示例支持 `--parallel`（1 至 500）、`--username`、`--password`、`--enable-password`、`--netdisco-url`、`--netdisco-username`、`--netdisco-password`、`--directory` 和 `--config`。命令行优先于环境变量与 YAML；显式设备凭据逐字段覆盖对应厂商凭据。指定 Netdisco 用户名或密码时不再沿用环境中的 API key。密码可使用 `--ask-password` / `--ask-netdisco-password` 隐藏输入，避免命令行密码进入 shell 历史或进程参数；自动化仍可用环境变量或原有 `--stdin-credentials`。`--config` 与 `--directory` 的相对路径基于项目根目录。
+批量示例支持 `--parallel`（1 至 500）、`--username`、`--password`、`--enable-password`、`--netdisco-url`、`--netdisco-username`、`--netdisco-password`、`--directory` 和 `--config`。命令行优先于环境变量与 YAML；显式设备凭据逐字段覆盖对应厂商凭据。指定 Netdisco 用户名或密码时不再沿用环境中的 API key。密码可使用 `--ask-password` / `--ask-netdisco-password` 隐藏输入，避免命令行密码进入 shell 历史或进程参数；自动化仍可用环境变量或原有 `--stdin-credentials`。`--config` 与 `--directory` 的相对路径基于启动目录。
 
 ## 部署、示例与验证
 
@@ -218,7 +220,9 @@ CI 在 Linux 和 macOS 上覆盖 Ruby 3.4、4.0。`script/ci` 扫描源码与可
 
 真实凭据应放在环境变量和版本库外的本地配置中。检查范围、依赖政策和忽略规则见[验证文档](VERIFICATION.md)，发布流程见[发布文档](RELEASING.md)。
 
-备份示例通过 `examples/boot.rb` 读取项目根目录 `.env`，不会自动切换依赖或注入源码路径。直接 `ruby examples/backup.rb`（或在 `examples/` 中执行 `ruby backup.rb`）使用已安装的 gem；修改库后必须重新构建并安装，开发源码验证则使用 `bundle exec ruby examples/backup.rb`。示例中的相对备份、日志路径统一基于项目根目录；进程中显式传入的 `NC_CONFIG` 路径按启动目录解析。
+备份示例与正式 CLI 共用配置发现器；`boot.rb` 只加载库，不修改 `ENV` 或工作目录。目录由低到高：`/etc/net-connector`、`/usr/local/etc/net-connector`、`$XDG_CONFIG_HOME/net-connector`（默认当前运行用户 `~/.config/net-connector`）、入口脚本目录、启动目录；重复只读一次，不递归搜索父目录。每层先读 `net-connector.yml` 的 `common` 与当前工具命名空间，再读 `backup.yml` / `topology.yml`，同时叠加 `.env`；`common` 只放 `netdisco`、`inventory`、`ssh`，专用命名空间包含完整的原生配置。`--env-file FILE` 最后叠加环境文件，原进程环境始终优先。YAML 本地路径按各自源文件目录解析；`.env` 的配置选择器和声明路径相对该环境文件，CLI 与进程路径相对启动目录；SSH TFTP URI 保留原值。数组整体替换，显式缺失或无效文件报错，自动缺失候选跳过。每个 YAML 文件只接受单文档且映射键不得重复，避免设备范围被静默覆盖或忽略。`--show-config` 可查看公开值与来源路径，不输出凭据或环境文件正文；帮助不读取用户配置。`--init` 在用户配置目录或显式路径创建缺失文件，不覆盖已有文件、不写入 gem 安装目录，输出默认仍为启动目录的 `backups/` 与 `topologys/`。直接 `ruby examples/backup.rb` 和 `bundle exec ruby examples/backup.rb` 均加载入口相邻项目的 `lib/`，第三方依赖沿用调用方环境；正式 `net-backup` 使用安装的 gem。
+
+显式 `--config` / `NC_CONFIG` 指向 `net-connector.yml` 时，仍按共享命名空间解析，并保留来源目录的路径语义。`--init --non-interactive` 仅在本次提供 `--parallel` 时写入并发值，默认值和继承的公共 `NC_PARALLEL` 不固定到 YAML，后续公共环境调整仍然生效。交互初始化提示当前继承值；回车保留继承，明确输入数字才保存覆盖。
 
 清单自动识别保留显式主机映射、设备规则和厂商覆盖的优先级。若厂商标签陈旧，而 `os: Comware` 与 `model: H3C ...` 同时确认 H3C，则自动使用 H3C 连接器；`H3C WX...` / `H3C AC...` 使用无线连接器。仅型号片段或操作系统单项不会覆盖其他厂商。
 
@@ -247,7 +251,7 @@ directory = Net::Connector::Storage::BatchDirectory.create("./backups")
 
 批量示例由 `Netdisco::CLI::Backup` 统一编排，`CLI::Options.settings` 为示例和正式 CLI 共用配置覆盖入口。
 
-终端入口按职责放在 `cli/`：`CLI::Backup` 编排批量备份，`CLI::Topology` 编排发现、规划与显式应用，`CLI::Credentials.resolve` 解析凭据来源，`CLI::Options` 解析参数和配置覆盖。示例显式传入 `load_env: true`，将公开环境变量作为 YAML 和 CLI 之下的默认值；正式 CLI 保留既有的环境覆盖规则。
+终端入口按职责放在 `cli/`：`CLI::Backup` 编排批量备份，`CLI::Topology` 编排发现、规划与显式应用，`CLI::Credentials.resolve` 解析凭据来源，`CLI::Options` 解析参数和配置覆盖。所有入口与初始化共用同一份配置快照：CLI > 进程环境 > YAML > `.env` > 内置默认值，不再提供单独的环境加载开关。
 示例默认 `selected`，正式 CLI 保留 `strict` 默认；两者均支持显式 `--success-policy`，退出码与报告的 `policy_success` 一致。
 示例 `summary.json` 使用标准 schema 2 的 `devices`，逐台结果与诊断统一保存在批次报告中。
 TFTP 的 `verification` 汇总与设备条目的 `server_file_verified` 区分上传回执和服务器文件核验，核验成功还包含 `local_file`、`server_archive_file`、`bytes`、`sha256`。
@@ -316,4 +320,4 @@ puts "清单 #{batch.summary[:total]}，成功 #{batch.summary[:succeeded]}，�
 
 拓扑示例按备份命名规则输出 `scripts/设备名-IP.cfg` 和 `devices/设备名-IP.txt`，计划与摘要记录路径及命令文件 SHA-256。无变更、发现及失败结果不生成空命令文件。导出失败阻止应用，文本导出不能绕过现场证据重验。
 
-拓扑默认输出中文分类摘要，待核实证据和执行失败分别统计；`--verbose` 显示逐设备事件。JSON 状态码保持稳定并新增 `statistics`，存在待变更或未核实证据时退出码仍为 1。启动显示实际配置文件；`NC_CONFIG` 也优先于拓扑示例默认文件，共享配置须补充对应 `topology` 策略。
+拓扑默认输出中文分类摘要，待核实证据和执行失败分别统计；`--verbose` 显示逐设备事件。JSON 状态码保持稳定并新增 `statistics`，存在待变更或未核实证据时退出码仍为 1。启动显示实际配置文件；`NC_CONFIG` 也是拓扑配置的最后一层，共享配置须补充对应 `topology` 策略。

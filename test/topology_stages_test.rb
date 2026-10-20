@@ -149,7 +149,7 @@ class TopologyStagesTest < Minitest::Test
       duplicate = first.with(interface: interface, new_description: "conflicting")
       commands = plan.commands.dup
       commands.insert(commands.index(fixture.sample.fetch(:leave)),
-                      *Net::Connector::Interfaces::InterfaceDescription.commands(interface: interface, description: "conflicting"))
+                      *Net::Connector::Interfaces::Description.commands(interface: interface, description: "conflicting"))
       invalid = plan.with(changes: [first, duplicate], commands: commands)
       previous_writes = fixture.transport.writes.dup
       previous_opens = fixture.transport.opens

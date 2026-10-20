@@ -4,7 +4,7 @@ module Net
   module Connector
     class Interfaces
       # 接口身份匹配与描述展示共用名称规则；展示简称不能直接用作下发命令。
-      module InterfaceName
+      module Name
         RULES = [
           [/\A(?:bridge-aggregation|bagg)(?=\d)/i, "bridge-aggregation", "BAGG"],
           [/\A(?:route-aggregation|ragg)(?=\d)/i, "route-aggregation", "RAGG"],

@@ -51,7 +51,7 @@ class NetdiscoSettingsTest < Minitest::Test
   def cli(env, argv = ["--show-config"], &factory)
     output = StringIO.new
     error = StringIO.new
-    result = Netdisco::CLI.new(argv: argv, env: env, output: output, error: error,
+    result = Netdisco::CLI.new(configuration_options: { directories: [] }, argv: argv, env: env, output: output, error: error,
                                fleet_factory: factory || ->(*) { raise "must stay offline" }).run
     [result, output.string, error.string]
   end
@@ -463,8 +463,8 @@ class NetdiscoSettingsTest < Minitest::Test
   end
 
   def test_legacy_and_removed_environment_settings_fail_without_echoing_values
-    keys = Netdisco::Config::FIELDS.values.flat_map { |fields| fields.values.map(&:first) } - Settings::ENVIRONMENT_KEYS
-    keys += %w[NC_H3C_PROTOCOL NC_PROGRESS NET_CONNECTOR_DEVICE_PASSWORD NETDISCO_URL NETDISCO_PASSWORD TFTP_HOST TFTP_ROOT]
+    keys = %w[NC_H3C_PROTOCOL NC_PROGRESS NC_CONCURRENCY NC_TOPOLOGY_CONCURRENCY
+              NET_CONNECTOR_DEVICE_PASSWORD NETDISCO_URL NETDISCO_PASSWORD TFTP_HOST TFTP_ROOT]
     keys.each do |key|
       status, output, error = cli({ key => "private-value" })
       assert_equal 2, status, key

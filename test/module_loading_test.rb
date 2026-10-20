@@ -17,7 +17,8 @@ class ModuleLoadingTest < Minitest::Test
                net/connector/device/running_config net/connector/device/local_backup net/connector/device/remote_backup/target
                net/connector/device/remote_backup/receipt net/connector/device/remote_backup
                net/connector/device/tftp/strategy net/connector/device/tftp
-               net/connector/device/interfaces/strategy net/connector/device/interfaces/interface_blocks net/connector/device/interfaces/quoted_text net/connector/device/interfaces
+               net/connector/device/interfaces/name net/connector/device/interfaces/description
+               net/connector/device/interfaces/strategy net/connector/device/interfaces/blocks net/connector/device/interfaces/quoted_text net/connector/device/interfaces
                net/connector/device/save_config net/connector/textfsm net/connector/device/base net/connector]
     [paths, paths.reverse].each do |order|
       result = isolated(<<~RUBY)
@@ -42,6 +43,38 @@ class ModuleLoadingTest < Minitest::Test
     assert_equal 4, result.fetch("constants").size
     refute(result.fetch("features").any? { |path| path.match?(%r{/net/connector/(?:device|storage|textfsm|vendor)(?:/|\.rb)}) })
     refute(result.fetch("features").any? { |path| path.match?(%r{/lib/textfsm(?:/|\.rb)}) })
+  end
+
+  def test_collection_progress_loads_independently_and_reuses_the_shared_progress_contract
+    result = isolated(<<~RUBY)
+      require "stringio"
+      require "net/connector/collect/progress"
+      output = StringIO.new
+      progress = Net::Connector::Collect::Progress.new(io: output)
+      device = { "host" => "192.0.2.1" }
+      item = { device: device, status: :complete, report_saved: true, duration_ms: 1 }
+      progress.with_updates do
+        progress.plan(devices: [device], total: 2, parallel: 3, label: "采集")
+        progress.start(device)
+        progress.result(item)
+      end
+      progress.finish(status: :complete, devices: [item], pending: [], directory: "/tmp/fixture-report")
+      legacy_entry = begin
+        require #{File.join(LIBRARY, "net/connector/collection_progress").inspect}
+        true
+      rescue LoadError
+        false
+      end
+      puts JSON.generate(superclass: Net::Connector::Collect::Progress.superclass.name, output: output.string,
+                         legacy_constant: Net::Connector.const_defined?(:CollectionProgress, false),
+                         legacy_entry: legacy_entry, features: $LOADED_FEATURES)
+    RUBY
+    assert_equal "Net::Connector::Progress", result.fetch("superclass")
+    assert_includes result.fetch("output"), "成功 1，部分成功 0，失败 0，跳过 1"
+    assert_includes result.fetch("output"), "summary.json"
+    refute result.fetch("legacy_constant")
+    refute result.fetch("legacy_entry")
+    refute(result.fetch("features").any? { |path| path.match?(%r{/net/connector/(?:netdisco|device|vendor)(?:/|\.rb)}) })
   end
 
   def test_cancelled_known_hosts_dependency_load_preserves_the_original_failure
@@ -166,10 +199,10 @@ class ModuleLoadingTest < Minitest::Test
       "inventory/postgres" => "N::Inventory::Postgres.options(query: 'SELECT ip FROM device').fetch(:page_size) == 500",
       "device/access" => "N::Device::Access.respond_to?(:resolve)",
       "settings" => "N::Settings.new(env: {}).public_config.fetch(:backup).fetch(:parallel) == 4",
-      "cli/options" => 'N::CLI::Options.settings(N::CLI::Options.parse(argv: ["--parallel", "7"]), env: {}).parallel == 7',
+      "cli/options" => 'N::CLI::Options.settings(N::CLI::Options.parse(argv: ["--parallel", "7"]), env: {}, configuration: N::CLI::Options.configuration({ environment: {} }, env: {}, directories: [])).parallel == 7',
       "cli/credentials" => "N::CLI::Credentials.respond_to?(:resolve)",
-      "cli/backup" => 'require "stringio"; output = StringIO.new; N::CLI::Backup.new(argv: ["--help"], output: output).run.zero? && output.string.include?("--parallel")',
-      "cli/topology" => 'require "stringio"; output = StringIO.new; N::CLI::Topology.new(argv: ["--help"], output: output).run.zero? && output.string.include?("--apply")',
+      "cli/backup" => 'require "stringio"; output = StringIO.new; N::CLI::Backup.new(configuration_options: { directories: [] }, argv: ["--help"], output: output).run.zero? && output.string.include?("--parallel")',
+      "cli/topology" => 'require "stringio"; output = StringIO.new; N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--help"], output: output).run.zero? && output.string.include?("--apply")',
       "inventory/cache" => 'inventory = Struct.new(:devices).new([]); N::Inventory::Cache.new(inventory: inventory, directory: "unused-cache", identity: "test").status.nil?',
       "report/store" => "N::Report::Store::Json.new.respond_to?(:write)",
       "tftp/verifier" => "N::Tftp::Verifier.new.respond_to?(:upload_and_verify)",
@@ -179,7 +212,7 @@ class ModuleLoadingTest < Minitest::Test
       "planner" => "N::Planner.new([]).call(mode: :backup, limit_per_vendor: nil).validate!.selected.empty?",
       "fleet" => "inventory = Object.new; def inventory.devices = []; N::Fleet.new(inventory: inventory, settings: N::Settings.new(env: {})).plan_backup.selected.empty?",
       "progress" => 'require "stringio"; N::Progress.new(io: StringIO.new).event(nil).nil?',
-      "cli" => 'require "stringio"; output = StringIO.new; N::CLI.new(argv: ["--version"], env: {}, output: output).run.zero? && output.string.strip == Net::Connector::VERSION'
+      "cli" => 'require "stringio"; output = StringIO.new; N::CLI.new(configuration_options: { directories: [] }, argv: ["--version"], env: {}, output: output).run.zero? && output.string.strip == Net::Connector::VERSION'
     }
     cases.each do |entry, expression|
       result = isolated(<<~RUBY)
@@ -265,7 +298,7 @@ class ModuleLoadingTest < Minitest::Test
         File.binwrite(File.join(directory, "192.0.2.1.txt"), config)
         output = StringIO.new
         errors = StringIO.new
-        status = Net::Connector::Netdisco::CLI.new(
+        status = Net::Connector::Netdisco::CLI.new(configuration_options: { directories: [] },
           argv: ["--export", "192.0.2.1", "--directory", directory], env: {}, output: output, error: errors,
           fleet_factory: ->(*) { raise "offline export must not build Fleet" }
         ).run

@@ -197,7 +197,7 @@ class NetdiscoDatabaseIntegrationTest < Minitest::Test
   def test_cli_plan_uses_live_query_without_http_or_device_credentials
     output = StringIO.new
     error = StringIO.new
-    status = Netdisco::CLI.new(env: environment, argv: ["--plan", "--source", "postgres", "--query", QUERY], output: output, error: error).run
+    status = Netdisco::CLI.new(configuration_options: { directories: [] }, env: environment, argv: ["--plan", "--source", "postgres", "--query", QUERY], output: output, error: error).run
     assert_equal 0, status, error.string
     assert_equal(["192.0.2.1", "2001:db8::1"], JSON.parse(output.string).fetch("selected").map { |row| row.fetch("host") })
     assert_empty error.string

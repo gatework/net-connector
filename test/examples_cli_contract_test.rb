@@ -30,7 +30,7 @@ class ExampleCLIContractTest < Minitest::Test
     inventory = Struct.new(:devices).new((1..3).map { |i| { "ip" => "192.0.2.#{i}", "vendor" => "H3C" } })
     output, error = StringIO.new, StringIO.new
     N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { flunk "preview requested credentials" }]) do
-      status = N::CLI::Backup.new(argv: %w[--plan --host 192.0.2.1 --host 192.0.2.3 --json --quiet],
+      status = N::CLI::Backup.new(configuration_options: { directories: [] }, argv: %w[--plan --host 192.0.2.1 --host 192.0.2.3 --json --quiet],
                                 env: {}, output: output, error: error).run
       assert_equal 0, status, error.string
     end
@@ -42,7 +42,7 @@ class ExampleCLIContractTest < Minitest::Test
       inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { flunk "preview requested credentials" }]) do
         error = StringIO.new
-        status = N::CLI::Backup.new(mode: :tftp, argv: %w[--plan --json --quiet], env: {}, default_directory: root,
+        status = N::CLI::Backup.new(configuration_options: { directories: [] }, mode: :tftp, argv: %w[--plan --json --quiet], env: {}, default_directory: root,
                                   output: StringIO.new, error: error).run
         assert_equal 0, status, error.string
       end
@@ -52,7 +52,7 @@ class ExampleCLIContractTest < Minitest::Test
 
   def test_topology_full_help_only_advertises_supported_operations
     output = StringIO.new
-    assert_equal 0, N::CLI::Topology.new(argv: ["--help-all"], env: {}, output: output, error: StringIO.new).run
+    assert_equal 0, N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--help-all"], env: {}, output: output, error: StringIO.new).run
     %w[--apply --description-format --full-port-names --lowercase-ports].each { |flag| assert_includes output.string, flag }
     %w[--sample --all --tftp-root --success-policy].each { |flag| refute_includes output.string, flag }
   end
@@ -63,7 +63,7 @@ class ExampleCLIContractTest < Minitest::Test
       inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "Cisco", "os" => "IOS" }])
       output, error = StringIO.new, StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
-        status = N::CLI::Topology.new(argv: %w[--plan --description-format Link_%{neighbor}_%{port} --full-port-names --lowercase-ports --json --quiet],
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: %w[--plan --description-format Link_%{neighbor}_%{port} --full-port-names --lowercase-ports --json --quiet],
                                     env: {}, default_directory: root, connector_factory: ->(*) { fixture.device },
                                     output: output, error: error).run
         assert_equal 1, status, error.string

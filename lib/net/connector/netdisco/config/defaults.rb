@@ -42,7 +42,7 @@ module Net
               raise ArgumentError unless %w[true false].include?(value)
 
               value == "true"
-            when :list then value.split(",").map(&:strip)
+            when :list then value.split(",", -1).map(&:strip)
             when :json, :json_array then JSON.parse(value)
             else value
             end

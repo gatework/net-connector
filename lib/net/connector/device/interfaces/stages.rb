@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../../engine/script"
-require_relative "interface_description"
+require_relative "description"
 
 module Net
   module Connector
@@ -37,7 +37,7 @@ module Net
 
           interfaces = {}
           changes.each do |change|
-            InterfaceDescription.validate_interface!(change.interface)
+            Description.validate_interface!(change.interface)
             key = strategy.interface_key(change.interface)
             raise ArgumentError, "topology changes must identify unique interfaces" if interfaces.key?(key)
 

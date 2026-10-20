@@ -298,6 +298,7 @@ class ConnectorExamplesTest < Minitest::Test
     Dir.mktmpdir do |root|
       directory = File.join(root, "examples")
       FileUtils.mkdir_p(directory)
+      File.symlink(File.join(ROOT, "lib"), File.join(root, "lib"))
       File.write(File.join(root, ".env"), dotenv) if dotenv
       FileUtils.cp(File.join(ROOT, "examples", name), directory)
       FileUtils.cp(File.join(ROOT, "examples/boot.rb"), directory)
@@ -310,7 +311,7 @@ class ConnectorExamplesTest < Minitest::Test
         #{preload_code}
       RUBY
       env = ENV.keys.grep(/\A(?:ND_|NETDISCO_|NET_CONNECTOR_|NC_|TFTP_)/).to_h { |key| [key, nil] }
-      env.merge!("ND_URL" => "https://inventory.example", "ND_API_KEY" => "test")
+      env.merge!("HOME" => root, "XDG_CONFIG_HOME" => File.join(root, "config"), "ND_URL" => "https://inventory.example", "ND_API_KEY" => "test")
       require "yaml"
       document = YAML.safe_load(config || "") || {}
       document["backup"] ||= {}
@@ -329,7 +330,7 @@ class ConnectorExamplesTest < Minitest::Test
       arguments = [*arguments, "--no-progress"] unless arguments.empty? || (name == "backup.rb" && dotenv)
       env.merge!(extra_env)
       output, error, status = Open3.capture3(env, RbConfig.ruby, "-I#{File.join(ROOT, "lib")}",
-                                             "-r", preload, File.join(directory, name), *arguments)
+                                             "-r", preload, File.join(directory, name), *arguments, chdir: root)
       yield output, error, status, directory
     end
   end

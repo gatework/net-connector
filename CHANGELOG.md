@@ -2,6 +2,11 @@
 
 ## 未发布
 
+- 将备份进度的终端刷新、心跳、事件与输出故障处理抽为 `Net::Connector::Progress`；VXLAN 与 Wireless 通过 `Collect::Progress`（`collect/progress.rb`）共用显示，保留各领域的成功判定与安全报告。
+
+- 修复普通 `ruby examples/backup.rb` 混用已安装 net-connector 而未读取分层配置的问题；备份、TFTP 与拓扑入口直接加载相邻项目代码，保留第三方依赖环境。入口回归不再额外注入 `-Ilib`，覆盖脚本目录及其他启动目录的真实调用。
+- 统一 VXLAN、Wireless 与备份/拓扑 CLI 的分层配置服务：系统、用户、脚本、工作目录和显式文件逐层覆盖；命令行 > 进程环境 > YAML > `.env` > 默认值，数组整体替换，路径按来源解析，初始化写入用户配置目录。单个 YAML 拒绝重复键和多文档；初始化直接使用共享快照，移除旧 `load_env` 分支。
+
 - `prepare_command` 仅接受 `Command` 或 `nil`；非法返回值在替代命令发送前转为带原脚本位置的 `ScriptError`，保留此前完成步骤且不展开返回值。
 - 拓扑 CLI 在交付异步取消前固定完成回执或同步失败，避免已完成应用被记成状态不明的中断；阻塞操作仍可取消。
 - PTY 输出预算直接使用 expect-pty 的公开 `buffer_bytesize` 查询，减少大输出背压时的累计正文复制；输出上限不受日志开关影响。

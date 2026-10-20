@@ -16,7 +16,7 @@ class CLIBackupTest < Minitest::Test
       Dir.mktmpdir do |root|
         error = StringIO.new
         Netdisco::CLI::Credentials.stub(:resolve, ->(*) { flunk "invalid policy read credentials" }) do
-          status = Netdisco::CLI::Backup.new(argv: [], env: invalid.merge("NC_BACKUP_DIRECTORY" => root),
+          status = Netdisco::CLI::Backup.new(configuration_options: { directories: [] }, argv: [], env: invalid.merge("NC_BACKUP_DIRECTORY" => root),
                                            output: StringIO.new, error: error).run
           assert_equal 2, status, error.string
         end
@@ -32,7 +32,7 @@ class CLIBackupTest < Minitest::Test
                                         "db_sslrootcert" => "private-path\0suffix" } }.to_yaml)
       output, error = StringIO.new, StringIO.new
       Netdisco::CLI::Credentials.stub(:resolve, ->(*) { flunk "invalid database policy read credentials" }) do
-        status = Netdisco::CLI::Backup.new(argv: ["--config", path, "--directory", root], env: {},
+        status = Netdisco::CLI::Backup.new(configuration_options: { directories: [] }, argv: ["--config", path, "--directory", root], env: {},
                                         output: output, error: error).run
         assert_equal 2, status
       end
@@ -49,7 +49,7 @@ class CLIBackupTest < Minitest::Test
       inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
       env = {}
       Netdisco::CLI::Credentials.stub(:resolve, [inventory, ->(_) { nil }]) do
-        status = Netdisco::CLI::Backup.new(argv: ["--json", "--directory", root, "--no-progress"], env: env, input: StringIO.new,
+        status = Netdisco::CLI::Backup.new(configuration_options: { directories: [] }, argv: ["--json", "--directory", root, "--no-progress"], env: env, input: StringIO.new,
                                         output: output, error: error).run
         assert_equal 1, status, error.string
       end
@@ -75,7 +75,7 @@ class CLIBackupTest < Minitest::Test
   def test_tftp_requires_local_root_for_verified_policy_before_inventory
     Dir.mktmpdir do |root|
       error = StringIO.new
-      status = Netdisco::CLI::Backup.new(mode: :tftp, argv: ["--success-policy", "verified", "--directory", root, "--config", config_path(root)],
+      status = Netdisco::CLI::Backup.new(configuration_options: { directories: [] }, mode: :tftp, argv: ["--success-policy", "verified", "--directory", root, "--config", config_path(root)],
                                        env: {},
                                        output: StringIO.new, error: error).run
       assert_equal 2, status
@@ -91,7 +91,7 @@ class CLIBackupTest < Minitest::Test
       inventory = Struct.new(:devices).new((1..2).map { |number| { "ip" => "192.0.2.#{number}", "vendor" => "Palo Alto" } })
       output, error = StringIO.new, StringIO.new
       Netdisco::CLI::Credentials.stub(:resolve, [inventory, ->(_) { nil }]) do
-        status = Netdisco::CLI::Backup.new(mode: :tftp, argv: ["--config", path, "--directory", root, "--json", "--quiet"],
+        status = Netdisco::CLI::Backup.new(configuration_options: { directories: [] }, mode: :tftp, argv: ["--config", path, "--directory", root, "--json", "--quiet"],
                                          env: {}, output: output, error: error).run
         assert_equal 1, status, error.string
       end
@@ -114,7 +114,7 @@ class CLIBackupTest < Minitest::Test
       end
       inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
       Netdisco::CLI::Credentials.stub(:resolve, [inventory, ->(_) { nil }]) do
-        status = Netdisco::CLI::Backup.new(argv: ["--json", "--directory", root], env: {},
+        status = Netdisco::CLI::Backup.new(configuration_options: { directories: [] }, argv: ["--json", "--directory", root], env: {},
                                         output: output, error: error).run
         assert_equal 1, status
       end
@@ -146,7 +146,7 @@ class CLIBackupTest < Minitest::Test
         end
         Netdisco::Fleet.stub(:new, factory) do
           Netdisco::CLI::Credentials.stub(:resolve, [inventory, ->(_) { { username: "audit" } }]) do
-            status = Netdisco::CLI::Backup.new(argv: ["--json", "--directory", root], env: {},
+            status = Netdisco::CLI::Backup.new(configuration_options: { directories: [] }, argv: ["--json", "--directory", root], env: {},
                                             output: output, error: error).run
             assert_equal 1, status, trigger
           end
@@ -170,7 +170,7 @@ class CLIBackupTest < Minitest::Test
       inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
       env = {}
       Netdisco::CLI::Credentials.stub(:resolve, [inventory, ->(_) { nil }]) do
-        status = Netdisco::CLI::Backup.new(argv: ["--json", "--directory", root, "--no-progress", "--stdin-credentials"], env: env,
+        status = Netdisco::CLI::Backup.new(configuration_options: { directories: [] }, argv: ["--json", "--directory", root, "--no-progress", "--stdin-credentials"], env: env,
                                         input: StringIO.new("{}\nCANCEL\n"), output: output, error: StringIO.new).run
         assert_equal 1, status
       end

@@ -62,6 +62,35 @@ class ConfigInitializerTest < Minitest::Test
     end
   end
 
+  def test_interactive_selector_empty_entries_reprompt_without_shifting_later_answers
+    Dir.mktmpdir do |root|
+      path = File.join(root, "backup.yml")
+      answers = ["y", "http", "https://inventory.example.invalid", "192.0.2.1,", "192.0.2.2", "", "edge", "", "contains", "h3c", "", "4", "./backups"]
+      initializer = N::Config::Initializer.new(input: StringIO.new(answers.join("\n") + "\n"), output: StringIO.new)
+      assert_equal :created, initializer.create(path: path, document: {}, interactive: true, mode: :backup)
+      inventory = N::Settings.from_file(path, env: {}).public_config.fetch(:inventory)
+      assert_equal ["192.0.2.2"], inventory.fetch(:include_hosts)
+      assert_empty inventory.fetch(:exclude_hosts)
+      assert_equal ["edge"], inventory.fetch(:include_names)
+    end
+  end
+
+  def test_shared_file_serialization_preserves_the_validated_interactive_answers
+    Dir.mktmpdir do |root|
+      path = File.join(root, "net-connector.yml")
+      answers = ["y", "http", "https://inventory.example.invalid", "", "", "edge", "", "contains", "", "", "501", "8", "./reports"]
+      output = StringIO.new
+      initializer = N::Config::Initializer.new(input: StringIO.new(answers.join("\n") + "\n"), output: output)
+      assert_equal :created, initializer.create(path: path, document: {}, interactive: true, mode: :backup)
+      assert_equal ["backup"], YAML.safe_load_file(path).keys
+      files = Net::Connector::Config.new(name: "backup", env: {}, directories: [], config: path).load
+      settings = N::Settings.new(env: {}, defaults: N::Config.parse(files.data))
+      assert_equal 8, settings.parallel
+      assert_equal ["edge"], settings.public_config.fetch(:inventory).fetch(:include_names)
+      assert_includes output.string, "值无效"
+    end
+  end
+
   def test_atomic_publication_race_keeps_the_competing_file_and_removes_temporary_files
     Dir.mktmpdir do |root|
       path = File.join(root, "backup.yml")

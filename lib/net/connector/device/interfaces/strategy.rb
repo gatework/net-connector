@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "shellwords"
-require_relative "interface_description"
+require_relative "description"
 require_relative "quoted_text"
 
 module Net
@@ -65,10 +65,10 @@ module Net
         def description_key(row) = interface_key(row.fetch("INTERFACE"))
 
         # 将发现接口名归一为查找当前配置所用的键。
-        def interface_key(name) = InterfaceName.key(name)
+        def interface_key(name) = Name.key(name)
 
         # 将发现协议常用的接口简称展开为配置视图可识别的名称。
-        def configuration_interface(name) = InterfaceName.configuration(name)
+        def configuration_interface(name) = Name.configuration(name)
 
         # 还原 PAN-OS set 配置或 Alteon dump 中的引号描述。
         def decode_description(value)

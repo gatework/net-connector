@@ -8,10 +8,12 @@
 | 对话协议与响应读取 | 对话规则、交互应答与响应值分别建模；读取器管理截止时间与输出预算 | `engine/dialogue.rb`、`engine/interaction.rb`、`engine/response.rb`、`engine/response_reader.rb` |
 | 错误与脱敏 | 错误类型和安全诊断；秘密作用域及 Expect 脱敏适配独立实现 | `engine/errors.rb`、`engine/redactor.rb` |
 | 日志 | 事件上下文与生命周期；安全事件、格式和字节流分别实现 | `engine/log.rb`、`engine/log/` |
+| 宿主配置 | Config 发现并逐层加载 YAML 与环境文件，记录来源和覆盖顺序 | `config.rb` |
 | 设备入口 | 能力组合、会话代理、通用脚本钩子 | `device/base.rb` |
 | 设备档案 | 不可变规则与策略接口校验；Builder 负责声明 DSL | `device/profile.rb`、`device/profile/` |
 | 配置采集与保存 | 采集策略生命周期、完整性校验、显式保存 | `device/running_config.rb`、`device/running_config/`、`device/save_config.rb` |
-| 并发与观察 | 有限并发、后台观察线程的停止与回收 | `parallel/pool.rb`、`parallel/observer.rb` |
+| 并发与观察 | 有限并发、设备资源预检、后台观察线程的停止与回收 | `parallel/pool.rb`、`resources.rb`、`parallel/observer.rb` |
+| 批次进度 | Progress 管理终端刷新、心跳与输出故障隔离；Collect::Progress 映射采集状态与报告保存结果 | `progress.rb`、`collect/progress.rb` |
 | 设备作用域 | 创建连接器、执行任务、关闭并分别交付值与故障 | `device/scope.rb` |
 | 本地备份 | 采集、摘要比较、文件持久化和完成回执 | `device/local_backup.rb` |
 | TFTP | 参数预检、上传、完成证据、目标和回执 | `device/tftp.rb`、`device/tftp/` |
@@ -30,6 +32,8 @@
 `Interfaces::Capability` 只提供 `device.interfaces`。集合对象复用解析入口和厂商策略，绑定原设备会话，不缓存现场邻居、描述或计划。资源获取不执行设备 I/O；`neighbors`、`descriptions`、`plan`、`audit`、`apply`、`sync` 集中在 `Interfaces`，计划及审计证据仍为独立的不可变值对象。Netdisco 批量 API 保留显式的 `*_descriptions` 名称与 Batch 返回值，内部统一调用该集合。
 
 文件名表达本文件的主要职责，领域归属通过命名空间表达。Netdisco 的清单预算与缓存位于 `inventory/`，分别为 `Inventory::Budget` 和 `Inventory::Cache`；配置操作的批次与逐台结果位于 `operation/`，分别为 `Operation::Batch` 和 `Operation::Outcome`。`Report::Store` 只持久化报告，Fleet 通过 `report_store:` 接收写入器。服务器上传核验与归档分别为 `Tftp::Verifier` 和 `Tftp::Archive`。
+
+`Interfaces::Name`、`Interfaces::Description`、`Interfaces::Blocks` 分别对应 `interfaces/name.rb`、`description.rb`、`blocks.rb`，子项不重复父级名称。共享宿主配置用 `Net::Connector::Config`，Netdisco 字段校验用 `Net::Connector::Netdisco::Config`；两者在调用处明确区分。会话连接参数仍由 `Configuration` 校验，不读取环境文件。
 
 引擎的 `Command`、`Script`、`Interaction`、`Dialogue`、`Response`、`Command::Result`、`Result` 各有同名文件；传输事件在 `event.rb`，适配器集合在 `transports.rb`。日志的 `RedactingWriter` 与 `Transcript` 位于 `log/` 下各自的同名文件。存储边界使用 `FileReader` 表示受控读取，`AtomicFile` 表示带阶段回执的原子替换；权限和持久性约束仍由这些组件维护。
 
@@ -378,13 +382,13 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 
 ## 接口描述规则
 
-原始 `Neighbor` 字段和计划证据完整保留发现值。`Interfaces::InterfaceName.key` 用于匹配本机接口别名与运行配置名称；`Interfaces::InterfaceName.configuration` 保留配置命令的接口展开规则。`Interfaces::InterfaceName.short` 只决定描述里对端接口的显示形式，绝不替换本机下发命令中的接口名。
+原始 `Neighbor` 字段和计划证据完整保留发现值。`Interfaces::Name.key` 用于匹配本机接口别名与运行配置名称；`Interfaces::Name.configuration` 保留配置命令的接口展开规则。`Interfaces::Name.short` 只决定描述里对端接口的显示形式，绝不替换本机下发命令中的接口名。
 
-`Interfaces::InterfaceDescription.format(neighbor, abbreviate: true, lowercase: false)` 是各厂商同步与计划共用的纯函数，生成 `To_<名称>_<接口简称>`。接口族的全称、简称和大小写统一，端口、拆分通道与子接口后缀保持不变；H3C 二层和三层聚合身份不合并。完整规则及厂商命名依据见[设备指南](usage.zh-CN.md#邻居发现与接口描述)。
+`Interfaces::Description.format(neighbor, abbreviate: true, lowercase: false)` 是各厂商同步与计划共用的纯函数，生成 `To_<名称>_<接口简称>`。接口族的全称、简称和大小写统一，端口、拆分通道与子接口后缀保持不变；H3C 二层和三层聚合身份不合并。完整规则及厂商命名依据见[设备指南](usage.zh-CN.md#邻居发现与接口描述)。
 
 `abbreviate: false` 保留接口原拼写，`lowercase: true` 仅将对端接口改为小写。自定义代码块拿到原始邻居，可生成完整描述。输出仍须经过 80 字节及字符校验、证据复核和回读；同步调用表达写入意图，独立计划应用仍要求确认。
 
-`Interfaces::InterfaceDescription.commands(interface:, description:, leave: "exit")` 为 IOS/NX-OS 和山石分别生成 `interface`、`description`、退出命令；H3C 使用 `leave: "quit"`。进入、退出全局配置视图和保存完成证据由厂商负责。各阶段命令分别由策略声明，PAN-OS 的命令构造/超时辅助方法不会启用未经验证的候选提交。命令构造器本身不连接设备，也不能绕开已审核的拓扑计划。
+`Interfaces::Description.commands(interface:, description:, leave: "exit")` 为 IOS/NX-OS 和山石分别生成 `interface`、`description`、退出命令；H3C 使用 `leave: "quit"`。进入、退出全局配置视图和保存完成证据由厂商负责。各阶段命令分别由策略声明，PAN-OS 的命令构造/超时辅助方法不会启用未经验证的候选提交。命令构造器本身不连接设备，也不能绕开已审核的拓扑计划。
 
 ## 敏感命令的生命周期
 
@@ -432,7 +436,7 @@ RunningConfig 的两处受控 `send` 保留，用于私有策略绑定与 protec
 
 ## 公开契约与 Rails 接入
 
-应用代码优先使用 `Net::Connector.open/build`、`Base` 的公开设备方法、`Command`、`Script`、结果对象，以及 `Netdisco::Fleet`。厂商扩展使用 `Profile` DSL 和文档中列出的策略接口；`Profile::Builder`、`Session` 的状态字段、工作线程调度及解析辅助方法属于内部实现。扩展直接加载当前设备模块或厂商目录下的类。项目仍处于 0.x，公开契约的变更会在更新记录中说明。
+应用代码优先使用 `Net::Connector.open/build`、`Base` 的公开设备方法、`Command`、`Script`、结果对象，以及 `Netdisco::Fleet`。独立批次宿主可直接加载 `net/connector/parallel/pool` 和 `net/connector/resources`，复用 `Parallel::Pool#map` 与 `Resources.prepare!`。厂商扩展使用 `Profile` DSL 和文档中列出的策略接口；`Profile::Builder`、`Session` 的状态字段、线程池内部调度及解析辅助方法属于内部实现。扩展直接加载当前设备模块或厂商目录下的类。项目仍处于 0.x，公开契约的变更会在更新记录中说明。
 
 gem 不依赖 Rails，也不自动创建数据库模型或管理应用的连接池。`logger: Rails.logger` 由应用持有，连接器写入安全事件对象，不修改或关闭它。数据库报告通过 `Report::Store::Database` 注入仓储，写报告发生在调用线程中；逐设备凭据解析、连接器工厂和回调则运行在工作线程中。
 
@@ -450,7 +454,11 @@ end
 
 ## 公共并发、配置批次与清单缓存
 
+子职责按所属业务组织目录和常量：`collect/progress.rb` 对应 `Collect::Progress`，`parallel/pool.rb` 对应 `Parallel::Pool`，`netdisco/report/files.rb` 对应 `Netdisco::Report::Files`。采集进度适配器复用公共 `Progress` 渲染与观察线程，设备选择和结果解释仍由各业务入口负责。
+
 `Parallel::Pool` 只持有线程、启动闸门和完成事件，按输入顺序交付块结果。普通设备失败如何转成结果由业务适配负责；创建并登记线程时延迟异步中断，登记完成后恢复，启动失败不执行任何设备块。工作线程捕获异常并由调用线程同步传播，避免宿主全局线程策略影响无关线程。`Netdisco::Worker` 为备份与配置操作共用计时、结果槽位和通知适配，不再自行管理线程；设备结果先写入槽位，再执行通知回调。
+
+`Resources.prepare!(parallel:)` 独立负责设备文件句柄预算，在创建会话前按实际活跃设备数预检，只提高当前进程软上限，不修改硬上限或系统配置。空批次传入 0，其他值须为 1..500 的整数。Netdisco、VXLAN 和 Wireless 复用同一资源预算及线程池；通用 Pool 不隐式修改进程资源限制。队列只持有输入索引，任务数组在入口固定一次，避免每个任务额外分配包装数组；任务对象的业务校验和不可变所有权仍由宿主负责。
 
 `Device::Scope` 持有单台任务连接器，分别交付业务值与普通故障，收尾不覆盖先前错误或中断。`Netdisco::Operation` 为配置脚本与接口描述同步、规划/应用提供全批预检、固定策略、动态凭据和安全摘要；它保留领域 `Result`、计划和完成步骤，使用独立 `Operation::Batch`，不借用备份路径或上传状态。应用审批计划必须走原拓扑重验、变更、回读、保存流程；有限并发不代表跨设备事务或自动重试安全。
 
@@ -468,6 +476,6 @@ end
 
 `Netdisco::Batch` 复制结果数组和回调诊断，在构造时累计状态计数；`counts` 返回可修改的独立 Hash。未知状态不能满足成功策略。更新结果集合须使用 `with`，它重新计算计数。上述领域值和远程备份目标、回执的 `with` 显式经过构造函数，避免依赖不同 Ruby 版本中原生 `Data#with` 的初始化行为。
 
-拓扑的 `InterfaceBlocks` 模块集中核对 interface 块与解析记录的完整性，由立即生效的变更策略和 Huawei 的只读策略共同组合，读取能力不必继承写入流程。`description_key(row)` 把描述记录映射为领域身份；Junos 逻辑单元使用 `<物理接口>.<单元号>`，保留物理接口描述。FortiOS 读取当前视图顶层 `config system interface`，接口 `description` 与显示 `alias` 分开处理，嵌套 IPv6 表不产生接口记录；无法确认作用域、闭合或记录数量时拒绝结果。
+拓扑的 `Blocks` 模块集中核对 interface 块与解析记录的完整性，由立即生效的变更策略和 Huawei 的只读策略共同组合，读取能力不必继承写入流程。`description_key(row)` 把描述记录映射为领域身份；Junos 逻辑单元使用 `<物理接口>.<单元号>`，保留物理接口描述。FortiOS 读取当前视图顶层 `config system interface`，接口 `description` 与显示 `alias` 分开处理，嵌套 IPv6 表不产生接口记录；无法确认作用域、闭合或记录数量时拒绝结果。
 
 `Interfaces::QuotedText` 是描述字段的纯解码边界，不接触设备会话；厂商策略选择无引号文本的处理规则，解析异常统一携带 host、parse 阶段和 unrecognized_output 代码，不携带字段原文或底层异常 cause。配置模板保留完整带引号字段供业务层解码，不能先删外层引号而留下未还原的转义字符。

@@ -109,7 +109,7 @@ class NetdiscoCacheIntegrationTest < Minitest::Test
   def test_offline_export_rejects_inventory_refresh_without_reading_files_or_inventory
     output = StringIO.new
     error = StringIO.new
-    cli = Netdisco::CLI.new(argv: %w[--export 192.0.2.1 --refresh-inventory], env: {}, output: output, error: error)
+    cli = Netdisco::CLI.new(configuration_options: { directories: [] }, argv: %w[--export 192.0.2.1 --refresh-inventory], env: {}, output: output, error: error)
     assert_equal 2, cli.run
     assert_empty output.string
     assert_includes error.string, "--export 不能与备份选项同时使用"
@@ -158,7 +158,7 @@ class NetdiscoCacheIntegrationTest < Minitest::Test
         assert_equal :stale_cache, fleet.inventory_status.fetch(:source)
         assert_equal timestamp, fleet.inventory_status.fetch(:fetched_at)
         output, error = StringIO.new, StringIO.new
-        cli = Netdisco::CLI.new(argv: %w[--plan --refresh-inventory], env: {}, output: output, error: error,
+        cli = Netdisco::CLI.new(configuration_options: { directories: [] }, argv: %w[--plan --refresh-inventory], env: {}, output: output, error: error,
                                 fleet_factory: ->(*) { fleet })
         assert_equal 0, cli.run, error.string
         assert_includes error.string, "历史缓存"

@@ -502,8 +502,17 @@ module Net
           raise ArgumentError, "#{key} must be valid JSON", cause: nil
         end
 
-        # 将有效逗号分隔配置拆分为去空白的非空条目列表。
-        def list(key) = (value(key) || "").split(",").map(&:strip).reject(&:empty?)
+        # 显式空列表可清除筛选；空白或逗号空项不得被删掉后扩大选择范围。
+        def list(key)
+          text = raw(key)
+          return [] if text.nil? || text == ""
+          raise ArgumentError, "#{key} must be a String" unless text.is_a?(String)
+
+          items = text.split(",", -1).map(&:strip)
+          raise ArgumentError, "#{key} must not contain empty list entries" if items.any?(&:empty?)
+
+          items
+        end
 
         # 将配置转换为正整数，无效时只报告配置键和类型要求。
         def integer(key, default)

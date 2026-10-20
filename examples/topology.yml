@@ -24,7 +24,7 @@ topology:
   cache_mode: prefer # only 仅使用已验证缓存；refresh 强制刷新。
   parallel: 4
   # limit: 5 # 只限制可发现设备，不影响清单缓存完整性。
-  directory: ./examples/topologys
+  directory: topologys
   description_format: To_%{neighbor}_%{port}
   neighbor_name_prefixes: ["AP-"] # 比较旧描述时允许此前缀；新描述仍由模板生成。
   abbreviate_ports: true

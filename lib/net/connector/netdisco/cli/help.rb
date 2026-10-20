@@ -6,7 +6,7 @@ module Net
       class CLI
         # 简要帮助从实际解析器筛选；范例按执行模式生成完整命令。
         module Help
-          COMMON = %w[init config directory interactive non-interactive host hosts name exclude-name vendor
+          COMMON = %w[init config env-file show-config directory interactive non-interactive host hosts name exclude-name vendor
                       plan inventory-only parallel refresh-inventory json quiet no-progress help help-all examples].freeze
 
           # 从完整解析器帮助中筛选常用选项，避免维护重复的帮助文本。

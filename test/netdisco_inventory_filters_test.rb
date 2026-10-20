@@ -78,12 +78,12 @@ class NetdiscoInventoryFiltersTest < Minitest::Test
     rows = [row(ip: "192.0.2.0"), row(ip: "192.0.2.1")]
     factory = ->(settings) { N::Fleet.new(settings: settings, inventory: Struct.new(:devices).new(rows)) }
     invalid.each do |arguments|
-      status = N::CLI.new(argv: [*arguments, "--plan"], env: {}, output: StringIO.new, error: StringIO.new,
+      status = N::CLI.new(configuration_options: { directories: [] }, argv: [*arguments, "--plan"], env: {}, output: StringIO.new, error: StringIO.new,
                           fleet_factory: factory).run
       assert_equal 2, status, arguments.inspect
     end
     output = StringIO.new
-    status = N::CLI.new(argv: %w[--host 192.0.2.0 --host 192.0.2.1 --plan], env: {}, output: output,
+    status = N::CLI.new(configuration_options: { directories: [] }, argv: %w[--host 192.0.2.0 --host 192.0.2.1 --plan], env: {}, output: output,
                         error: StringIO.new, fleet_factory: factory).run
     assert_equal 0, status
     assert_equal(%w[192.0.2.0 192.0.2.1], JSON.parse(output.string).fetch("selected").map { |entry| entry.fetch("host") })

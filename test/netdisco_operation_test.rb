@@ -361,7 +361,7 @@ class NetdiscoOperationTest < Minitest::Test
     duplicate = first.with(new_description: "conflicting")
     commands = original.commands.dup
     commands.insert(commands.index("return"),
-                    *Connector::Interfaces::InterfaceDescription.commands(interface: first.interface, description: "conflicting", leave: "quit"))
+                    *Connector::Interfaces::Description.commands(interface: first.interface, description: "conflicting", leave: "quit"))
     invalid = original.with(changes: [first, duplicate], commands: commands)
     assert_raises(ArgumentError) do
       @operation.apply_descriptions(plans: { @hosts.first => plan(@hosts.first), @hosts.last => invalid }, confirmed: true)

@@ -47,7 +47,7 @@ module Net
 
           # 复用公共接口描述命令。
           def change_commands(change)
-            Net::Connector::Interfaces::InterfaceDescription.commands(interface: change.interface, description: change.new_description)
+            Net::Connector::Interfaces::Description.commands(interface: change.interface, description: change.new_description)
           end
 
           private

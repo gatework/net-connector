@@ -246,13 +246,13 @@ class NetdiscoReliabilityTest < Minitest::Test
       path = File.join(directory, "settings.yml")
       File.write(path, "backup:\n  directory: #{directory}\ntftp:\n  server: 192.0.2.10\n")
       env = { "NC_CONFIG" => path }
-      cli = Netdisco::CLI.new(argv: %w[--tftp --plan], env: env, output: output, error: error, fleet_factory: factory)
+      cli = Netdisco::CLI.new(configuration_options: { directories: [] }, argv: %w[--tftp --plan], env: env, output: output, error: error, fleet_factory: factory)
       assert_equal 0, cli.run, error.string
       filename = JSON.parse(output.string).fetch("selected").first.fetch("filename")
       assert_equal "running-config.xml", filename
       assert_empty paths
 
-      cli = Netdisco::CLI.new(argv: %w[--tftp], env: env, output: StringIO.new, error: error, fleet_factory: factory)
+      cli = Netdisco::CLI.new(configuration_options: { directories: [] }, argv: %w[--tftp], env: env, output: StringIO.new, error: error, fleet_factory: factory)
       assert_equal 0, cli.run, error.string
       assert_equal [filename], paths
     end

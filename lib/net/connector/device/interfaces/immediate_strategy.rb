@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "strategy"
-require_relative "interface_blocks"
+require_relative "blocks"
 require_relative "../../engine/terminal/renderer"
 
 module Net
@@ -9,7 +9,7 @@ module Net
     class Interfaces
       # 接口描述立即生效的设备：退出视图、读回、保存是不同阶段，不能在 finish 中提前保存。
       class ImmediateStrategy < Strategy
-        include InterfaceBlocks
+        include Blocks
 
         # 使用配置采集命令读回即时生效的接口描述。
         def verification_commands = @device.config_commands

@@ -42,7 +42,7 @@ module Net
 
           items = items.dup
           queue = Queue.new
-          items.each_with_index { |item, index| queue << [index, item] }
+          items.each_index { |index| queue << index }
           count = [items.size, @parallel].min
           count.times { queue << nil }
           gate = Queue.new
@@ -62,9 +62,8 @@ module Net
                     # 全部线程成功建立后才允许设备操作，创建失败不能留下已发送的变更。
                     Thread.handle_interrupt(Exception => :immediate) do
                       gate.pop
-                      while (task = queue.pop)
-                        index, item = task
-                        results[index] = yield item
+                      while (index = queue.pop)
+                        results[index] = yield items[index]
                       end
                       exhausted = true
                     end

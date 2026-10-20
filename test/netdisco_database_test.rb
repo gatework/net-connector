@@ -29,7 +29,7 @@ class NetdiscoDatabaseTest < Minitest::Test
   def cli(env, argv = ["--show-config"], &factory)
     output = StringIO.new
     error = StringIO.new
-    command = Netdisco::CLI.new(env: env, argv: argv, output: output, error: error,
+    command = Netdisco::CLI.new(configuration_options: { directories: [] }, env: env, argv: argv, output: output, error: error,
                                 fleet_factory: factory || ->(*) { flunk "must stay offline" })
     [command.run, output.string, error.string]
   end

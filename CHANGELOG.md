@@ -2,6 +2,15 @@
 
 ## 未发布
 
+## 0.16.0 - 2026-10-20
+
+- 将共享资源预算迁至 `Net::Connector::Resources`，接口辅助对象统一为 `Interfaces::Name/Blocks/Description`；调用方及加载路径同步迁移。
+
+- 将备份进度的终端刷新、心跳、事件与输出故障处理抽为 `Net::Connector::Progress`；VXLAN 与 Wireless 通过 `Collect::Progress`（`collect/progress.rb`）共用显示，保留各领域的成功判定与安全报告。
+
+- 修复普通 `ruby examples/backup.rb` 混用已安装 net-connector 而未读取分层配置的问题；备份、TFTP 与拓扑入口直接加载相邻项目代码，保留第三方依赖环境。入口回归不再额外注入 `-Ilib`，覆盖脚本目录及其他启动目录的真实调用。
+- 统一 VXLAN、Wireless 与备份/拓扑 CLI 的分层配置服务：系统、用户、脚本、工作目录和显式文件逐层覆盖；命令行 > 进程环境 > YAML > `.env` > 默认值，数组整体替换，路径按来源解析，初始化写入用户配置目录。单个 YAML 拒绝重复键和多文档；初始化直接使用共享快照，移除旧 `load_env` 分支。
+
 ## 0.15.1 - 2026-10-19
 
 - `Result`、领域错误及底层错误的诊断摘要复用受控词表，避免配置处理钩子将敏感正文放入错误元数据后经 `inspect` 或 `PP` 泄露；原始错误字段与已完成业务输出仍保留。

@@ -79,14 +79,22 @@ module Net
           raise ArgumentError, "invalid YAML config (#{error.class})", cause: nil
         end
 
-        # 文件读取与纯配置校验共用入口，初始化无需借临时文件验证。
+        # 文件读取与纯配置校验共用入口，保持原生 Hash 参数调用契约。
         def self.parse(document)
+          parse_sections(document, sections: FIELDS.keys)
+        end
+
+        # 按消费方职责校验选定分区；未知顶层名称仍拒绝，避免拼写错误变成空清单策略。
+        def self.parse_sections(document, sections:)
           raise ArgumentError, "config must be a YAML mapping" unless document.is_a?(Hash)
 
           unknown_sections = document.keys - FIELDS.keys
           raise ArgumentError, "unknown config sections: #{unknown_sections.join(", ")}" unless unknown_sections.empty?
 
+          sections.each { |section| FIELDS.fetch(section) }
           document.each_with_object({}) do |(section, values), result|
+            next unless sections.include?(section)
+
             fields = FIELDS.fetch(section)
             raise ArgumentError, "#{section} must be a mapping" unless values.is_a?(Hash)
 
@@ -99,6 +107,46 @@ module Net
             end
           end
         end
+
+        # 配置解析与宿主环境投影共享字段范围，不把其他任务的策略带入清单消费方。
+        def self.environment_keys(sections: FIELDS.keys)
+          sections.flat_map { |section| FIELDS.fetch(section).values.map(&:first) }
+        end
+
+        # 只投影 schema 声明的公开环境字段；高优先级字段先遮蔽低层无效值。
+        def self.from_environment(environment, sections:, higher: {})
+          sections.each_with_object({}) do |section, result|
+            FIELDS.fetch(section).each do |field, (key, type)|
+              next unless environment.key?(key)
+              next if higher[section].is_a?(Hash) && higher[section].key?(field)
+
+              value = decode_environment(environment.fetch(key), type, key)
+              encode(section, field, type, value)
+              (result[section] ||= {})[field] = value
+            end
+          end
+        end
+
+        # 环境文本转换集中在 schema 边界，错误只指出字段，不回显输入。
+        def self.decode_environment(value, type, key)
+          raise ArgumentError unless value.is_a?(String)
+
+          case type
+          when :integer, :optional_integer then Integer(value, 10)
+          when :number then Float(value)
+          when :boolean
+            raise ArgumentError unless %w[true false].include?(value)
+
+            value == "true"
+          when :list then value.split(",", -1).map(&:strip)
+          when :json, :json_array then JSON.parse(value)
+          else value
+          end
+        rescue ArgumentError, TypeError, JSON::ParserError
+          raise ArgumentError, "invalid public environment field #{key}", cause: nil
+        end
+
+        private_class_method :decode_environment
 
         # 按字段类型校验并编码单项配置。
         def self.encode(section, name, type, value)

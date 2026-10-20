@@ -78,12 +78,12 @@ class NetdiscoInventoryFiltersTest < Minitest::Test
     rows = [row(ip: "192.0.2.0"), row(ip: "192.0.2.1")]
     factory = ->(settings) { N::Fleet.new(settings: settings, inventory: Struct.new(:devices).new(rows)) }
     invalid.each do |arguments|
-      status = N::CLI.new(argv: [*arguments, "--plan"], env: {}, output: StringIO.new, error: StringIO.new,
+      status = N::CLI.new(configuration_options: { directories: [] }, argv: [*arguments, "--plan"], env: {}, output: StringIO.new, error: StringIO.new,
                           fleet_factory: factory).run
       assert_equal 2, status, arguments.inspect
     end
     output = StringIO.new
-    status = N::CLI.new(argv: %w[--host 192.0.2.0 --host 192.0.2.1 --plan], env: {}, output: output,
+    status = N::CLI.new(configuration_options: { directories: [] }, argv: %w[--host 192.0.2.0 --host 192.0.2.1 --plan], env: {}, output: output,
                         error: StringIO.new, fleet_factory: factory).run
     assert_equal 0, status
     assert_equal(%w[192.0.2.0 192.0.2.1], JSON.parse(output.string).fetch("selected").map { |entry| entry.fetch("host") })
@@ -96,13 +96,13 @@ class NetdiscoInventoryFiltersTest < Minitest::Test
       output = StringIO.new
       klass = mode == :backup ? N::CLI::Backup : N::CLI::Topology
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { nil }]) do
-        assert_equal 0, klass.new(argv: ["--inventory-only", "--quiet"], env: {}, output: output, error: StringIO.new).run
+        assert_equal 0, klass.new(configuration_options: { directories: [] }, argv: ["--inventory-only", "--quiet"], env: {}, output: output, error: StringIO.new).run
       end
       refute_match(/[\e\a]/, output.string)
       assert_includes output.string, "edge"
       output = StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { nil }]) do
-        assert_equal 0, klass.new(argv: ["--inventory-only", "--quiet", "--json"], env: {}, output: output, error: StringIO.new).run
+        assert_equal 0, klass.new(configuration_options: { directories: [] }, argv: ["--inventory-only", "--quiet", "--json"], env: {}, output: output, error: StringIO.new).run
       end
       refute_includes output.string, "\e"
       assert_includes output.string, "\\u001b"

@@ -43,7 +43,7 @@ module Net
         def initialize(host:, vendor:, strategy:, neighbors:, descriptions:, formatter:, description_matcher: nil)
           @host, @vendor, @strategy = host, vendor, strategy
           @neighbors, @descriptions, @formatter = neighbors, descriptions, formatter
-          @description_matcher = description_matcher || ->(current, proposed, _peer) { InterfaceDescription.equivalent?(current, proposed) }
+          @description_matcher = description_matcher || ->(current, proposed, _peer) { Description.equivalent?(current, proposed) }
           @comparisons, @issues, @evidence, @changes = [], [], {}, []
         end
 
@@ -74,9 +74,9 @@ module Net
           return reject_interface(row, :interface_missing) unless @descriptions.key?(interface)
 
           proposed = @formatter.call(peer)
-          InterfaceDescription.validate!(proposed)
+          Description.validate!(proposed)
           local = @strategy.configuration_interface(peer.local_interface)
-          InterfaceDescription.validate_interface!(local)
+          Description.validate_interface!(local)
           row.merge!(expected: proposed, status: compare_status(current, proposed, peer))
           @evidence[interface] = [peer.neighbor_name, peer.neighbor_interface, current]
           return if row[:status] == :matches

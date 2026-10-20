@@ -5,8 +5,8 @@ require_relative "../lib/net/connector"
 
 class InterfaceDescriptionTest < Minitest::Test
   Neighbor = Struct.new(:neighbor_name, :neighbor_interface)
-  Names = Net::Connector::Interfaces::InterfaceName
-  Descriptions = Net::Connector::Interfaces::InterfaceDescription
+  Names = Net::Connector::Interfaces::Name
+  Descriptions = Net::Connector::Interfaces::Description
 
   def test_abbreviations_normalize_vendor_spelling_and_preserve_numbering
     {

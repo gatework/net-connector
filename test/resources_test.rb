@@ -4,16 +4,33 @@ require "minitest/autorun"
 require "open3"
 require "rbconfig"
 require "json"
+require_relative "../lib/net/connector/resources"
 
-class NetdiscoResourcesTest < Minitest::Test
+class ResourcesTest < Minitest::Test
+  def test_invalid_parallel_is_a_parameter_error_without_touching_process_limits
+    [nil, "2", 0.0, -1, 501].each do |parallel|
+      Process.stub(:getrlimit, ->(*) { flunk "invalid input must not inspect process limits" }) do
+        error = assert_raises(ArgumentError) { Net::Connector::Resources.prepare!(parallel: parallel) }
+        assert_includes error.message, "parallel"
+        refute_includes error.message, "文件描述符额度不足"
+      end
+    end
+  end
+
+  def test_empty_batch_does_not_change_process_limits
+    Process.stub(:getrlimit, ->(*) { flunk "empty batch must not inspect process limits" }) do
+      assert_nil Net::Connector::Resources.prepare!(parallel: 0)
+    end
+  end
+
   def test_low_soft_limit_is_raised_before_opening_archive_pipes_device_ptys_and_logs
     result = isolated(<<~'RUBY')
       require "pty"
       require "tmpdir"
-      require "net/connector/netdisco/resources"
+      require "net/connector/resources"
       hard = Process.getrlimit(:NOFILE).last
       Process.setrlimit(:NOFILE, 256, hard)
-      Net::Connector::Netdisco::Resources.prepare!(parallel: 50)
+      Net::Connector::Resources.prepare!(parallel: 50)
       owned = []
       begin
         Dir.mktmpdir do |directory|

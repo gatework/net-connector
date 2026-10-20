@@ -17,7 +17,7 @@ class ExampleEnvironmentTest < Minitest::Test
     assert_equal 7, data.dig("topology", "parallel")
   end
 
-  def test_cli_overrides_yaml_and_yaml_overrides_env
+  def test_cli_overrides_process_environment_and_process_environment_overrides_yaml
     Dir.mktmpdir do |root|
       path = File.join(root, "policy.yml")
       File.write(path, { "backup" => { "parallel" => 3, "directory" => File.join(root, "yaml") },
@@ -27,11 +27,11 @@ class ExampleEnvironmentTest < Minitest::Test
       defaults = { "NC_PARALLEL" => "7", "NC_BACKUP_DIRECTORY" => File.join(root, "env"),
                    "ND_URL" => "https://env.example.invalid", "NC_HOST_KEY_POLICY" => "strict", "NC_TFTP_HOST" => "192.0.2.10" }
       data = settings(["--config", path], defaults)
-      assert_equal 3, data.dig("backup", "parallel")
-      assert_equal File.join(root, "yaml"), data.dig("backup", "directory")
-      assert_equal "https://yaml.example.invalid", data.dig("netdisco", "url")
-      assert_equal "accept_new", data.dig("ssh", "host_key_policy")
-      assert_equal "192.0.2.20", data.dig("tftp", "server")
+      assert_equal 7, data.dig("backup", "parallel")
+      assert_equal File.join(root, "env"), data.dig("backup", "directory")
+      assert_equal "https://env.example.invalid", data.dig("netdisco", "url")
+      assert_equal "strict", data.dig("ssh", "host_key_policy")
+      assert_equal "192.0.2.10", data.dig("tftp", "server")
       data = settings(["--config", path, "--parallel", "2", "--directory", File.join(root, "cli")], defaults)
       assert_equal 2, data.dig("backup", "parallel")
       assert_equal File.join(root, "cli"), data.dig("backup", "directory")
@@ -54,12 +54,12 @@ class ExampleEnvironmentTest < Minitest::Test
     end
   end
 
-  def test_yaml_can_clear_an_optional_environment_default
+  def test_process_environment_overrides_yaml_null
     Dir.mktmpdir do |root|
       path = File.join(root, "policy.yml")
       File.write(path, { "ssh" => { "max_script_output_bytes" => nil } }.to_yaml)
       data = settings(["--config", path], { "NC_MAX_SCRIPT_OUTPUT_BYTES" => "64" })
-      assert_nil data.dig("ssh", "max_script_output_bytes")
+      assert_equal 64, data.dig("ssh", "max_script_output_bytes")
     end
   end
 
@@ -85,8 +85,10 @@ class ExampleEnvironmentTest < Minitest::Test
         ARGV.replace(["--config", #{path.inspect}, "--inventory-only", "--json", "--quiet"])
         load #{File.join(ROOT, "examples/backup.rb").inspect}
       RUBY
-      output, error, status = Open3.capture3({ "BUNDLE_GEMFILE" => GEMFILE }, RbConfig.ruby,
-                                           "-rbundler/setup", "-e", script, chdir: ROOT)
+      environment = ENV.keys.grep(/\A(?:NC_|ND_|NETDISCO_)/).to_h { |key| [key, nil] }
+      environment.merge!("BUNDLE_GEMFILE" => GEMFILE, "HOME" => root, "XDG_CONFIG_HOME" => File.join(root, "config"))
+      output, error, status = Open3.capture3(environment, RbConfig.ruby,
+                                           "-rbundler/setup", "-e", script, chdir: root)
       assert status.success?, error
       assert_equal 1, JSON.parse(output).fetch("plan").fetch("selected").size
       refute File.exist?(directory)
@@ -100,7 +102,7 @@ class ExampleEnvironmentTest < Minitest::Test
       require "net/connector/netdisco"
       require "json"
       options = Net::Connector::Netdisco::CLI::Options.parse(argv: #{argv.inspect})
-      settings = Net::Connector::Netdisco::CLI::Options.settings(options, env: #{defaults.inspect}, load_env: true)
+      settings = Net::Connector::Netdisco::CLI::Options.settings(options, env: #{defaults.inspect}, configuration: Net::Connector::Netdisco::CLI::Options.configuration(options, env: #{defaults.inspect}, directories: []))
       puts JSON.generate(settings.snapshot(mode: :show_config).public_config)
     RUBY
     environment = { "BUNDLE_GEMFILE" => GEMFILE }

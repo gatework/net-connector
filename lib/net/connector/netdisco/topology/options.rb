@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "../../parallel/pool"
-require_relative "../../device/interfaces/interface_description"
+require_relative "../../device/interfaces/description"
 
 module Net
   module Connector
@@ -52,14 +52,14 @@ module Net
           # 使用当前模板和端口展示策略生成缺失或确需修正的目标描述。
           def description_for(neighbor)
             port = neighbor.neighbor_interface
-            port = Net::Connector::Interfaces::InterfaceName.short(port) if abbreviate_ports
+            port = Net::Connector::Interfaces::Name.short(port) if abbreviate_ports
             port = port.downcase if lowercase_ports
             format(neighbor: neighbor.neighbor_name, port: port)
           end
 
           # 仅显式声明的旧名称前缀可保留；不把未知名称、包含匹配或不同编号当作同一邻居。
           def description_matches?(current, expected, neighbor)
-            comparison = Net::Connector::Interfaces::InterfaceDescription
+            comparison = Net::Connector::Interfaces::Description
             return true if comparison.equivalent?(current, expected)
 
             neighbor_name_prefixes.any? do |prefix|

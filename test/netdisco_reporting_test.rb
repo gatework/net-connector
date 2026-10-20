@@ -104,7 +104,7 @@ class NetdiscoReportingTest < Minitest::Test
         calls = []
         output, error = StringIO.new, StringIO.new
         factory = ->(settings) { fleet(settings: settings, calls: calls) }
-        status = Netdisco::CLI.new(argv: ["--tftp", "--host", "192.0.2.1", "--config", config_path(directory), *extra],
+        status = Netdisco::CLI.new(configuration_options: { directories: [] }, argv: ["--tftp", "--host", "192.0.2.1", "--config", config_path(directory), *extra],
                                    env: {},
                                    output: output, error: error, fleet_factory: factory).run
         selected = extra.include?("selected")
@@ -125,7 +125,7 @@ class NetdiscoReportingTest < Minitest::Test
     [%w[--success-policy unknown], %w[--report-schema 3],
      %w[--success-policy selected --report-schema 1]].each do |argv|
       calls = []
-      status = Netdisco::CLI.new(argv: argv, env: {}, output: StringIO.new, error: StringIO.new,
+      status = Netdisco::CLI.new(configuration_options: { directories: [] }, argv: argv, env: {}, output: StringIO.new, error: StringIO.new,
                                  fleet_factory: ->(*) { calls << true }).run
       assert_equal 2, status
       assert_empty calls

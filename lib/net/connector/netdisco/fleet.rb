@@ -15,7 +15,7 @@ require_relative "report"
 require_relative "tftp/verifier"
 require_relative "tftp/archive"
 require_relative "fleet/options"
-require_relative "resources"
+require_relative "../resources"
 
 module Net
   module Connector

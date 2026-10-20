@@ -9,7 +9,7 @@ require_relative "../device/interfaces"
 require_relative "settings"
 require_relative "operation/batch"
 require_relative "device/access"
-require_relative "resources"
+require_relative "../resources"
 require_relative "worker"
 
 module Net
@@ -145,8 +145,8 @@ module Net
 
           Script.new(plan.commands)
           plan.changes.each do |change|
-            Net::Connector::Interfaces::InterfaceDescription.validate_interface!(change.interface)
-            Net::Connector::Interfaces::InterfaceDescription.validate!(change.new_description)
+            Net::Connector::Interfaces::Description.validate_interface!(change.interface)
+            Net::Connector::Interfaces::Description.validate!(change.new_description)
           end
           raise ArgumentError, "empty description plan cannot contain commands" if plan.changes.empty? && !plan.commands.empty?
 

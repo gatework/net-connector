@@ -2,7 +2,7 @@
 
 require_relative "../../device/base"
 require_relative "../../device/interfaces/strategy"
-require_relative "../../device/interfaces/interface_blocks"
+require_relative "../../device/interfaces/blocks"
 
 module Net
   module Connector
@@ -10,7 +10,7 @@ module Net
       class Huawei < Net::Connector::Base
         # VRP 简表支持统一的 LLDP 读取；不假设不同 VRP 的提交与保存阶段相同。
         class Topology < Net::Connector::Interfaces::Strategy
-          include Net::Connector::Interfaces::InterfaceBlocks
+          include Net::Connector::Interfaces::Blocks
 
           HEADER = /^[ \t]*Local Intf[ \t]+Neighbor Dev[ \t]+Neighbor Intf[ \t]+Exptime/i
           private_constant :HEADER

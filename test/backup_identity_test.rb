@@ -195,7 +195,7 @@ class BackupIdentityTest < Minitest::Test
         File.binwrite(File.join(directory, filename), CONFIG)
         output = StringIO.new
         error = StringIO.new
-        status = Netdisco::CLI.new(argv: ["--directory", directory, "--export", "192.0.2.1"], env: {},
+        status = Netdisco::CLI.new(configuration_options: { directories: [] }, argv: ["--directory", directory, "--export", "192.0.2.1"], env: {},
                                    output: output, error: error, fleet_factory: ->(*) { raise "inventory not needed" }).run
 
         assert_equal 0, status, error.string

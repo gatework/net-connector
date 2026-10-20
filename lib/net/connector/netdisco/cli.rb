@@ -6,19 +6,22 @@ require "optparse"
 require_relative "../version"
 require_relative "fleet"
 require_relative "cli/options"
+require_relative "cli/setup"
 
 module Net
   module Connector
     module Netdisco
       class CLI
         # 保存命令行输入输出和清单任务工厂。
-        def initialize(argv: ARGV, env: ENV, output: $stdout, error: $stderr,
-                       fleet_factory: ->(settings) { Fleet.new(settings: settings) })
+        def initialize(argv: ARGV, env: ENV, input: $stdin, output: $stdout, error: $stderr,
+                       fleet_factory: ->(settings) { Fleet.new(settings: settings) }, configuration_options: {})
           @argv = argv.dup
           @env = env
+          @input = input
           @output = output
           @error = error
           @fleet_factory = fleet_factory
+          @configuration_options = configuration_options
         end
 
         # 解析参数并执行预览、导出或批量备份。
@@ -27,12 +30,10 @@ module Net
           return 0 if options[:done]
 
           validate_options!(options)
+          return 0 if initialize_config?(options)
           settings = settings_for(options)
 
-          if options[:show_config]
-            @output.puts JSON.pretty_generate(settings.public_config)
-            return 0
-          end
+          return show_config(settings, options) if options[:show_config]
           if options[:export]
             export_config(settings, options)
             return 0
@@ -71,10 +72,26 @@ module Net
 
         private
 
+        # 非敏感设置与来源在创建清单之前输出。
+        def show_config(settings, options)
+          @output.puts JSON.pretty_generate(settings.public_config.merge(sources: Options.sources(@configuration, options)))
+          0
+        end
+
+        # 初始化仅发布用户配置，不读取清单或进入设备执行。
+        def initialize_config?(options)
+          @configuration = Options.configuration(options, env: @env, **@configuration_options)
+          return false unless options[:init] || options[:interactive]
+
+          mode = options[:tftp] ? :tftp : :backup
+          Setup.new(mode: mode, options: options, input: @input, output: @error,
+                    configuration: @configuration, directory: File.expand_path("backups")).initialize_files?
+        end
+
         # CLI 覆盖支持的环境变量与 YAML；设备凭据按环境或显式 CLI 参数解析。
         def settings_for(options)
           mode = options[:export] ? :export : (options[:tftp] ? :tftp : :backup)
-          Options.settings(options, env: @env).for_run(mode: mode)
+          Options.settings(options, env: @env, configuration: @configuration).for_run(mode: mode)
         end
 
         # 导出已有配置不创建清单或设备连接。
@@ -129,10 +146,12 @@ module Net
             args.banner = "用法：net-backup [--config FILE] [--plan | --show-config | --export IP] [--tftp]"
             Options.add_settings(args, options)
             Options.add_execution(args, options)
+            args.on("--init", "创建用户目录中的缺失配置和环境模板后退出") { options[:init] = true }
+            args.on("--interactive", "通过终端问答创建缺失配置") { options[:interactive] = true }
+            args.on("--non-interactive", "禁用配置问答") { options[:interactive] = false }
             args.on("--source SOURCE", %w[http postgres], "清单来源：http（默认）或 postgres") { |value| options[:source] = value }
             args.on("--query SQL", "PostgreSQL 清单查询，使用 $1、$2 绑定参数") { |value| options[:query] = value }
             args.on("--query-params JSON", "查询参数的 JSON 数组") { |value| options[:query_params] = value }
-            args.on("--show-config", "显示生效的非敏感设置") { options[:show_config] = true }
             args.on("--plan", "预览设备清单，不连接设备") { options[:plan] = true }
             args.on("--tftp", "由设备发起 TFTP 备份") { options[:tftp] = true }
             args.on("--export IP", "导出已保存的本地配置") { |value| options[:export] = value }

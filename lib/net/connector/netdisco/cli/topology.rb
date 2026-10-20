@@ -8,7 +8,7 @@ require_relative "../fleet"
 require_relative "../progress"
 require_relative "setup"
 require_relative "../../storage/batch_directory"
-require_relative "../resources"
+require_relative "../../resources"
 require_relative "../topology/files"
 require_relative "../topology/presentation"
 
@@ -20,10 +20,11 @@ module Net
         class Topology
           # 保存拓扑入口默认配置、输入输出和连接器工厂，暂不访问清单。
           def initialize(default_config: nil, default_directory: nil, argv: ARGV, env: ENV, input: $stdin,
-                         output: $stdout, error: $stderr, connector_factory: nil, default_env: nil, load_env: false)
+                         output: $stdout, error: $stderr, connector_factory: nil, default_env: nil, configuration_options: {})
             @default_config, @default_directory = default_config, default_directory
             @argv, @env, @input, @output, @error = argv, env, input, output, error
-            @load_env, @default_env = load_env, default_env
+            @default_env = default_env
+            @configuration_options = configuration_options
             @connector_factory = connector_factory || ->(device, options) { device.build_connector(**options) }
           end
 
@@ -37,6 +38,10 @@ module Net
             settings = settings_for(options)
             return 0 if @initialized
 
+            if options[:show_config]
+              @output.puts JSON.pretty_generate(settings.public_config.merge(sources: CLI::Options.sources(@configuration, options)))
+              return 0
+            end
             policy = settings.topology_options
             raise ArgumentError, "应用配置必须显式传入 --apply；--plan 仅生成计划，--discover 只读发现" if policy.mode == :apply && !options[:apply]
 
@@ -74,10 +79,12 @@ module Net
           def settings_for(options)
             environment = options.fetch(:environment)
             environment["NC_CONFIG"] ||= @default_config if @default_config && !@env["NC_CONFIG"]
-            @initialized = Setup.new(mode: :topology, options: options, env: @env, input: @input, output: @error,
-                                     env_path: @default_env, directory: @default_directory, load_env: @load_env).initialize_files?
+            options[:env_file] ||= @default_env if @default_env
+            @configuration = CLI::Options.configuration(options, env: @env, mode: :topology, **@configuration_options)
+            @initialized = Setup.new(mode: :topology, options: options, input: @input, output: @error,
+                                     directory: @default_directory || File.expand_path("topologys"), configuration: @configuration).initialize_files?
             return if @initialized
-            settings = CLI::Options.settings(options, env: @env, load_env: @load_env)
+            settings = CLI::Options.settings(options, env: @env, mode: :topology, configuration: @configuration)
             policy = settings.topology_options
             overrides = topology_overrides(options, policy)
             @settings = settings.with_overrides(overrides).for_run(mode: :topology)
@@ -89,7 +96,7 @@ module Net
             values["NC_TOPOLOGY_MODE"] = options[:topology_mode].to_s if options[:topology_mode]
             values["NC_TOPOLOGY_LIMIT"] = options[:topology_limit].to_s if options[:topology_limit]
             explicit = options.fetch(:environment)
-            values["NC_TOPOLOGY_DIRECTORY"] = explicit["NC_BACKUP_DIRECTORY"] || policy.directory || @default_directory
+            values["NC_TOPOLOGY_DIRECTORY"] = explicit["NC_BACKUP_DIRECTORY"] || policy.directory || @default_directory || File.expand_path("topologys")
             values.delete("NC_TOPOLOGY_DIRECTORY") unless values["NC_TOPOLOGY_DIRECTORY"]
             values["NC_TOPOLOGY_PARALLEL"] = explicit["NC_PARALLEL"] if explicit["NC_PARALLEL"]
             values["ND_CACHE_MODE"] = explicit["ND_CACHE_MODE"] if explicit["ND_CACHE_MODE"]

@@ -137,7 +137,7 @@ module Net
       # 在同一会话内采集邻居和描述，返回逐接口证据与候选修正计划。
       def audit(abbreviate: true, lowercase: false, description_matcher: nil, &formatter)
         validate_format_options!(abbreviate, lowercase)
-        formatter ||= ->(peer) { InterfaceDescription.format(peer, abbreviate: abbreviate, lowercase: lowercase) }
+        formatter ||= ->(peer) { Description.format(peer, abbreviate: abbreviate, lowercase: lowercase) }
         @device.with_operation(:plan) do
           AuditBuilder.new(host: @device.host, vendor: @device.vendor, strategy: @strategy,
                            neighbors: neighbors, descriptions: descriptions, formatter: formatter, description_matcher: description_matcher).call
@@ -191,10 +191,10 @@ module Net
           proposed = if formatter
                        formatter.call(neighbor)
                      else
-                       InterfaceDescription.format(neighbor, abbreviate: abbreviate, lowercase: lowercase)
+                       Description.format(neighbor, abbreviate: abbreviate, lowercase: lowercase)
                      end
-          InterfaceDescription.validate!(proposed)
-          next if InterfaceDescription.equivalent?(old, proposed)
+          Description.validate!(proposed)
+          next if Description.equivalent?(old, proposed)
 
           Change.new(interface: @strategy.configuration_interface(neighbor.local_interface), old_description: old,
                      new_description: proposed, neighbor: neighbor)
@@ -270,7 +270,7 @@ module Net
         end
 
         plan.changes.each do |change|
-          InterfaceDescription.validate!(change.new_description)
+          Description.validate!(change.new_description)
           unless evidence.fetch(@strategy.interface_key(change.interface)) ==
                  [change.neighbor.neighbor_name, change.neighbor.neighbor_interface, change.old_description]
             raise ArgumentError, "plan changes do not match its discovery evidence"

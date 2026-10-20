@@ -13,7 +13,7 @@ class CLITopologyTest < Minitest::Test
   def test_help_is_offline_and_does_not_create_default_configuration
     Dir.mktmpdir do |root|
       output = StringIO.new
-      status = N::CLI::Topology.new(argv: ["--help"], env: {}, default_config: File.join(root, "topology.yml"),
+      status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--help"], env: {}, default_config: File.join(root, "topology.yml"),
                                   default_directory: root, output: output, error: StringIO.new).run
       assert_equal 0, status
       assert_includes output.string, "--apply"
@@ -26,7 +26,7 @@ class CLITopologyTest < Minitest::Test
                                         { "ip" => "192.0.2.2", "name" => "core01", "vendor" => "H3C" }])
     output = StringIO.new
     N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { flunk "inventory-only requested device credentials" }]) do
-      status = N::CLI::Topology.new(argv: ["--inventory-only", "--name", "edge", "--json"], env: {}, output: output, error: StringIO.new).run
+      status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--inventory-only", "--name", "edge", "--json"], env: {}, output: output, error: StringIO.new).run
       assert_equal 0, status
     end
     assert_equal(["192.0.2.1"], JSON.parse(output.string).fetch("devices").map { |device| device.fetch("host") })
@@ -54,7 +54,7 @@ class CLITopologyTest < Minitest::Test
       end
       output, error = StringIO.new, StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
-        status = N::CLI::Topology.new(argv: ["--apply", "--json", "--no-progress"], env: {}, default_directory: root,
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--apply", "--json", "--no-progress"], env: {}, default_directory: root,
                                     connector_factory: factory, output: output, error: error).run
         assert_equal 0, status, error.string
       end
@@ -69,7 +69,7 @@ class CLITopologyTest < Minitest::Test
       path = File.join(root, "topology.yml")
       File.write(path, { "topology" => { "mode" => "apply", "directory" => root } }.to_yaml)
       N::CLI::Credentials.stub(:resolve, ->(*) { flunk "unconfirmed apply read inventory" }) do
-        status = N::CLI::Topology.new(argv: [], env: {}, default_config: path, output: StringIO.new, error: StringIO.new).run
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: [], env: {}, default_config: path, output: StringIO.new, error: StringIO.new).run
         assert_equal 2, status
       end
       assert_equal ["topology.yml"], Dir.children(root)
@@ -98,7 +98,7 @@ class CLITopologyTest < Minitest::Test
       end
       output, error = StringIO.new, StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, resolver]) do
-        status = N::CLI::Topology.new(argv: ["--plan", "--json"], env: {}, default_directory: root,
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--plan", "--json"], env: {}, default_directory: root,
                                     connector_factory: factory, output: output, error: error).run
         assert_equal 1, status, error.string
       end
@@ -115,7 +115,7 @@ class CLITopologyTest < Minitest::Test
       inventory = Struct.new(:devices).new([{ "ip" => fixture.device.host, "name" => "edge", "vendor" => "H3C" }])
       output, error = StringIO.new, StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
-        status = N::CLI::Topology.new(argv: ["--apply", "--json", "--no-progress"], env: {}, default_directory: root,
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--apply", "--json", "--no-progress"], env: {}, default_directory: root,
                                     connector_factory: lambda { |*|
                                       fixture.transport.events << fixture.prompt if fixture.transport.opens.positive? && fixture.transport.closed?
                                       fixture.device
@@ -139,7 +139,7 @@ class CLITopologyTest < Minitest::Test
       inventory = Struct.new(:devices).new([{ "ip" => fixture.device.host, "vendor" => "H3C" }])
       output, error = StringIO.new, StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
-        status = N::CLI::Topology.new(argv: ["--apply", "--json", "--no-progress"], env: {}, default_directory: root,
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--apply", "--json", "--no-progress"], env: {}, default_directory: root,
                                     connector_factory: lambda { |*|
                                       fixture.transport.events << fixture.prompt if fixture.transport.opens.positive? && fixture.transport.closed?
                                       fixture.device
@@ -165,7 +165,7 @@ class CLITopologyTest < Minitest::Test
       broken.define_singleton_method(:puts) { |*| raise IOError, "private output failure" }
       output = StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
-        status = N::CLI::Topology.new(argv: ["--discover", "--json"], env: {}, default_directory: root,
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--discover", "--json"], env: {}, default_directory: root,
                                     connector_factory: factory, output: output, error: broken).run
         assert_equal 1, status
       end
@@ -183,7 +183,7 @@ class CLITopologyTest < Minitest::Test
       completed = []
       factory = audit_factory(completed, interrupt: true)
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
-        status = N::CLI::Topology.new(argv: ["--plan", "--no-progress"], env: {}, default_directory: root,
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--plan", "--no-progress"], env: {}, default_directory: root,
                                     connector_factory: factory, output: StringIO.new, error: StringIO.new).run
         assert_equal 130, status
       end
@@ -207,7 +207,7 @@ class CLITopologyTest < Minitest::Test
       end
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
         C::Storage::AtomicFile.stub(:write, failing_writer) do
-          status = N::CLI::Topology.new(argv: ["--apply", "--no-progress"], env: {}, default_directory: root,
+          status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--apply", "--no-progress"], env: {}, default_directory: root,
                                       connector_factory: audit_factory(completed), output: StringIO.new, error: StringIO.new).run
           assert_equal 2, status
         end
@@ -226,7 +226,7 @@ class CLITopologyTest < Minitest::Test
                                             { "ip" => "192.0.2.2", "vendor" => "H3C" }])
       completed, output, error = [], StringIO.new, StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
-        status = N::CLI::Topology.new(argv: ["--discover", "--limit", "1", "--json", "--no-progress"], env: {}, default_directory: root,
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--discover", "--limit", "1", "--json", "--no-progress"], env: {}, default_directory: root,
                                     connector_factory: audit_factory(completed), output: output, error: error).run
         assert_equal 0, status, error.string
       end
@@ -241,7 +241,7 @@ class CLITopologyTest < Minitest::Test
     Dir.mktmpdir do |root|
       inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "H3C" }])
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { flunk "unconfirmed apply requested device credentials" }]) do
-        status = N::CLI::Topology.new(argv: ["--apply", "--stdin-credentials", "--no-progress"], env: {},
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--apply", "--stdin-credentials", "--no-progress"], env: {},
                                     default_directory: root, input: StringIO.new("DECLINE\n"),
                                     output: StringIO.new, error: StringIO.new).run
         assert_equal 1, status
@@ -254,7 +254,7 @@ class CLITopologyTest < Minitest::Test
     { "--help" => false, "--help-all" => true, "--examples" => false }.each do |flag, detailed|
       output = StringIO.new
       N::CLI::Credentials.stub(:resolve, ->(*) { flunk "help queried inventory" }) do
-        assert_equal 0, N::CLI::Topology.new(argv: [flag], env: {}, output: output, error: StringIO.new).run
+        assert_equal 0, N::CLI::Topology.new(configuration_options: { directories: [] }, argv: [flag], env: {}, output: output, error: StringIO.new).run
       end
       if flag == "--examples"
         assert_includes output.string, "--inventory-only"
@@ -275,16 +275,16 @@ class CLITopologyTest < Minitest::Test
     Dir.mktmpdir do |root|
       path = File.join(root, "topology.yml")
       N::CLI::Credentials.stub(:resolve, ->(*) { flunk "initialization queried inventory" }) do
-        status = N::CLI::Topology.new(argv: ["--init", "--non-interactive"], env: {}, default_config: path,
+        status = N::CLI::Topology.new(configuration_options: { directories: [], home: root }, argv: ["--init", "--non-interactive", "--env-file", File.join(root, ".env")], env: {}, default_config: path,
                                     output: StringIO.new, error: StringIO.new).run
         assert_equal 0, status
       end
       document = YAML.safe_load_file(path)
       assert_equal %w[inventory netdisco ssh topology], document.keys.sort
-      assert_equal "./topologys", document.dig("topology", "directory")
+      assert_equal File.expand_path("topologys"), document.dig("topology", "directory")
       assert_equal "plan", document.dig("topology", "mode")
       assert_equal "To_%{neighbor}_%{port}", document.dig("topology", "description_format")
-      assert_equal ["topology.yml"], Dir.children(root)
+      assert_equal %w[.env topology.yml], Dir.children(root).sort
       assert_equal 0o600, File.stat(path).mode & 0o777
     end
   end
@@ -294,7 +294,7 @@ class CLITopologyTest < Minitest::Test
                                           { "ip" => "192.0.2.2", "name" => "core", "vendor" => "H3C" }])
     output = StringIO.new
     N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { flunk "preview connected" }]) do
-      status = N::CLI::Topology.new(argv: ["--inventory-only", "--name", "edge", "--no-progress"], env: {},
+      status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--inventory-only", "--name", "edge", "--no-progress"], env: {},
                                   output: output, error: StringIO.new).run
       assert_equal 0, status
     end
@@ -305,7 +305,7 @@ class CLITopologyTest < Minitest::Test
 
   def test_invalid_topology_limit_does_not_advertise_backup_sampling
     error = StringIO.new
-    assert_equal 2, N::CLI::Topology.new(argv: ["--limit", "0"], env: {}, output: StringIO.new, error: error).run
+    assert_equal 2, N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--limit", "0"], env: {}, output: StringIO.new, error: error).run
     assert_includes error.string, "设备上限须为正整数"
     refute_includes error.string, "抽样"
   end
@@ -319,8 +319,8 @@ class CLITopologyTest < Minitest::Test
       output, completed, requested = StringIO.new, [], []
       prepare = ->(parallel:) { requested << parallel }
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
-        N::Resources.stub(:prepare!, prepare) do
-          status = N::CLI::Topology.new(argv: ["--discover", "--directory", destination, "--parallel", "500", "--quiet"],
+        Net::Connector::Resources.stub(:prepare!, prepare) do
+          status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--discover", "--directory", destination, "--parallel", "500", "--quiet"],
                                       env: {}, default_config: path, default_directory: File.join(root, "default"),
                                       connector_factory: audit_factory(completed), output: output, error: StringIO.new).run
           assert_equal 0, status
@@ -348,7 +348,7 @@ class CLITopologyTest < Minitest::Test
     end
     N::CLI::Credentials.stub(:resolve, [Object.new, ->(*) { flunk "preview connected" }]) do
       N::Fleet.stub(:new, fleet) do
-        status = N::CLI::Topology.new(argv: ["--inventory-only", "--json", "--quiet"], env: {}, output: output, error: error).run
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--inventory-only", "--json", "--quiet"], env: {}, output: output, error: error).run
         assert_equal 0, status
       end
     end
@@ -366,7 +366,7 @@ class CLITopologyTest < Minitest::Test
       inventory = Struct.new(:devices).new([{ "ip" => fixture.device.host, "vendor" => "H3C" }])
       output, error = StringIO.new, StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
-        status = N::CLI::Topology.new(argv: ["--plan", "--json", "--quiet"], env: {}, default_config: path, default_directory: root,
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--plan", "--json", "--quiet"], env: {}, default_config: path, default_directory: root,
                                     connector_factory: ->(*) { fixture.device }, output: output, error: error).run
         assert_equal 0, status, error.string
       end
@@ -389,7 +389,7 @@ class CLITopologyTest < Minitest::Test
       inventory = Struct.new(:devices).new([{ "ip" => fixture.device.host, "name" => "edge-01", "vendor" => "H3C" }])
       output, error = StringIO.new, StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
-        status = N::CLI::Topology.new(argv: ["--plan", "--json", "--quiet"], env: {}, default_directory: root,
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--plan", "--json", "--quiet"], env: {}, default_directory: root,
                                     connector_factory: ->(*) { fixture.device }, output: output, error: error).run
         assert_equal 1, status, error.string
       end
@@ -425,7 +425,7 @@ class CLITopologyTest < Minitest::Test
       end
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
         C::Storage::AtomicFile.stub(:write, failing) do
-          status = N::CLI::Topology.new(argv: ["--apply", "--quiet"], env: {}, default_directory: root,
+          status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--apply", "--quiet"], env: {}, default_directory: root,
                                       connector_factory: ->(*) { fixture.device }, output: StringIO.new, error: StringIO.new).run
           assert_equal 2, status
         end
@@ -445,7 +445,7 @@ class CLITopologyTest < Minitest::Test
       inventory = Struct.new(:devices).new([{ "ip" => fixture.device.host, "name" => "edge", "vendor" => "H3C" }])
       output, error = StringIO.new, StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
-        status = N::CLI::Topology.new(argv: ["--plan"], env: {}, default_directory: root,
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--plan"], env: {}, default_directory: root,
                                     connector_factory: ->(*) { fixture.device }, output: output, error: error).run
         assert_equal 1, status
       end
@@ -475,7 +475,7 @@ class CLITopologyTest < Minitest::Test
       inventory = Struct.new(:devices).new([{ "ip" => fixture.device.host, "vendor" => "H3C" }])
       output, error = StringIO.new, StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { { username: "audit" } }]) do
-        status = N::CLI::Topology.new(argv: [], env: { "NC_CONFIG" => path }, load_env: true,
+        status = N::CLI::Topology.new(configuration_options: { directories: [] }, argv: [], env: { "NC_CONFIG" => path },
                                     default_config: File.join(root, "topology.yml"), default_directory: root,
                                     connector_factory: ->(*) { fixture.device }, output: output, error: error).run
         assert_equal 0, status, error.string

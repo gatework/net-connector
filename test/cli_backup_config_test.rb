@@ -12,7 +12,7 @@ class CLIBackupConfigTest < Minitest::Test
     Dir.mktmpdir do |root|
       path = File.join(root, "backup.yml")
       output = StringIO.new
-      status = N::CLI::Backup.new(argv: ["--help"], env: {}, default_config: path, default_directory: root,
+      status = N::CLI::Backup.new(configuration_options: { directories: [] }, argv: ["--help"], env: {}, default_config: path, default_directory: root,
                                 input: StringIO.new, output: output, error: StringIO.new).run
       assert_equal 0, status
       refute File.exist?(path)
@@ -24,12 +24,12 @@ class CLIBackupConfigTest < Minitest::Test
     Dir.mktmpdir do |root|
       path = File.join(root, "backup.yml")
       N::CLI::Credentials.stub(:resolve, ->(*) { flunk "initialization queried inventory" }) do
-        status = N::CLI::Backup.new(argv: ["--init", "--non-interactive"], env: {}, default_config: path, default_directory: root,
+        status = N::CLI::Backup.new(configuration_options: { directories: [] }, argv: ["--init", "--non-interactive", "--env-file", File.join(root, ".env")], env: {}, default_config: path, default_directory: root,
                                   input: StringIO.new, output: StringIO.new, error: StringIO.new).run
         assert_equal 0, status
       end
       assert File.file?(path)
-      assert_equal ["backup.yml"], Dir.children(root)
+      assert_equal %w[.env backup.yml], Dir.children(root).sort
     end
   end
 
@@ -41,7 +41,7 @@ class CLIBackupConfigTest < Minitest::Test
                                           { "ip" => "192.0.2.2", "name" => "core01", "vendor" => "H3C" }])
       output = StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { flunk "plan requested device credentials" }]) do
-        status = N::CLI::Backup.new(argv: ["--plan", "--json", "--no-progress"], env: {}, default_config: path,
+        status = N::CLI::Backup.new(configuration_options: { directories: [] }, argv: ["--plan", "--json", "--no-progress"], env: {}, default_config: path,
                                   default_directory: File.join(root, "backups"), input: StringIO.new, output: output, error: StringIO.new).run
         assert_equal 0, status
       end
@@ -56,7 +56,7 @@ class CLIBackupConfigTest < Minitest::Test
       inventory = Struct.new(:devices).new([{ "ip" => "192.0.2.1", "vendor" => "Juniper", "os" => "Junos" }])
       output, error = StringIO.new, StringIO.new
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { flunk "inventory preview requested device credentials" }]) do
-        status = N::CLI::Backup.new(mode: :tftp, argv: ["--inventory-only", "--json", "--no-progress"], env: {},
+        status = N::CLI::Backup.new(configuration_options: { directories: [] }, mode: :tftp, argv: ["--inventory-only", "--json", "--no-progress"], env: {},
                                   default_directory: root, output: output, error: error).run
         assert_equal 0, status, error.string
       end

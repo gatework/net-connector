@@ -47,7 +47,7 @@ class TopologySyncTest < Minitest::Test
       assert_equal "To_peer_#{expected}", fixture.description
       assert_equal local, fixture.device.interfaces.neighbors.first.local_interface
       assert_equal remote, fixture.device.interfaces.neighbors.first.neighbor_interface
-      assert_includes fixture.observed.map(&:first), "interface #{Net::Connector::Interfaces::InterfaceName.configuration(local)}"
+      assert_includes fixture.observed.map(&:first), "interface #{Net::Connector::Interfaces::Name.configuration(local)}"
       assert_equal(1, fixture.observed.count { |command, _| command == fixture.sample.fetch(:save) })
     ensure
       fixture&.close

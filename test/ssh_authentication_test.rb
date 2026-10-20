@@ -79,7 +79,7 @@ class SshAuthenticationTest < Minitest::Test
       N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { flunk "device credentials must not be requested" }]) do
         N::SSH::Archive::Client.stub(:new, archive) do
           archive.stub(:system, ->(*) { false }) do
-            status = N::CLI::Backup.new(mode: :tftp, argv: ["--config", path, "--non-interactive"], env: {},
+            status = N::CLI::Backup.new(configuration_options: { directories: [] }, mode: :tftp, argv: ["--config", path, "--non-interactive"], env: {},
                                         output: StringIO.new, error: error).run
             assert_equal 2, status
           end

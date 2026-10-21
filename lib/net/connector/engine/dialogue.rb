@@ -34,7 +34,9 @@ module Net
         return if command_errors.empty?
 
         # 样式不改变诊断历史；先拼回被颜色拆开的词，再保留重绘之前的失败。
-        raw = output.gsub(/\e\[[0-9;:]*m/, "").gsub(/\r(?!\n)/, "\n")
+        raw = output
+        raw = raw.gsub(/\e\[[0-9;:]*m/, "") if raw.include?("\e")
+        raw = raw.gsub(/\r(?!\n)/, "\n") if raw.include?("\r")
         diagnostic_line(raw) || (diagnostic_line(Terminal::Renderer.render(output)) if output.match?(/[\e\b]/))
       end
 

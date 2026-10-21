@@ -52,6 +52,7 @@ namespace :benchmark do
   desc "以小型合成数据检查离线基准及本地 PTY；不设置机器性能阈值"
   task :smoke do
     ruby "script/benchmark_memory.rb", "--suite", "smoke"
+    ruby "script/benchmark_dialogue.rb", "--smoke"
   end
 end
 

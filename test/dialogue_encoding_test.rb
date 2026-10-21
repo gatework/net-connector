@@ -22,6 +22,18 @@ class DialogueEncodingTest < Minitest::Test
     assert_equal "Error: 命令无效", dialogue.diagnostic(output)
   end
 
+  def test_plain_and_crlf_diagnostics_leave_caller_output_unchanged
+    ["\n", "\r\n", "\r"].each do |separator|
+      output = ["中文说明", "Error: 命令无效", "router>"].join(separator).freeze
+      original = output.dup
+      diagnostic = dialogue.diagnostic(output)
+      assert_equal "Error: 命令无效", diagnostic
+      diagnostic.replace("changed")
+      assert_equal original, output
+    end
+    assert_nil dialogue.diagnostic("ordinary output\nrouter>".freeze)
+  end
+
   private
 
   def dialogue

@@ -190,6 +190,8 @@ module Net
                     exclude_vendors: list("NC_EXCLUDE_VENDORS"),
                     include_names: list("NC_INCLUDE_NAMES"), exclude_names: list("NC_EXCLUDE_NAMES"),
                     name_match: raw("NC_NAME_MATCH", "contains"),
+                    include_models: list("NC_INCLUDE_MODELS"), exclude_models: list("NC_EXCLUDE_MODELS"),
+                    model_match: raw("NC_MODEL_MATCH", "contains"),
                     vendor_overrides: json("NC_VENDOR_OVERRIDES", {}),
                     host_overrides: json("NC_HOST_OVERRIDES", {}),
                     mappings: json("NC_DEVICE_RULES", []))
@@ -381,6 +383,8 @@ module Net
                          exclude_vendors: list("NC_EXCLUDE_VENDORS"),
                          include_names: list("NC_INCLUDE_NAMES"), exclude_names: list("NC_EXCLUDE_NAMES"),
                          name_match: raw("NC_NAME_MATCH", "contains"),
+                         include_models: list("NC_INCLUDE_MODELS"), exclude_models: list("NC_EXCLUDE_MODELS"),
+                         model_match: raw("NC_MODEL_MATCH", "contains"),
                          vendor_overrides: json("NC_VENDOR_OVERRIDES", {}),
                          host_overrides: json("NC_HOST_OVERRIDES", {}),
                          device_rules: json("NC_DEVICE_RULES", []) },

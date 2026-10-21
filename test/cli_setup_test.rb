@@ -129,7 +129,7 @@ class CLISetupTest < Minitest::Test
           options = { environment: { "NC_CONFIG" => path }, env_file: env_path, init: true, interactive: true }
           configuration = N::CLI::Options.configuration(options, env: { "ND_URL" => "https://inventory.example.invalid" },
                                                        mode: mode, directories: [], home: root)
-          answers = ["y", "", "", "", "", "", "", "", "", "", answer, ""]
+          answers = ["y", "", "", "", "", "", "", "", "", "", "", "", "", answer, ""]
           output = Terminal.new
           setup = N::CLI::Setup.new(mode: mode, options: options, configuration: configuration,
                                    input: Terminal.new(answers.join("\n") + "\n"), output: output)

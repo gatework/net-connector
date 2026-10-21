@@ -38,7 +38,7 @@ module Net
           end
           vendor = rules.resolve(row)
           name = [row["name"], row["dns"]].find { |value| value && !value.strip.empty? }
-          issue ||= :filtered unless rules.selected?(host, vendor, name: name&.strip)
+          issue ||= :filtered unless rules.selected?(host, vendor, name: name&.strip, model: row["model"])
           issue ||= :unsupported_vendor unless vendor
           new(host: host, source_ip: source_ip, name: name&.strip, vendor: vendor,
               source_vendor: row["vendor"], model: row["model"], os: row["os"],

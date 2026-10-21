@@ -102,10 +102,11 @@ module Net
             if document.dig("netdisco", "source") == "http"
               field(document, "netdisco", "url", "清单 URL", mode.nil? ? "https://netdisco.example.invalid" : nil)
             end
-            %w[include_hosts exclude_hosts include_names exclude_names].each do |key|
+            %w[include_hosts exclude_hosts include_names exclude_names include_models exclude_models].each do |key|
               field(document, "inventory", key, key, [], list: true)
             end
             field(document, "inventory", "name_match", "名称匹配 contains/prefix/glob", "contains")
+            field(document, "inventory", "model_match", "型号匹配 contains/prefix/glob", "contains")
             %w[include_vendors exclude_vendors].each { |key| field(document, "inventory", key, key, [], list: true) }
             if document.key?("topology")
               field(document, "topology", "parallel", "拓扑并发数 1..500", inherited_parallel)

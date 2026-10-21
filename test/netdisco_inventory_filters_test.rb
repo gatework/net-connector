@@ -12,6 +12,34 @@ class NetdiscoInventoryFiltersTest < Minitest::Test
     { "ip" => ip, "name" => name, "vendor" => vendor }
   end
 
+  def test_backup_and_topology_share_model_flags_and_yaml_rules
+    rows = [row.merge("model" => "S6800"), row(ip: "192.0.2.11").merge("model" => "S6800-spare")]
+    [:backup, :topology].each do |mode|
+      output, error = StringIO.new, StringIO.new
+      klass = mode == :backup ? N::CLI::Backup : N::CLI::Topology
+      inventory = Struct.new(:devices).new(rows)
+      status = N::CLI::Credentials.stub(:resolve, [inventory, ->(*) { nil }]) do
+        klass.new(configuration_options: { directories: [] },
+          argv: %w[--inventory-only --json --model s68* --exclude-model *spare --model-match glob], env: {},
+          output: output, error: error).run
+      end
+      assert_equal 0, status, error.string
+      assert_includes output.string, "192.0.2.10"
+      refute_includes output.string, "192.0.2.11"
+    end
+    values = N::Config.parse("inventory" => { "include_models" => ["S68"], "model_match" => "prefix" })
+    rules = N::Settings.new(env: {}, defaults: values).rules
+    assert rules.selected?("192.0.2.10", :h3c, model: "S6800")
+    refute rules.selected?("192.0.2.10", :h3c, model: "other")
+  end
+
+  def test_model_selection_uses_shared_inventory_rules
+    rules = N::Rules.new(include_models: ["S68*"], exclude_models: ["*spare"], model_match: :glob)
+    assert N::Device.from_row(row.merge("model" => "s6800"), rules: rules).ready?
+    assert_equal :filtered, N::Device.from_row(row.merge("model" => "s6800-spare"), rules: rules).issue
+    assert_equal :filtered, N::Device.from_row(row, rules: rules).issue
+  end
+
   def test_address_ranges_match_inventory_without_expansion_and_exclusion_wins
     rules = N::Rules.new(include_hosts: ["192.0.2.1-20", "2001:db8::/32"], exclude_hosts: ["192.0.2.10-192.0.2.12"])
     assert N::Device.from_row(row(ip: "192.0.2.1"), rules: rules).ready?

@@ -23,3 +23,7 @@
 - `script/benchmark_memory.rb` 提供完整离线场景；`script/benchmark_dialogue.rb` 支持 `--library` 基线对比。正确性断言在计时外，记录规模与分配量，不把微基准外推成网络收益。
 - 示例入口修改后，从实际 checkout 直接运行其普通命令，不只通过额外 `-Ilib` 或旁边工作树验证。
 - 更新 CHANGELOG 与相关文档；远程发布与仓库可见性变更仅按明确授权执行。
+
+## 清单选择
+
+`Inventory::Selection` 是地址、名称、连接器厂商、型号过滤的唯一实现；`Inventory::Filters` 维护共享 CLI 参数，`Inventory::AddressSet` 维护地址区间。Netdisco Rules 只保留厂商解析/映射并组合 Selection。其他脚本直接复用，禁止复制筛选循环或恢复 Netdisco::AddressSet 旧入口。筛选不得访问凭据或建立连接。

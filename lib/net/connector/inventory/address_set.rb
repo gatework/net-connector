@@ -4,7 +4,7 @@ require "ipaddr"
 
 module Net
   module Connector
-    module Netdisco
+    module Inventory
       # 精确地址用索引，网段和范围只保存端点；绝不展开地址或发起扫描。
       class AddressSet
         # 规范化精确地址并合并同族网段区间，不展开大型地址范围。

@@ -52,10 +52,12 @@ class ConfigInitializerTest < Minitest::Test
   def test_interactive_answers_are_validated_and_invalid_values_reprompt
     Dir.mktmpdir do |root|
       path = File.join(root, "backup.yml")
-      answers = ["y", "http", "https://inventory.example.invalid", "192.0.2.1-20", "", "edge", "wlc", "contains", "h3c", "", "501", "8", "./backups", "192.0.2.10"]
+      answers = ["y", "http", "https://inventory.example.invalid", "192.0.2.1-20", "", "edge", "wlc", "S68*", "*spare", "contains", "glob", "h3c", "", "501", "8", "./backups", "192.0.2.10"]
       initializer = N::Config::Initializer.new(input: StringIO.new(answers.join("\n") + "\n"), output: StringIO.new)
       assert_equal :created, initializer.create(path: path, document: {}, interactive: true)
       settings = N::Settings.from_file(path, env: {})
+      assert_equal ["S68*"], settings.public_config.fetch(:inventory).fetch(:include_models)
+      assert_equal "glob", settings.public_config.fetch(:inventory).fetch(:model_match)
       assert_equal 8, settings.parallel
       assert_equal "192.0.2.10", settings.tftp_server
       assert_equal ["edge"], settings.public_config.fetch(:inventory).fetch(:include_names)
@@ -65,7 +67,7 @@ class ConfigInitializerTest < Minitest::Test
   def test_interactive_selector_empty_entries_reprompt_without_shifting_later_answers
     Dir.mktmpdir do |root|
       path = File.join(root, "backup.yml")
-      answers = ["y", "http", "https://inventory.example.invalid", "192.0.2.1,", "192.0.2.2", "", "edge", "", "contains", "h3c", "", "4", "./backups"]
+      answers = ["y", "http", "https://inventory.example.invalid", "192.0.2.1,", "192.0.2.2", "", "edge", "", "", "", "contains", "contains", "h3c", "", "4", "./backups"]
       initializer = N::Config::Initializer.new(input: StringIO.new(answers.join("\n") + "\n"), output: StringIO.new)
       assert_equal :created, initializer.create(path: path, document: {}, interactive: true, mode: :backup)
       inventory = N::Settings.from_file(path, env: {}).public_config.fetch(:inventory)
@@ -78,7 +80,7 @@ class ConfigInitializerTest < Minitest::Test
   def test_shared_file_serialization_preserves_the_validated_interactive_answers
     Dir.mktmpdir do |root|
       path = File.join(root, "net-connector.yml")
-      answers = ["y", "http", "https://inventory.example.invalid", "", "", "edge", "", "contains", "", "", "501", "8", "./reports"]
+      answers = ["y", "http", "https://inventory.example.invalid", "", "", "edge", "", "", "", "contains", "contains", "", "", "501", "8", "./reports"]
       output = StringIO.new
       initializer = N::Config::Initializer.new(input: StringIO.new(answers.join("\n") + "\n"), output: output)
       assert_equal :created, initializer.create(path: path, document: {}, interactive: true, mode: :backup)
@@ -139,7 +141,7 @@ class ConfigInitializerTest < Minitest::Test
   def test_topology_questions_update_topology_policy_without_creating_backup_or_tftp_settings
     Dir.mktmpdir do |root|
       path = File.join(root, "topology.yml")
-      answers = ["y", "http", "https://inventory.example.invalid", "", "", "edge", "", "contains", "", "", "6", "./topology"]
+      answers = ["y", "http", "https://inventory.example.invalid", "", "", "edge", "", "", "", "contains", "contains", "", "", "6", "./topology"]
       initializer = N::Config::Initializer.new(input: StringIO.new(answers.join("\n") + "\n"), output: StringIO.new)
       document = { "topology" => { "mode" => "plan", "parallel" => 4 } }
       assert_equal :created, initializer.create(path: path, document: document, interactive: true)

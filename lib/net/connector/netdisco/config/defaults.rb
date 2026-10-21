@@ -15,7 +15,8 @@ module Net
                               "cache_directory" => "./.cache/net-connector/inventory", "inventory_timeout" => 300,
                               "page_size" => 500, "allow_insecure_http" => false },
               "inventory" => { "include_hosts" => [], "exclude_hosts" => [], "include_names" => [], "exclude_names" => [],
-                               "include_vendors" => [], "exclude_vendors" => [], "name_match" => "contains" },
+                               "include_vendors" => [], "exclude_vendors" => [], "name_match" => "contains",
+                               "include_models" => [], "exclude_models" => [], "model_match" => "contains" },
               "ssh" => { "protocol" => "ssh", "host_key_policy" => "accept_new", "log_level" => "info" },
               "backup" => { "directory" => directory || "./backups", "parallel" => 4 }
             }

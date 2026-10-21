@@ -6,6 +6,7 @@ require_relative "../planner"
 require_relative "../config"
 require_relative "../../config"
 require_relative "help"
+require_relative "../../inventory/filters"
 
 module Net
   module Connector
@@ -208,24 +209,15 @@ module Net
 
           # 同类 CLI 筛选替换 YAML；重复参数在本次调用内合并，绝不把范围展开为地址列表。
           def self.add_filters(opts, values)
-            {
-              "--hosts PATTERNS" => ["NC_INCLUDE_HOSTS", "包含地址、网段或范围，逗号分隔"],
-              "--exclude-hosts PATTERNS" => ["NC_EXCLUDE_HOSTS", "排除地址、网段或范围"],
-              "--name PATTERNS" => ["NC_INCLUDE_NAMES", "包含设备名称，可重复或逗号分隔"],
-              "--exclude-name PATTERNS" => ["NC_EXCLUDE_NAMES", "排除设备名称，可重复或逗号分隔"],
-              "--vendor NAMES" => ["NC_INCLUDE_VENDORS", "包含连接器厂商名"],
-              "--exclude-vendor NAMES" => ["NC_EXCLUDE_VENDORS", "排除连接器厂商名"]
-            }.each do |flag, (key, description)|
-              opts.on(flag, description) do |value|
-                items = value.split(",", -1).map(&:strip)
-                raise OptionParser::InvalidArgument if items.empty? || items.any?(&:empty?)
-
-                previous = values[:environment][key]&.split(",") || []
-                values[:environment][key] = (previous + items).uniq.join(",")
+            Net::Connector::Inventory::Filters.add_options(opts, single_host: false) do |key, value|
+              field = Net::Connector::Inventory::Filters::LISTS.fetch(key, key).to_s
+              environment_key = "NC_#{field.upcase}"
+              if value.is_a?(Array)
+                previous = values[:environment][environment_key]&.split(",") || []
+                values[:environment][environment_key] = (previous + value).uniq.join(",")
+              else
+                values[:environment][environment_key] = value
               end
-            end
-            opts.on("--name-match MODE", %w[contains prefix glob], "名称匹配方式：contains / prefix / glob") do |value|
-              values[:environment]["NC_NAME_MATCH"] = value
             end
             opts.on("--host IP", "选择单台设备，可重复") do |value|
               raise OptionParser::InvalidArgument if value.empty? || value.match?(/[\/,]/)

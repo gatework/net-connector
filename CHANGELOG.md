@@ -1,5 +1,14 @@
 # 更新记录
 
+## Unreleased
+
+## 0.17.2 - 2026-10-23
+
+- Migrate shared CLI entrypoints to ctx_cli 0.2.0 names without legacy aliases.
+- Synchronize new directory ancestry across batch reports and local/SSH archives; synchronize uploaded-file cleanup.
+- Keep host-key comparison and vendor parsing independent of host field separators.
+- Reuse ctx_cli configuration, initialization, terminal and option boundaries without changing backup/TFTP/topology policies.
+
 ## 0.17.1 - 2026-10-22
 
 - Delegate shared configuration, private initialization, option groups and terminal interaction to ctx_cli 0.1.0.

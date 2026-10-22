@@ -4,6 +4,7 @@ module Net
   module Connector
     # 文件存储不依赖设备连接；备份、离线导出和批量报告共享这些原语。
     module Storage
+      autoload :Directory, File.expand_path("storage/directory", __dir__)
       autoload :BatchDirectory, File.expand_path("storage/batch_directory", __dir__)
       autoload :BackupLock, File.expand_path("storage/backup_lock", __dir__)
       autoload :AtomicFile, File.expand_path("storage/atomic_file", __dir__)

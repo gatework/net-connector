@@ -246,7 +246,7 @@ class KnownHostsTest < Minitest::Test
   end
 
   def test_record_separator_cannot_hide_a_concurrent_host_key_change
-    previous, verbosity = $/, $VERBOSE
+    previous, field_separator, verbosity = $/, $;, $VERBOSE
     first = snapshot(1)
     second = snapshot(1)
     original = "192.0.2.1 #{@key}\n"
@@ -255,11 +255,13 @@ class KnownHostsTest < Minitest::Test
     first.commit
     $VERBOSE = nil
     $/ = nil
+    $; = ","
     error = assert_raises(Net::Connector::ConnectionError) { second.commit }
     assert_equal :host_key_changed, error.code
     assert_equal original, File.binread(@destination)
   ensure
     $/ = previous
+    $; = field_separator
     $VERBOSE = verbosity
     first&.close
     second&.close

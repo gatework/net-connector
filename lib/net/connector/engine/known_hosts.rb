@@ -159,7 +159,7 @@ module Net
         output, status = Open3.capture2e("ssh-keygen", "-f", path, "-F", @host)
         raise IOError, "reading device host key failed" unless [0, 1].include?(status.exitstatus)
 
-        output.lines("\n").reject { |line| line.start_with?("#") }.map { |line| line.split[1, 2] }.uniq
+        output.lines("\n").reject { |line| line.start_with?("#") }.map { |line| line.split(" ")[1, 2] }.uniq
       end
 
       # 从指定快照中移除当前主机条目，不直接修改共享信任文件。

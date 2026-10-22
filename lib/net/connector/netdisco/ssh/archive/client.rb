@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../../storage/directory"
+
 require "digest"
 require "json"
 require "open3"
@@ -68,7 +70,7 @@ module Net
               end
               @password = password&.dup&.freeze
               @report_directory = File.expand_path(directory)
-              FileUtils.mkdir_p(@report_directory, mode: 0o700)
+              Storage::Directory.prepare(@report_directory)
               @batch = "#{Time.now.getlocal("+08:00").strftime("%Y-%m-%d_%H-%M-%S")}-ssh-#{SecureRandom.hex(8)}"
               @launcher = launcher || method(:open_ssh)
               @custom_launcher = !launcher.nil?
@@ -179,7 +181,7 @@ module Net
                                           archive_path: remote_path(proof.fetch("archive_path")))
               outcome = outcome.with(backup: receipt)
               path = File.join(@report_directory, "tftp", archive_name)
-              FileUtils.mkdir_p(File.dirname(path), mode: 0o700)
+              Storage::Directory.prepare(File.dirname(path))
               Storage::AtomicFile.write(path, bytes)
               outcome = outcome.with(backup: receipt.with(local_path: path))
               raise Tftp::Archive::Failure unless Storage::FileReader.fingerprint(path).sha256 == digest

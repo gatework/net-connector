@@ -32,7 +32,7 @@ module Net
 
           # 从山石成功回显提取实际目标文件名。
           def remote_path(_target, result)
-            filename = completion_line(result)&.split&.last
+            filename = completion_line(result)&.split(" ")&.last
             TftpTarget.validate_path!(filename)
           end
 

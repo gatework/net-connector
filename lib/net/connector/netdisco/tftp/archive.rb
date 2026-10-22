@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../storage/directory"
+
 require "fileutils"
 require "tempfile"
 require "digest"
@@ -50,7 +52,7 @@ module Net
           def initialize(directory:, root: nil)
             @report_directory = File.expand_path(directory)
             @server_root = root && File.realpath(root)
-            FileUtils.mkdir_p(@report_directory, mode: 0o700)
+            Storage::Directory.prepare(@report_directory)
             @server_archive_directory = create_server_archive_directory if @server_root
             @remote_suffix = reserve_remote_suffix unless @server_root
             @verifier = Tftp::Verifier.new(root: @server_root)
@@ -113,7 +115,7 @@ module Net
             return unless bytes
 
             previous_directory = File.join(@server_archive_directory, "previous")
-            FileUtils.mkdir_p(previous_directory, mode: 0o700)
+            Storage::Directory.prepare(previous_directory)
             archive_path = File.join(previous_directory, archive_filename(device, File.extname(remote_filename)))
             Storage::AtomicFile.write(archive_path, bytes)
             previous
@@ -126,7 +128,7 @@ module Net
             parent = File.join(@server_root, "archive")
             raise ArgumentError, "TFTP archive directory must not be a symlink" if File.symlink?(parent)
 
-            FileUtils.mkdir_p(parent, mode: 0o700)
+            Storage::Directory.prepare(parent)
             raise ArgumentError, "TFTP archive directory escaped its root" unless File.realpath(parent) == parent
 
             base = batch_name
@@ -136,6 +138,7 @@ module Net
               path = File.join(parent, candidate)
               begin
                 Dir.mkdir(path, 0o700)
+                Storage::Directory.sync(parent)
                 return path
               rescue Errno::EEXIST
                 number += 1
@@ -171,7 +174,7 @@ module Net
             receipt = outcome.backup
             saved_paths = { local_path: nil, archive_path: nil }
             batch_directory = File.join(@report_directory, "tftp")
-            FileUtils.mkdir_p(batch_directory, mode: 0o700)
+            Storage::Directory.prepare(batch_directory)
             extension = File.extname(receipt.path)
             filename = archive_filename(outcome.device, extension)
             batch_archive_path = File.join(batch_directory, filename)
@@ -192,6 +195,7 @@ module Net
               raise Failure.new(host: outcome.device.host) unless Storage::FileReader.same_entry?(uploaded_path, uploaded_fingerprint)
 
               File.unlink(uploaded_path)
+              Storage::Directory.sync(File.dirname(uploaded_path))
             end
             outcome.with(backup: receipt.with(**saved_paths))
           rescue StandardError => error

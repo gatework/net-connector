@@ -43,7 +43,7 @@ module Net
             local_column = output.match?(/^[ \t]*System Name[ \t]+Local Interface\b/i) ? 1 : 0
             lines = neighbor_lines(output)
             return unless lines.all? do |line|
-              interface = line.split.fetch(local_column, nil)
+              interface = line.split(" ").fetch(local_column, nil)
               interface&.match?(/\A(?:[A-Za-z][A-Za-z-]*\d+(?:\/\d+)+|(?:Bridge-Aggregation|BAGG|Route-Aggregation|RAGG)\d+)(?:[:.]\d+)*\z/i)
             end
 

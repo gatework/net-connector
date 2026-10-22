@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "fileutils"
+require_relative "directory"
 
 module Net
   module Connector
@@ -9,7 +9,7 @@ module Net
       class BatchDirectory
         # 固定 UTC+8，不依赖运行主机时区；mkdir 原子防止并发任务覆盖。
         def self.create(root, time: Time.now)
-          FileUtils.mkdir_p(root, mode: 0o700)
+          Directory.prepare(root)
           stamp = time.getlocal("+08:00").strftime("%Y-%m-%d_%H-%M-%S")
           suffix = 0
           loop do
@@ -17,6 +17,7 @@ module Net
             path = File.join(root, name)
             begin
               Dir.mkdir(path, 0o700)
+              Directory.sync(root)
               return path
             rescue Errno::EEXIST
               suffix += 1

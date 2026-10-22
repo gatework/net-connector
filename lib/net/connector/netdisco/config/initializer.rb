@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "yaml"
-require "ctx_cli/initialization"
+require "ctx_cli/initializer"
 require "ctx_cli/terminal"
 require_relative "../settings"
 require_relative "../../config"
@@ -15,7 +15,7 @@ module Net
           # 绑定配置问答的输入输出，保留调用方对 IO 的所有权。
           def initialize(input: $stdin, output: $stderr)
             @input, @output = input, output
-            @writer = CtxCli::Initialization.new(prefix: ".net-connector-config-")
+            @writer = CtxCli::Initializer.new(prefix: ".net-connector-config-")
           end
 
           # 完成默认值校验与可选问答后独占发布新配置，不覆盖已存在文件。

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "../../storage/directory"
+
 require "json"
 require_relative "../report"
 require "fileutils"
@@ -17,7 +19,7 @@ module Net
             # 以临时文件和重命名原子写入私有 JSON 报告。
             def write(report, directory:)
               destination = File.expand_path(directory)
-              FileUtils.mkdir_p(destination, mode: 0o700)
+              Storage::Directory.prepare(destination)
               filename = "netdisco-#{report.mode}-#{report.started_at.strftime("%Y%m%dT%H%M%SZ")}-#{SecureRandom.hex(4)}.json"
               path = File.join(destination, filename)
               Storage::AtomicFile.write(path, JSON.pretty_generate(report.summary)).path

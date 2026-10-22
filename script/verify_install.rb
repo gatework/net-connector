@@ -8,9 +8,17 @@ require_relative "package"
 
 # 从校验过的 gem 构造普通与 Bundler 最小应用，验证消费者不依赖源码检出目录。
 module InstalledPackageCheck
-  def self.run(artifact)
+  def self.run(artifact, candidates: [])
     artifact = File.expand_path(artifact)
     package = PackageCheck.verify(artifact)
+    # 显式候选包参与依赖闭包；同版本也必须安装并校验给定制品字节。
+    candidate_files = candidates.to_h do |path|
+      path = File.expand_path(path)
+      candidate = Gem::Package.new(path)
+      candidate.verify
+      raise "Unexpected CLI candidate" unless candidate.spec.name == "ctx_cli"
+      [candidate.spec.name, [candidate.spec, path]]
+    end
     # 只复制运行时依赖闭包的缓存，禁止开发 Gemfile 给最小应用补齐遗漏的依赖。
     dependencies = []
     pending = package.runtime_dependencies.dup
@@ -18,7 +26,7 @@ module InstalledPackageCheck
       dependency = pending.shift
       next if dependencies.any? { |spec| spec.name == dependency.name }
 
-      spec = Gem.loaded_specs.fetch(dependency.name)
+      spec = candidate_files[dependency.name]&.first || Gem.loaded_specs.fetch(dependency.name)
       raise "Incompatible installed dependency: #{dependency.name}" unless dependency.matches_spec?(spec)
 
       dependencies << spec
@@ -31,8 +39,9 @@ module InstalledPackageCheck
       gems = File.join(directory, "gems")
       environment = cleaned.merge("GEM_HOME" => gems, "GEM_PATH" => gems)
       dependencies.each do |spec|
-        if File.file?(spec.cache_file)
-          FileUtils.cp(spec.cache_file, directory)
+        cache = candidate_files[spec.name]&.last || spec.cache_file
+        if File.file?(cache)
+          FileUtils.cp(cache, directory)
         elsif !spec.default_gem?
           raise "Missing gem cache: #{spec.full_name}; run bundle install before installed-package checks"
         end
@@ -55,6 +64,15 @@ module InstalledPackageCheck
       end
       PackageCheck.command(environment, RbConfig.ruby, "-S", "gem", "install", "--local", "--no-document",
                            File.join(directory, File.basename(artifact)), chdir: directory)
+      candidate_files.each_value do |spec, path|
+        Dir.mktmpdir("cli-candidate-") do |source|
+          Gem::Package.new(path).extract_files(source)
+          spec.files.each do |file|
+            installed = File.join(gems, "gems", spec.full_name, file)
+            raise "CLI candidate byte mismatch: #{file}" unless File.binread(installed) == File.binread(File.join(source, file))
+          end
+        end
+      end
       PackageCheck.command(environment, RbConfig.ruby, "smoke.rb", "plain", chdir: directory)
       # 在 Gemfile 中仅声明消费者需要安装的 gem。
       # Ruby 随附的默认 Bundler 未必有 .gem 缓存，在隔离 GEM_HOME 下仍可按版本加载。
@@ -73,7 +91,7 @@ end
 
 if $PROGRAM_NAME == __FILE__
   begin
-    InstalledPackageCheck.run(ARGV.fetch(0))
+    InstalledPackageCheck.run(ARGV.fetch(0), candidates: ARGV.drop(1))
   rescue StandardError => error
     warn error.message
     exit 1

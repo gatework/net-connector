@@ -27,3 +27,8 @@
 ## 清单选择
 
 `Inventory::Selection` 是地址、名称、连接器厂商、型号过滤的唯一实现；`Inventory::Filters` 维护共享 CLI 参数，`Inventory::AddressSet` 维护地址区间。Netdisco Rules 只保留厂商解析/映射并组合 Selection。其他脚本直接复用，禁止复制筛选循环或恢复 Netdisco::AddressSet 旧入口。筛选不得访问凭据或建立连接。
+
+## 公共 CLI
+
+配置读取、私有初始化、终端边界和公共参数使用 ctx_cli；不要复制对应实现。领域策略、设备能力和备份完成状态留在当前仓库。`CTX_CLI_PATH=../ctx_cli` 显式源码联调；普通入口与安装验证使用候选 gem，不能隐式探测相邻目录。
+`CTX_CLI_GEM=/absolute/path/ctx_cli-0.1.0.gem bash script/ci` 将精确候选传给隔离安装检查；也可 `ruby script/verify_install.rb PACKAGE CLI_PACKAGE`。核心仍支持 Ruby 3.4。

@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "ctx_cli/terminal"
 require_relative "../config/initializer"
 require_relative "../config/defaults"
 
@@ -98,7 +99,7 @@ module Net
 
           # 标准输入凭据协议独占输入；只有真实终端才允许配置问答。
           def terminal?
-            !@options[:stdin_credentials] && @input.respond_to?(:tty?) && @input.tty? && @output.respond_to?(:tty?) && @output.tty?
+            !@options[:stdin_credentials] && CtxCli::Terminal.tty?(@input, @output)
           end
 
           # 创建和定制为独立选择；显式 --init 默认直接生成已识别值。

@@ -41,7 +41,7 @@ namespace :package do
   task :verify do
     require_relative "script/package"
     artifact = PackageCheck.build
-    ruby "script/verify_install.rb", artifact
+    ruby "script/verify_install.rb", artifact, *Array(ENV["CTX_CLI_GEM"])
   end
 end
 

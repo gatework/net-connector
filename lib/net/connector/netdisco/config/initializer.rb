@@ -1,7 +1,8 @@
 # frozen_string_literal: true
 
 require "yaml"
-require "tempfile"
+require "ctx_cli/initialization"
+require "ctx_cli/terminal"
 require_relative "../settings"
 require_relative "../../config"
 
@@ -14,6 +15,7 @@ module Net
           # 绑定配置问答的输入输出，保留调用方对 IO 的所有权。
           def initialize(input: $stdin, output: $stderr)
             @input, @output = input, output
+            @writer = CtxCli::Initialization.new(prefix: ".net-connector-config-")
           end
 
           # 完成默认值校验与可选问答后独占发布新配置，不覆盖已存在文件。
@@ -26,7 +28,7 @@ module Net
 
             values = YAML.safe_load(YAML.dump(document), aliases: false)
             validate!(values)
-            interactive = @input.respond_to?(:tty?) && @input.tty? && @output.respond_to?(:tty?) && @output.tty? if interactive.nil?
+            interactive = CtxCli::Terminal.tty?(@input, @output) if interactive.nil?
             configure(values, mode: mode, inherited_parallel: inherited_parallel) if interactive && answer("进入交互配置？[y/N]", "n").casecmp?("y")
             validate!(values)
             name = mode == :topology ? "topology" : "backup"
@@ -43,14 +45,7 @@ module Net
           private
 
           # 判断已有配置是否为普通文件；符号链接或其他类型不作为可用配置。
-          def existing?(path)
-            stat = File.lstat(path)
-            raise ArgumentError, "config path must be a regular file" unless stat.file?
-
-            true
-          rescue Errno::ENOENT
-            false
-          end
+          def existing?(path) = @writer.existing?(path)
 
           # 通过完整策略快照校验候选文档，拒绝生成不可执行的配置。
           def validate!(document)
@@ -118,51 +113,8 @@ module Net
             end
           end
 
-          # 尝试关闭目录与临时文件全部句柄，清理失败不覆盖原始异常。
-          def close_files(file, parent, primary)
-            Thread.handle_interrupt(Exception => :never) do
-              error = nil
-              [-> { parent&.close }, -> { file&.close! }].each do |close|
-                begin
-                  close.call
-                rescue Exception => failure # rubocop:disable Lint/RescueException -- 两个资源均尝试关闭，保留首个故障。
-                  error ||= failure
-                end
-              end
-              raise error if error && !primary
-            end
-          end
-
-          # 先写入并同步私有临时文件，再以独占硬链接发布完整配置并同步目录。
-          # 最终路径只在内容写全并同步后出现；已有目标由独占链接保护，取消也不能留下半份配置。
-          def write(path, contents)
-            directory = File.realpath(File.dirname(File.expand_path(path)))
-            destination = File.join(directory, File.basename(path))
-            file = parent = nil
-            begin
-              Thread.handle_interrupt(Exception => :never) { file = Tempfile.new([".net-connector-config-", ".tmp"], directory) }
-              file.binmode
-              file.chmod(0o600)
-              file.write(contents)
-              file.flush
-              file.fsync
-              begin
-                File.link(file.path, destination)
-              rescue Errno::EEXIST
-                return :exists if existing?(destination)
-
-                raise
-              end
-              Thread.handle_interrupt(Exception => :never) { parent = File.open(directory, File::RDONLY | File::NOFOLLOW) }
-              parent.fsync
-              :created
-            rescue Exception => failure # rubocop:disable Lint/RescueException -- 清理不能覆盖输入取消或发布故障。
-              primary = failure
-              raise
-            ensure
-              close_files(file, parent, primary)
-            end
-          end
+          # 公开文档已校验；排他发布、同步与清理由公共初始化器负责。
+          def write(path, contents) = @writer.create(path: path, contents: contents)
         end
       end
     end

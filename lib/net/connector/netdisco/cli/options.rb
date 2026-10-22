@@ -1,6 +1,8 @@
 # frozen_string_literal: true
 
 require "optparse"
+require "ctx_cli/options"
+require "ctx_cli/terminal"
 require_relative "../settings"
 require_relative "../planner"
 require_relative "../config"
@@ -66,13 +68,9 @@ module Net
           def self.add_terminal_options(opts, values)
             opts.on("--ask-password", "隐藏输入设备密码") { values[:ask_password] = true }
             opts.on("--ask-netdisco-password", "隐藏输入 Netdisco 密码") { values[:ask_netdisco_password] = true }
-            opts.on("--quiet", "--no-progress", "关闭进度；可配合 --json") { values[:no_progress] = true }
-            opts.on("--verbose", "显示逐条登录和命令事件") { values[:verbose] = true }
-            opts.on("--json", "在 stdout 输出 JSON；默认显示可读摘要") { values[:json] = true }
+            CtxCli::Options.output(opts, values, quiet: :no_progress)
             opts.on("--stdin-credentials", "从标准输入读取凭据并等待 RUN") { values[:stdin_credentials] = true }
-            opts.on("--init", "创建缺失配置和环境模板后退出；已有文件不覆盖") { values[:init] = true }
-            opts.on("--interactive", "缺少文件时询问是否创建，并可交互填写") { values[:interactive] = true }
-            opts.on("--non-interactive", "禁用问答；创建文件须同时指定 --init") { values[:interactive] = false }
+            CtxCli::Options.initialization(opts, values)
           end
 
           # 登记互斥的拓扑执行模式和格式化参数，应用模式必须显式选择。
@@ -257,15 +255,7 @@ module Net
             return unless values[flag]
 
             raise ArgumentError, "密码提示与显式密码不能同时使用" if values[:environment].key?(key)
-            raise ArgumentError, "密码提示需要交互终端；自动化任务可使用环境变量或 --stdin-credentials" unless input.tty?
-            require "io/console"
-            output.print "#{label}："
-            output.flush
-            password = input.noecho { |terminal| terminal.gets("\n") }&.chomp("\n")
-            output.puts
-            raise ArgumentError, "密码不能为空" if password.nil? || password.empty?
-
-            values[:environment][key] = password
+            values[:environment][key] = CtxCli::Terminal.new(input: input, out: output).password(label: label)
           end
           private_class_method :read_password, :parser_for
         end

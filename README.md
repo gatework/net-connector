@@ -62,3 +62,7 @@ script/ci
 The gate scans secrets, lints Ruby and workflows, runs tests and local PTY benchmarks, and verifies isolated gem installs. See [CONTRIBUTING](CONTRIBUTING.md), [security reporting](SECURITY.md), and the [changelog](CHANGELOG.md). Issues and pull requests may be written in English or Chinese.
 
 Licensed under [MIT](LICENSE).
+
+## ctx_cli 公共入口
+
+宿主配置文件读取、私有文件初始化、公共参数与终端交互由 ctx_cli 维护。原 `Net::Connector::Config`、配置路径、优先级和 backup/TFTP/topology 策略继续保留。源码联调使用 `CTX_CLI_PATH=../ctx_cli`；隔离安装可通过 `CTX_CLI_GEM=/absolute/path/ctx_cli-0.1.0.gem` 传入精确候选。

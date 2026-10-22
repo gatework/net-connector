@@ -14,3 +14,6 @@ group :development, :test do
   gem "timeout", ">= 0.3", require: false
   gem "tmpdir", ">= 0.1", require: false
 end
+
+# 显式候选源码联调；普通安装按 gemspec 解析。
+gem "ctx_cli", path: ENV.fetch("CTX_CLI_PATH") if ENV["CTX_CLI_PATH"]

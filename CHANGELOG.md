@@ -1,5 +1,9 @@
 # 更新记录
 
+## 0.17.1 - 2026-10-22
+
+- Delegate shared configuration, private initialization, option groups and terminal interaction to ctx_cli 0.1.0.
+
 ## 0.17.0 - 2026-10-22
 
 - Centralize inventory selection and CLI filters in Net::Connector::Inventory; add vendor/model inclusion, exclusion and matching modes.

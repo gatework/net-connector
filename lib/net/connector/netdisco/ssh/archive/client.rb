@@ -25,11 +25,11 @@ module Net
               # 构造不含凭据值的认证不可用提示，在设备任务开始前拒绝执行。
               def initialize(password_configured: false)
                 detail = if password_configured
-                           "已读取 NC_TFTP_SSH_PASSWORD，但 SSH 认证或主连接建立失败；请检查账号、密码、主机密钥及网络。密码含 # 或 $ 时请在 .env 中用单引号包裹"
+                           "NC_TFTP_SSH_PASSWORD was read, but SSH authentication or master connection setup failed; check username, password, host key and network. Wrap passwords containing # or $ in single quotes in .env"
                          else
-                           "请在项目根目录 .env 设置 NC_TFTP_SSH_PASSWORD，或配置可用的 SSH 密钥/agent"
+                           "Set NC_TFTP_SSH_PASSWORD in the project root .env, or configure a working SSH key/agent"
                          end
-                super("SSH 归档认证不可用：#{detail}。已停止，未连接设备。")
+                super("SSH archive authentication unavailable: #{detail}. Stopped without connecting to devices.")
               end
             end
 
@@ -37,7 +37,7 @@ module Net
             class PreparationUnavailable < ArgumentError
               # 提示检查远端运行时及私有目录，不携带 SSH 输出或设备配置。
               def initialize
-                super("SSH 归档目录预检失败：请检查服务器 python3、TFTP 根目录及写权限；archive、批次目录和 .net-connector-locks 须由 SSH 账号拥有且权限为 0700。已停止，未连接设备。")
+                super("SSH archive directory preflight failed: check server python3, the TFTP root and write permissions; archive, batch directories and .net-connector-locks must be owned by the SSH user with mode 0700. Stopped without connecting to devices.")
               end
             end
 

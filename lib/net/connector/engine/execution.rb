@@ -28,7 +28,7 @@ module Net
       def sensitive? = @sensitive
 
       # 依次准备、执行和记录脚本命令；失败时保留已完成步骤并统一抛错。
-      def execute_script(script)
+      def execute_script(script, on_receipt: nil)
         script.each do |original_command|
           @session.with_command_redaction(original_command) do
             @current_command = original_command
@@ -39,15 +39,7 @@ module Net
             raise build_error("prepare_command must return a Command or nil") unless command.is_a?(Command)
 
             @current_command = command
-            started = Expect.monotonic
-            step = nil
-            response = execute_command(command) do |received|
-              step = Command::Result.new(command: command, output: received.output, prompt: received.prompt,
-                                       duration: Expect.monotonic - started)
-              steps << step
-            end
-            # 设备已经完成命令；后处理失败也不能从部分结果中抹去其副作用。
-            @after_command.call(command, response, self)
+            step = execute_step(command, on_receipt: on_receipt)
             yield step if block_given?
             validate_response_budget!(@last_executed_command)
           rescue => error
@@ -96,6 +88,41 @@ module Net
       end
 
       private
+
+      # 完成回执独立于成功进度；日志、后处理、预算或取消不撤销已收到的响应。
+      def execute_step(command, on_receipt:)
+        started = Expect.monotonic
+        step, failure = nil, nil
+        finished = false
+        begin
+          response = execute_command(command) do |received|
+            step = Command::Result.new(command: command, output: received.output, prompt: received.prompt,
+                                       duration: Expect.monotonic - started)
+            steps << step
+          end
+          @after_command.call(command, response, self)
+          finished = true
+          step
+        rescue Exception => error # rubocop:disable Lint/RescueException -- 完成事实先交付，原始取消随后继续传播。
+          failure = error
+          raise
+        ensure
+          deliver_receipt(step, on_receipt, failure, unwinding: !finished) if step && on_receipt
+        end
+      end
+
+      # 收据处理不能用自身异常替换此前的设备失败或取消，也不自动重复回调。
+      def deliver_receipt(step, callback, failure, unwinding:)
+        callback.call(step)
+      ensure
+        # ensure 覆盖回调内的 throw/kill；不能让二次退出替换外层正在传播的取消。
+        if unwinding
+          raise failure, cause: failure.cause if failure
+
+          # 仅结束这个回调子方法，让 execute_step 原有的非局部退出继续。
+          return # rubocop:disable Lint/EnsureReturn -- 保留调用方正在进行的 throw、return 或线程终止。
+        end
+      end
 
       # 单响应上限仍约束正在读取的命令；累计预算阻止继续发送，不承诺设备尚未执行。
       def validate_send_budget!(command)

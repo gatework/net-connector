@@ -52,13 +52,13 @@ class ModuleLoadingTest < Minitest::Test
       output = StringIO.new
       progress = Net::Connector::Collect::Progress.new(io: output)
       device = { "host" => "192.0.2.1" }
-      item = { device: device, status: :complete, report_saved: true, duration_ms: 1 }
+      item = { "device" => device, "status" => "complete", "report_saved" => true, "duration_ms" => 1 }
       progress.with_updates do
         progress.plan(devices: [device], total: 2, parallel: 3, label: "采集")
         progress.start(device)
         progress.result(item)
       end
-      progress.finish(status: :complete, devices: [item], pending: [], directory: "/tmp/fixture-report")
+      progress.finish("status" => "complete", "devices" => [item], "pending" => [], "directory" => "/tmp/fixture-report")
       legacy_entry = begin
         require #{File.join(LIBRARY, "net/connector/collection_progress").inspect}
         true
@@ -70,7 +70,7 @@ class ModuleLoadingTest < Minitest::Test
                          legacy_entry: legacy_entry, features: $LOADED_FEATURES)
     RUBY
     assert_equal "Net::Connector::Progress", result.fetch("superclass")
-    assert_includes result.fetch("output"), "成功 1，部分成功 0，失败 0，跳过 1"
+    assert_includes result.fetch("output"), "succeeded 1, partial 0, failed 0, skipped 1"
     assert_includes result.fetch("output"), "summary.json"
     refute result.fetch("legacy_constant")
     refute result.fetch("legacy_entry")

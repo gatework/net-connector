@@ -24,7 +24,7 @@ class NetdiscoProgressTest < Minitest::Test
     output = StringIO.new
     Netdisco::Progress.new(io: output).finish(report)
     assert_includes output.string, "unsupported_vendor=1"
-    assert_includes output.string, "结果 未完成"
+    assert_includes output.string, "result incomplete"
   end
 
   def test_topology_result_filters_unknown_error_codes
@@ -35,7 +35,7 @@ class NetdiscoProgressTest < Minitest::Test
     progress.start(device)
     progress.operation_result(device: device, status: :failed, duration_ms: 10, error_code: :private_diagnostic)
     refute_includes output.string, "private_diagnostic"
-    assert_includes output.string, "耗时 10 ms"
+    assert_includes output.string, "elapsed 10 ms"
   end
 
   def test_live_events_and_private_file_log_coexist_without_configuration_output
@@ -47,8 +47,8 @@ class NetdiscoProgressTest < Minitest::Test
       transport.on_write = lambda do |bytes, _timeout|
         next unless bytes == "show running-config\n"
 
-        assert_includes output.string, "执行命令：show running-config；等待响应"
-        refute_includes output.string, "备份已保存"
+        assert_includes output.string, "Executing command: show running-config; waiting for response"
+        refute_includes output.string, "Backup saved"
       end
       factory = lambda do |device, settings|
         device.build_connector(**settings, transport: transport, on_event: progress.method(:event))
@@ -62,9 +62,9 @@ class NetdiscoProgressTest < Minitest::Test
       report = fleet.backup_all(directory: directory, plan: plan, on_start: progress.method(:start), on_result: progress.method(:result))
       progress.finish(report)
       assert report.success?, report.summary.inspect
-      assert_includes output.string, "登录成功"
-      assert_includes output.string, "[1/1 100% 执行中 0]"
-      assert_includes output.string, "备份已保存"
+      assert_includes output.string, "Login succeeded"
+      assert_includes output.string, "[1/1 100% running 0]"
+      assert_includes output.string, "Backup saved"
       refute_includes output.string, secret
       refute_includes output.string, "private-password"
       log = File.read(File.join(directory, "logs", "192.0.2.1.log"))
@@ -88,10 +88,10 @@ class NetdiscoProgressTest < Minitest::Test
       end
     end.each(&:value)
     assert_equal 21, output.string.lines.size
-    assert_includes output.string, "本次 10 台；跳过 2 台"
-    assert_includes output.string.lines.last, "[10/10 100% 执行中 0]"
-    assert_equal 10, output.string.scan("未完成（authentication_error）").size
-    refute_includes output.string, "备份已保存"
+    assert_includes output.string, "selected 10; skipped 2 devices"
+    assert_includes output.string.lines.last, "[10/10 100% running 0]"
+    assert_equal 10, output.string.scan("Incomplete (authentication_error)").size
+    refute_includes output.string, "Backup saved"
   end
 
   def test_tftp_progress_is_not_server_verification_and_quiet_mode_is_silent
@@ -104,7 +104,7 @@ class NetdiscoProgressTest < Minitest::Test
       progress.result(Netdisco::Outcome.new(device: device, status: :reported_uploaded, backup: nil,
                                             error_code: nil, error_type: nil, duration_ms: 10))
       if enabled
-        assert_includes output.string, "服务器文件尚未核验"
+        assert_includes output.string, "server file has not been verified"
       else
         assert_empty output.string
       end
@@ -118,14 +118,14 @@ class NetdiscoProgressTest < Minitest::Test
     device = Struct.new(:host, :vendor).new("192.0.2.1", :h3c)
     progress.plan(Struct.new(:ready, :inventory).new([device], [device]), parallel: 1)
     progress.start(device)
-    assert_includes output.string, "登录 1"
+    assert_includes output.string, "Logging in 1"
     progress.result(Netdisco::Outcome.new(device: device, status: :failed, backup: nil,
                                           error_code: :authentication_error, error_type: "Error", duration_ms: 10))
     assert_includes output.string, "1/1 100%"
-    assert_includes output.string, "未完成 1"
-    assert_includes output.string, "192.0.2.1  未完成（authentication_error）"
+    assert_includes output.string, "incomplete 1"
+    assert_includes output.string, "192.0.2.1  Incomplete (authentication_error)"
     assert_includes output.string, "\r\e[2K"
-    refute_includes output.string, "开始备份"
+    refute_includes output.string, "Starting backup"
   end
 
   def test_heartbeat_updates_elapsed_and_oldest_task_without_device_output
@@ -139,9 +139,9 @@ class NetdiscoProgressTest < Minitest::Test
     progress.start(device)
     clock += 12
     progress.tick
-    assert_includes output.string, "耗时 00:00:12"
-    assert_includes output.string, "剩余 估算中"
-    assert_includes output.string, "最久 192.0.2.1 登录 12s"
+    assert_includes output.string, "elapsed 00:00:12"
+    assert_includes output.string, "remaining estimating"
+    assert_includes output.string, "longest 192.0.2.1 logging in 12s"
   end
 
   def test_progress_worker_is_joined_on_exception_and_clears_display
@@ -292,10 +292,10 @@ class NetdiscoProgressTest < Minitest::Test
       clock += 2
       progress.result(Netdisco::Outcome.new(device: device, status: :failed, backup: nil,
                                             error_code: :login_timeout, error_type: "Error", duration_ms: 2000))
-      assert_includes output.string, "剩余 约 00:00:10" if index == 4
+      assert_includes output.string, "remaining about 00:00:10" if index == 4
     end
-    assert_includes output.string, "0.5 台/秒"
-    assert_includes output.string, "剩余 00:00:00"
+    assert_includes output.string, "0.5 devices/s"
+    assert_includes output.string, "remaining 00:00:00"
   end
 
   def test_topology_pending_evidence_is_quiet_by_default_and_explained_in_verbose_mode
@@ -308,13 +308,12 @@ class NetdiscoProgressTest < Minitest::Test
       progress.operation_result(device: device, status: :unverified, duration_ms: 10,
                                 issues: [{ interface: "GE1/0/1", code: :unknown_neighbor_name }])
       if verbose
-        assert_includes output.string, "邻居未提供名称 1 个接口"
-        assert_includes output.string, "含待核实接口"
+        assert_includes output.string, "neighbor name missing 1 interfaces"
+        assert_includes output.string, "contains unverified interfaces"
       else
         refute_includes output.string, device.host
-        assert_includes output.string, "待核实 1 失败 0"
+        assert_includes output.string, "unverified 1 failed 0"
       end
-      refute_includes output.string, "unverified"
     end
   end
 

@@ -195,7 +195,7 @@ class NetdiscoReportingTest < Minitest::Test
       output = StringIO.new
       Netdisco::Progress.new(io: output).finish(report)
       refute_includes output.string, secret
-      assert_includes output.string, "报告错误 StandardError"
+      assert_includes output.string, "report error StandardError"
     end
   ensure
     self.class.send(:remove_const, secret) if secret && self.class.const_defined?(secret, false)
@@ -218,7 +218,7 @@ class NetdiscoReportingTest < Minitest::Test
       assert_equal secret.to_sym, report.outcomes.first.error_code
       %w[summary.json summary.txt].each { |name| refute_includes File.read(File.join(directory, name)), secret }
       refute_includes output.string, secret
-      assert_includes output.string, "未完成（failed）"
+      assert_includes output.string, "Incomplete (failed)"
       assert_includes output.string, "failed=1"
     end
   end
@@ -237,8 +237,8 @@ class NetdiscoReportingTest < Minitest::Test
       assert_equal secret, report.report_error
       %w[summary.json summary.txt].each { |name| refute_includes File.read(File.join(directory, name)), secret }
       refute_includes output.string, secret
-      assert_includes File.read(File.join(directory, "summary.txt")), "报告错误：StandardError"
-      assert_includes output.string, "报告错误 StandardError"
+      assert_includes File.read(File.join(directory, "summary.txt")), "report error: StandardError"
+      assert_includes output.string, "report error StandardError"
     end
   end
 
@@ -258,9 +258,9 @@ class NetdiscoReportingTest < Minitest::Test
 
       text = File.read(File.join(directory, "summary.txt"))
       assert_includes text, "authentication_error=1"
-      assert_includes text, "报告错误：IOError"
-      assert_includes output.string, "未完成（authentication_error）"
-      assert_includes output.string, "报告错误 IOError"
+      assert_includes text, "report error: IOError"
+      assert_includes output.string, "Incomplete (authentication_error)"
+      assert_includes output.string, "report error IOError"
       refute_includes text + output.string, "private"
     end
   end

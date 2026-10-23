@@ -33,7 +33,7 @@ module Net
         def self.add_options(parser, single_host: true, &accept)
           flags = single_host ? {"--host IP" => "hosts"}.merge(FLAGS) : FLAGS
           flags.each do |flag, key|
-            parser.on(flag, "筛选已有清单，同类条件取并集，排除优先") do |value|
+            parser.on(flag, "Filter inventory; combine conditions of the same type with OR; exclusions take precedence") do |value|
               items = value.split(",", -1).map(&:strip)
               raise OptionParser::InvalidArgument, "filter list contains empty items" if items.empty? || items.any?(&:empty?)
 
@@ -41,7 +41,7 @@ module Net
             end
           end
           MODES.each do |key|
-            parser.on("--#{key.tr("_", "-")} MODE", %w[contains prefix glob], "匹配方式 contains / prefix / glob") { |value| accept.call(key, value) }
+            parser.on("--#{key.tr("_", "-")} MODE", %w[contains prefix glob], "Matching mode: contains / prefix / glob") { |value| accept.call(key, value) }
           end
         end
       end

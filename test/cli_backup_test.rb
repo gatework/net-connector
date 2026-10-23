@@ -108,7 +108,7 @@ class CLIBackupTest < Minitest::Test
       output, error = StringIO.new, StringIO.new
       error.define_singleton_method(:tty?) { true }
       error.define_singleton_method(:write) do |text|
-        raise IOError, "private terminal diagnostic" if text.include?("登录")
+        raise IOError, "private terminal diagnostic" if text.include?("Logging in")
 
         super(text)
       end
@@ -130,7 +130,7 @@ class CLIBackupTest < Minitest::Test
   end
 
   def test_final_display_failure_updates_saved_diagnostics_and_exit_status_without_repeating_devices
-    ["批次结束", "报告：", "文本报告："].each do |trigger|
+    ["Batch finished", "report: ", "Text report: "].each do |trigger|
       Dir.mktmpdir do |root|
         output, error = StringIO.new, StringIO.new
         error.define_singleton_method(:write) do |text|

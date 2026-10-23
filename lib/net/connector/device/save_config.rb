@@ -5,13 +5,13 @@ module Net
     # 保存命令及能力入口，响应语义由通用执行器负责。
     module SaveConfig
       # 执行厂商保存配置命令；不支持时返回显式失败结果。
-      def save_config
+      def save_config(on_receipt: nil)
         if save_commands.empty?
           return Result.new(error: @session.build_error(UnsupportedOperation, "saving configuration is not supported",
                                                   phase: :save))
         end
 
-        execute_script(save_commands)
+        on_receipt.nil? ? execute_script(save_commands) : execute_script(save_commands, on_receipt: on_receipt)
       end
 
       # 返回保存配置命令；空数组表示设备不支持保存。

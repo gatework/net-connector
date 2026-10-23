@@ -29,7 +29,7 @@ module Net
             values = YAML.safe_load(YAML.dump(document), aliases: false)
             validate!(values)
             interactive = CtxCli::Terminal.tty?(@input, @output) if interactive.nil?
-            configure(values, mode: mode, inherited_parallel: inherited_parallel) if interactive && answer("进入交互配置？[y/N]", "n").casecmp?("y")
+            configure(values, mode: mode, inherited_parallel: inherited_parallel) if interactive && answer("Start interactive configuration? [y/N]", "n").casecmp?("y")
             validate!(values)
             name = mode == :topology ? "topology" : "backup"
             write(path, Net::Connector::Config.dump(values, name: name, path: path))
@@ -54,7 +54,7 @@ module Net
 
           # 显示有效默认值；空输入可由字段选择沿用或保留继承，输入结束则中止生成。
           def answer(label, default, blank: default)
-            @output.print "#{label}#{default.nil? ? "" : " [#{default}]"}："
+            @output.print "#{label}#{default.nil? ? "" : " [#{default}]"}: "
             @output.flush
             line = @input.gets("\n")
             raise EOFError, "configuration input ended before completion" unless line
@@ -67,7 +67,7 @@ module Net
           def field(document, section, key, label, default, list: false)
             values = (document[section] ||= {})
             previous = values.fetch(key, default)
-            label = "#{label}（留空继承）" if key == "parallel" && !values.key?(key)
+            label = "#{label}(leave blank to inherit)" if key == "parallel" && !values.key?(key)
             loop do
               displayed = previous.is_a?(Array) ? previous.join(",") : previous&.to_s
               text = answer(label, displayed, blank: key == "parallel" ? nil : displayed)
@@ -86,30 +86,30 @@ module Net
                 values[key] = value
                 return
               rescue ArgumentError
-                @output.puts "值无效，请重新输入。"
+                @output.puts "Invalid value; enter it again."
               end
             end
           end
 
           # 按清单来源和业务模式逐项填写非敏感配置。
           def configure(document, mode: nil, inherited_parallel:)
-            field(document, "netdisco", "source", "清单来源 http/postgres", "http")
+            field(document, "netdisco", "source", "Inventory source http/postgres", "http")
             if document.dig("netdisco", "source") == "http"
-              field(document, "netdisco", "url", "清单 URL", mode.nil? ? "https://netdisco.example.invalid" : nil)
+              field(document, "netdisco", "url", "Inventory URL", mode.nil? ? "https://netdisco.example.invalid" : nil)
             end
             %w[include_hosts exclude_hosts include_names exclude_names include_models exclude_models].each do |key|
               field(document, "inventory", key, key, [], list: true)
             end
-            field(document, "inventory", "name_match", "名称匹配 contains/prefix/glob", "contains")
-            field(document, "inventory", "model_match", "型号匹配 contains/prefix/glob", "contains")
+            field(document, "inventory", "name_match", "Name matching contains/prefix/glob", "contains")
+            field(document, "inventory", "model_match", "Model matching contains/prefix/glob", "contains")
             %w[include_vendors exclude_vendors].each { |key| field(document, "inventory", key, key, [], list: true) }
             if document.key?("topology")
-              field(document, "topology", "parallel", "拓扑并发数 1..500", inherited_parallel)
-              field(document, "topology", "directory", "拓扑报告目录", "./topologys")
+              field(document, "topology", "parallel", "Topology concurrency 1..500", inherited_parallel)
+              field(document, "topology", "directory", "Topology report directory", "./topologys")
             else
-              field(document, "backup", "parallel", "并发数 1..500", inherited_parallel)
-              field(document, "backup", "directory", "备份目录", "./backups")
-              field(document, "tftp", "server", "TFTP 服务器", nil) if mode.nil? || mode == :tftp
+              field(document, "backup", "parallel", "Concurrency 1..500", inherited_parallel)
+              field(document, "backup", "directory", "Backup directory", "./backups")
+              field(document, "tftp", "server", "TFTP server", nil) if mode.nil? || mode == :tftp
             end
           end
 

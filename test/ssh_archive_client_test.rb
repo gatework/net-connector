@@ -353,7 +353,7 @@ class SshArchiveClientTest < Minitest::Test
       refute File.exist?(File.join(server, "running-config.xml"))
       plan = N::Planner.new(report.outcomes.map(&:device)).call(mode: :tftp, limit_per_vendor: nil, allow_fixed_name_reuse: true)
       N::Report::Text.write(directory: reports, report: report, plan: plan, parallel: 3)
-      assert_includes File.read(File.join(reports, "summary.txt")), "TFTP 服务器文件：已核验 3，未核验 0。"
+      assert_includes File.read(File.join(reports, "summary.txt")), "TFTP server files: verified 3, unverified 0."
     end
   end
 

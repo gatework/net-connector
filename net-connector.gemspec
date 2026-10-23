@@ -24,7 +24,7 @@ Gem::Specification.new do |spec|
   spec.bindir = "bin"
   spec.executables = ["net-backup"]
   # 使用当前 Session 与缓冲字节查询契约，具体版本由宿主应用锁定。
-  spec.add_dependency "ctx_cli", "~> 0.2.0"
+  spec.add_dependency "ctx_cli", ">= 0.2.1"
   spec.add_dependency "expect-pty", ">= 0.9.4"
   spec.add_dependency "textfsm"
   spec.add_dependency "pg"

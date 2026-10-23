@@ -251,6 +251,28 @@ class EngineBoundaryTest < Minitest::Test
     end
   end
 
+  def test_connection_cleanup_failure_prevents_recovery_from_abandoning_the_transport
+    first = ConnectorFake.new("Connection refused")
+    second = ConnectorFake.new("router#")
+    recoveries = 0
+    first.define_singleton_method(:as_telnet) { recoveries += 1; second }
+    first.on_close = -> { raise IOError, "transport cleanup failed" }
+    device = Connector.build(:cisco_ios, host: "192.0.2.1", username: "operator",
+                             transport: first, telnet_fallback: true)
+
+    failure = assert_raises(Connector::ConnectionError) { device.connect }
+
+    assert_equal :connection_refused, failure.code
+    assert_equal 0, recoveries
+    assert_equal 0, second.opens
+    assert_equal 1, first.closes
+    refute device.connected?
+    assert_empty first.writes
+    assert_empty second.writes
+  ensure
+    device&.close
+  end
+
   def test_unknown_host_confirmation_obeys_host_key_policy
     %i[strict accept_new].each do |policy|
       transport = ConnectorFake.new("Continue connecting (yes/no/[fingerprint])? ", "router#")

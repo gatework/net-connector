@@ -27,7 +27,7 @@ class ReportFilesTest < Minitest::Test
       result = N::Report::Files.write(report_class.new(original.batch), directory: directory, plan: plan, parallel: 1)
       assert result.policy_success?
       assert_equal 1, JSON.parse(File.read(result.report_location)).fetch("devices").size
-      assert_includes File.read(File.join(directory, "summary.txt")), "成功：1"
+      assert_includes File.read(File.join(directory, "summary.txt")), "Succeeded: 1"
       assert_equal 1, summaries.size
     end
   end
@@ -48,8 +48,8 @@ class ReportFilesTest < Minitest::Test
         assert_equal "IOError", result.report_error
         assert_nil result.report_location
         text = File.read(File.join(directory, "summary.txt"))
-        assert_includes text, "策略通过：false"
-        assert_includes text, "报告错误：IOError"
+        assert_includes text, "policy passed: false"
+        assert_includes text, "report error: IOError"
         refute_includes text, "private failure details"
       end
     end

@@ -58,13 +58,13 @@ module Net
             finish_interrupted(fleet, progress, options, batch_directory, plan, settings)
             130
           rescue EOFError
-            @error.puts "配置输入未完成，已停止；请检查先前提示的文件。"
+            @error.puts "Configuration setup is incomplete; stopped. Check the files listed above."
             2
           rescue ArgumentError, Inventory::Error => exception
-            @error.puts "备份参数或清单错误：#{exception.message}"
+            @error.puts "Backup argument or inventory error: #{exception.message}"
             2
           rescue StandardError => exception
-            @error.puts "备份未完成（#{exception.class}）"
+            @error.puts "Backup incomplete (#{exception.class})"
             2
           end
 
@@ -111,10 +111,10 @@ module Net
           # 清单离线回退和本地保存故障单独提示，不覆盖设备操作结果。
           def inventory_warning(fleet)
             if fleet.inventory_status && fleet.inventory_status[:source] == :stale_cache
-              @error.puts "清单刷新失败，使用历史缓存（#{fleet.inventory_status[:refresh_error_code]}）"
+              @error.puts "Inventory refresh failed; using the previous cache (#{fleet.inventory_status[:refresh_error_code]})"
             end
             return unless fleet.inventory_status && fleet.inventory_status[:write_error_type]
-            @error.puts "清单缓存写入失败（#{fleet.inventory_status[:write_error_type]}）"
+            @error.puts "Inventory cache write failed (#{fleet.inventory_status[:write_error_type]})"
 
           end
 
@@ -188,7 +188,7 @@ module Net
             progress.finish(report)
             progress.location(report.report_location) if report.report_location
             summary_path = File.join(batch_directory, "summary.txt")
-            progress.location(summary_path, label: "文本报告") if File.file?(summary_path)
+            progress.location(summary_path, label: "Text report") if File.file?(summary_path)
             updated = record_progress_error(report, progress)
             unless updated.equal?(report)
               # 末尾显示也可能首次失败，只补写诊断，不重复设备任务或事件。

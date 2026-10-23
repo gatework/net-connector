@@ -99,7 +99,10 @@ begin
   rows = device.parse_config(template: "cisco/show_running_config.textfsm")
   raise "Installed TextFSM template failed" unless rows.first.fetch("DESCRIPTION") == "package-smoke"
   raise "Installed collection leaked diagnostic output" if session_log.string.include?("package-smoke")
-  raise "Installed ordinary command failed" unless device.execute_command("show status").success?
+  receipts = []
+  ordinary = device.execute_command("show status", on_receipt: ->(step) { receipts << step })
+  raise "Installed ordinary command failed" unless ordinary.success?
+  raise "Installed completion callback lost a step" unless receipts == ordinary.steps && receipts.one?
   raise "Installed ordinary logging did not resume" unless session_log.string.include?("public-package-output")
 
   directory = File.join(root, "backup-smoke-#{ARGV.fetch(0)}")
@@ -138,9 +141,11 @@ budget_configuration = Net::Connector::Configuration.new(host: "192.0.2.1", user
 budget_transport = InstalledTransport.new(budget_configuration)
 budget_device = Net::Connector.build(:cisco_ios, configuration: budget_configuration, transport: budget_transport)
 begin
-  bounded = budget_device.execute_script(["show status", "show status", "never"])
+  receipts = []
+  bounded = budget_device.execute_script(["show status", "show status", "never"], on_receipt: ->(step) { receipts << step })
   raise "Installed script budget did not stop the script" unless bounded.error.instance_of?(Net::Connector::ScriptOutputLimitExceeded)
   raise "Installed script budget lost finished output" unless bounded.steps.size == 2 && bounded.steps.all? { |step| step.output.include?("public-package-output") }
+  raise "Installed receipt callback lost budget failure evidence" unless receipts == bounded.steps
   raise "Installed script budget left transport open" unless budget_transport.closed?
 ensure
   budget_device.close
@@ -158,8 +163,8 @@ raise "Installed executable is missing or not executable" unless File.executable
 raise "Executable wrapper escaped isolated install" unless File.realpath(executable).start_with?("#{root}/")
 {
   "--version" => [0, spec.version.to_s],
-  "--help" => [0, "用法：net-backup"],
-  "--invalid-fixture-option" => [2, "net-backup: 参数无效"]
+  "--help" => [0, "Usage: net-backup"],
+  "--invalid-fixture-option" => [2, "net-backup: invalid arguments"]
 }.each do |argument, (exit_status, expected)|
   stdout, stderr, status = Open3.capture3(RbConfig.ruby, executable, argument)
   raise "Installed executable exit status differs for #{argument}" unless status.exitstatus == exit_status

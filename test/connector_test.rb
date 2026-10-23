@@ -237,16 +237,16 @@ class ConnectorTest < Minitest::Test
       device.close
       log = File.read(path, encoding: Encoding::UTF_8)
       assert_equal 0o600, File.stat(path).mode & 0o777
-      assert_match(/开始连接 192\.0\.2\.1（FAKE，账号 admin）/, log)
-      assert_match(/等待设备登录提示/, log)
-      assert_match(/登录过程回显（已脱敏）/, log)
+      assert_match(/Connecting to 192\.0\.2\.1\(FAKE, user admin\)/, log)
+      assert_match(/Waiting for the device login prompt/, log)
+      assert_match(/Login output \(redacted\)/, log)
       assert_match(/Password:/, log)
-      assert_match(/登录成功，设备提示符：fw#/, log)
-      assert_match(/下发命令：show status/, log)
-      assert_match(/设备回显：/, log)
+      assert_match(/Login succeeded; device prompt: fw#/, log)
+      assert_match(/Sending command: show status/, log)
+      assert_match(/Device output: /, log)
       output = log.lines.grep(/event=device_output.*phase=command.*output=/)
       assert_equal(["show status", "line one", "line two", "fw#"], output.map { |line| line[/output="([^"]+)"/, 1] })
-      assert_match(/命令回显结束，已收到设备提示符/, log)
+      assert_match(/Command output complete; device prompt received/, log)
       assert_match(/^\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3} [+-]\d{2}:\d{2}\] INFO \[host=192\.0\.2\.1\] /, log)
       refute_includes log, '"status"'
       refute_includes log, "secret-password"
@@ -272,7 +272,7 @@ class ConnectorTest < Minitest::Test
     assert device.execute_command("show status").success?
     device.close
     assert_equal ::Logger::INFO, logger.level
-    assert_match(/\[host=192\.0\.2\.1\] 开始连接/, output.string)
+    assert_match(/\[host=192\.0\.2\.1\] Connecting to/, output.string)
     refute_includes output.string, "device detail"
     logger.info("caller logger still open")
     assert_includes output.string, "caller logger still open"
@@ -307,8 +307,8 @@ class ConnectorTest < Minitest::Test
                                     log_level: :debug)
       assert_raises(Net::Connector::LoginTimeout) { device.connect }
       log = File.read(path, encoding: Encoding::UTF_8)
-      assert_match(/等待设备登录提示/, log)
-      assert_match(/ERROR \[host=192\.0\.2\.1\] 登录失败：/, log)
+      assert_match(/Waiting for the device login prompt/, log)
+      assert_match(/ERROR \[host=192\.0\.2\.1\] Login failed: /, log)
       refute_includes log, "secret-password"
     end
   end
@@ -330,14 +330,14 @@ class ConnectorTest < Minitest::Test
       assert device.execute_command("show status").success?
       device.close
       log = File.read(path, encoding: Encoding::UTF_8)
-      assert_match(/INFO \[host=192\.0\.2\.1\] 开始连接/, log)
-      assert_match(/INFO \[host=192\.0\.2\.1\] 登录成功/, log)
-      assert_match(/INFO \[host=192\.0\.2\.1\] 下发命令/, log)
-      assert_match(/INFO \[host=192\.0\.2\.1\] 命令回显结束/, log)
+      assert_match(/INFO \[host=192\.0\.2\.1\] Connecting to/, log)
+      assert_match(/INFO \[host=192\.0\.2\.1\] Login succeeded/, log)
+      assert_match(/INFO \[host=192\.0\.2\.1\] Sending command/, log)
+      assert_match(/INFO \[host=192\.0\.2\.1\] Command output complete/, log)
       refute_includes log, "device detail"
       refute File.exist?("#{path}.transcript")
-      refute_includes log, "登录过程回显"
-      refute_includes log, "命令耗时"
+      refute_includes log, "Login output"
+      refute_includes log, "Command elapsed time"
       assert_raises(ArgumentError) { Net::Connector::Configuration.new(log_level: :verbose) }
     end
   end
@@ -350,7 +350,7 @@ class ConnectorTest < Minitest::Test
                                      log_file: success_path)
       success.tftp_backup(host: "192.0.2.10", path: "fw.dat")
       success.close
-      assert_match(/INFO \[host=192\.0\.2\.1\] TFTP 备份：设备报告上传成功，目标 192\.0\.2\.10\/fw\.dat；服务器文件尚未核验/,
+      assert_match(/INFO \[host=192\.0\.2\.1\] TFTP backup: device reported a successful upload to 192\.0\.2\.10\/fw\.dat; server file has not been verified/,
                    File.read(success_path, encoding: Encoding::UTF_8))
 
       failure_path = File.join(directory, "failure.log")
@@ -362,8 +362,8 @@ class ConnectorTest < Minitest::Test
       end
       failure.close
       log = File.read(failure_path, encoding: Encoding::UTF_8)
-      assert_match(/ERROR \[host=192\.0\.2\.2\] TFTP 备份失败：设备报告传输失败/, log)
-      refute_match(/INFO 开始连接/, log)
+      assert_match(/ERROR \[host=192\.0\.2\.2\] TFTP backup failed: device reported a transfer failure/, log)
+      refute_match(/INFO Connecting to/, log)
     end
   end
 

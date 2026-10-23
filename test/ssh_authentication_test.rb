@@ -21,6 +21,60 @@ class SshAuthenticationTest < Minitest::Test
     refute N::SSH::Authentication.respond([Gem.ruby, "-e", repeated], password: "private-fixture")
   end
 
+  def test_cancelled_session_construction_reclaims_its_terminal_handles
+    interruption = Interrupt.new("cancel completed session construction")
+    created = nil
+    observer = lambda do |session|
+      created = session
+      Thread.current.raise(interruption)
+    end
+    error = assert_raises(Interrupt) do
+      observe_session_initialization(observer) do
+        N::SSH::Authentication.respond([Gem.ruby, "--disable-gems", "-e", "exit"], password: "private-fixture")
+      end
+    end
+    assert_same interruption, error
+    refute_nil created
+    assert created.to_io.closed?, "cancelled construction must close the reader"
+    assert created.slave.closed?, "cancelled construction must close the slave"
+    assert_nil created.pid
+  ensure
+    created&.close
+  end
+
+  def test_authentication_error_is_not_replaced_by_ordinary_cleanup_error
+    assert_authentication_failure_preserved(IOError.new("authentication write failed"))
+  end
+
+  def test_authentication_interruption_is_not_replaced_by_ordinary_cleanup_error
+    assert_authentication_failure_preserved(Interrupt.new("cancel authentication write"))
+  end
+
+  def test_cleanup_error_propagates_after_successful_authentication_dialogue
+    cleanup_error = IOError.new("authentication cleanup failed")
+    created = nil
+    observer = lambda do |session|
+      created = session
+      session.define_singleton_method(:hard_close) do |**options|
+        super(**options)
+        raise cleanup_error
+      end
+    end
+    script = 'STDOUT.sync=true; print "Password: "; STDIN.gets'
+    error = assert_raises(IOError) do
+      observe_session_initialization(observer) do
+        N::SSH::Authentication.respond([Gem.ruby, "--disable-gems", "-e", script], password: "private-fixture")
+      end
+    end
+    assert_same cleanup_error, error
+    assert created.to_io.closed?
+    assert created.slave.closed?
+    refute created.alive?
+  ensure
+    created&.singleton_class&.remove_method(:hard_close)
+    created&.close
+  end
+
   def test_server_password_is_excluded_from_public_policy_and_snapshots
     environment = { "NC_TFTP_SSH_PASSWORD" => "private-fixture" }
     settings = N::Settings.new(env: environment)
@@ -57,8 +111,8 @@ class SshAuthenticationTest < Minitest::Test
       N::SSH::Authentication.stub(:respond, false) do
         2.times do
           error = assert_raises(N::SSH::Archive::Client::AuthenticationUnavailable) { archive.prepare }
-          assert_includes error.message, "已读取 NC_TFTP_SSH_PASSWORD"
-          refute_includes error.message, "请在项目根目录 .env 设置"
+          assert_includes error.message, "NC_TFTP_SSH_PASSWORD was read"
+          refute_includes error.message, "Set NC_TFTP_SSH_PASSWORD in the project root .env"
           refute_includes error.message, "private-fixture"
         end
       end
@@ -86,7 +140,7 @@ class SshAuthenticationTest < Minitest::Test
         end
       end
       assert_includes error.string, "NC_TFTP_SSH_PASSWORD"
-      assert_includes error.string, "已停止，未连接设备"
+      assert_includes error.string, "Stopped without connecting to devices"
       refute_includes error.string, "\e["
     ensure
       archive&.close
@@ -134,5 +188,44 @@ class SshAuthenticationTest < Minitest::Test
       archive&.close
       FileUtils.remove_entry_secure(created) if created && File.directory?(created)
     end
+  end
+
+  private
+
+  def observe_session_initialization(observer, &)
+    trace = TracePoint.new(:return) do |event|
+      next unless event.method_id == :initialize && event.self.is_a?(Expect::Session)
+
+      trace.disable
+      observer.call(event.self)
+    end
+    trace.enable(&)
+  ensure
+    trace&.disable
+  end
+
+  def assert_authentication_failure_preserved(primary_error)
+    created = nil
+    observer = lambda do |session|
+      created = session
+      session.define_singleton_method(:write) { |*| raise primary_error }
+      session.define_singleton_method(:hard_close) do |**options|
+        super(**options)
+        raise IOError, "authentication cleanup failed"
+      end
+    end
+    script = 'STDOUT.sync=true; print "Password: "; STDIN.gets'
+    error = assert_raises(primary_error.class) do
+      observe_session_initialization(observer) do
+        N::SSH::Authentication.respond([Gem.ruby, "--disable-gems", "-e", script], password: "private-fixture")
+      end
+    end
+    assert_same primary_error, error
+    assert created.to_io.closed?
+    assert created.slave.closed?
+    refute created.alive?
+  ensure
+    created&.singleton_class&.remove_method(:hard_close)
+    created&.close
   end
 end

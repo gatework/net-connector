@@ -404,8 +404,8 @@ module Net
           failure = normalize_error(error, phase: phase)
           @log.log_failure(phase == :connect ? "connect_failed" : "login_complete", failure,
                            status: "failed", phase: phase, duration_ms: elapsed_ms(started))
-          close_preserving_failure
-          replacement = attempted_recovery ? nil : @recovery.recover(failure, transport)
+          cleaned = close_preserving_failure
+          replacement = cleaned && !attempted_recovery ? @recovery.recover(failure, transport) : nil
           if replacement
             @transport = replacement
             attempted_recovery = true
@@ -458,12 +458,13 @@ module Net
         raise normalize_error(error, phase: :close), cause: nil
       end
 
-      # 尝试清理资源但不覆盖原始操作异常。
+      # 清理结果决定能否移交传输所有权；失败仍保留原操作异常与待清理资源。
       def close_preserving_failure
         close_resources
+        true
       rescue Exception # rubocop:disable Lint/RescueException -- 原操作失败时，清理故障或中断均不得覆盖它。
         # 所有清理路径完成后，原始操作异常仍然是权威结果。
-        nil
+        false
       end
     end
   end

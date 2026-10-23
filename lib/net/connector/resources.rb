@@ -32,7 +32,7 @@ module Net
           Process.setrlimit(:NOFILE, required, hard)
         end
       rescue SystemCallError, ArgumentError, NotImplementedError
-        raise ArgumentError, "本机文件描述符额度不足：#{parallel} 并发至少预留 #{required} 个文件描述符；请提高终端 ulimit -n 或降低 --parallel。已停止，未连接设备。", cause: nil
+        raise ArgumentError, "Insufficient local file descriptor limit: #{parallel} concurrent devices require at least #{required} file descriptors; raise the terminal ulimit -n or lower --parallel. Stopped without connecting to devices.", cause: nil
       end
       private_class_method :reserve!
     end

@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.18.0 - 2026-10-23
+
+- Add on_receipt completion callbacks to command, script, save and custom operations, retaining completed responses after later logging, processing, budget or cancellation failures.
+- Retain PTY channels after incomplete cleanup and retry cleanup before reopening or recovering a connection.
+- Use owned Expect session scopes during SSH authentication so initialization cancellation releases terminal handles and cleanup failures preserve the authentication error.
+- Use English diagnostics, CLI help and reports, and consume string-keyed progress documents from Runner 0.2.
+
 ## 0.17.2 - 2026-10-23
 
 - Migrate shared CLI entrypoints to ctx_cli 0.2.0 names without legacy aliases.

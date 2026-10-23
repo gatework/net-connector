@@ -264,8 +264,8 @@ class CLITopologyTest < Minitest::Test
           assert_includes output.string, option
         end
         assert_equal detailed, output.string.include?("--description-format")
-        assert_includes output.string, "拓扑报告目录"
-        refute_includes output.string, "备份目录"
+        assert_includes output.string, "Topology report directory"
+        refute_includes output.string, "Backup directory"
         refute_includes output.string, "--sample"
       end
     end
@@ -298,7 +298,7 @@ class CLITopologyTest < Minitest::Test
                                   output: output, error: StringIO.new).run
       assert_equal 0, status
     end
-    assert_includes output.string, "清单 2 台；本次 1 台；跳过 1 台"
+    assert_includes output.string, "Inventory 2 devices; selected 1; skipped 1"
     assert_includes output.string, "h3c"
     refute_includes output.string, "\e"
   end
@@ -306,8 +306,8 @@ class CLITopologyTest < Minitest::Test
   def test_invalid_topology_limit_does_not_advertise_backup_sampling
     error = StringIO.new
     assert_equal 2, N::CLI::Topology.new(configuration_options: { directories: [] }, argv: ["--limit", "0"], env: {}, output: StringIO.new, error: error).run
-    assert_includes error.string, "设备上限须为正整数"
-    refute_includes error.string, "抽样"
+    assert_includes error.string, "device limit must be a positive integer"
+    refute_includes error.string, "sample"
   end
 
   def test_report_directory_and_parallel_cli_overrides_take_precedence_over_yaml
@@ -328,7 +328,7 @@ class CLITopologyTest < Minitest::Test
       end
       assert_equal [:audit, :close], completed
       assert_equal [1], requested
-      assert_includes output.string, "结果：完成；模式：discover"
+      assert_includes output.string, "Result: complete; mode: discover"
       %w[plan.json summary.json summary.txt].each do |filename|
         artifact = Dir.glob(File.join(destination, "*", filename)).fetch(0)
         assert_includes output.string, artifact
@@ -352,8 +352,8 @@ class CLITopologyTest < Minitest::Test
         assert_equal 0, status
       end
     end
-    assert_includes error.string, "清单刷新失败，使用历史缓存（request_failed）"
-    assert_includes error.string, "清单缓存写入失败（IOError）"
+    assert_includes error.string, "Inventory refresh failed; using the previous cache (request_failed)"
+    assert_includes error.string, "Inventory cache write failed (IOError)"
     assert_equal 1, JSON.parse(output.string).fetch("ready")
   end
 
@@ -402,7 +402,7 @@ class CLITopologyTest < Minitest::Test
       assert_equal 0o600, File.stat(script).mode & 0o777
       assert_equal 0o700, File.stat(File.dirname(script)).mode & 0o777
       assert_equal "edge-01-192.0.2.1.txt", File.basename(item.fetch("device_report"))
-      assert_includes File.read(item.fetch("device_report")), "edge-01（192.0.2.1）"
+      assert_includes File.read(item.fetch("device_report")), "edge-01 (192.0.2.1)"
       plan = JSON.parse(File.read(File.join(summary.fetch("directory"), "plan.json"))).fetch("devices").first
       assert_equal script, plan.fetch("script_file")
       assert_equal "edge-01", plan.fetch("name")
@@ -439,7 +439,7 @@ class CLITopologyTest < Minitest::Test
     fixture&.close
   end
 
-  def test_default_result_is_a_compact_chinese_summary_with_explicit_pending_reasons
+  def test_default_result_is_a_compact_summary_with_explicit_pending_reasons
     fixture = TopologyFixture.new(:h3c, neighbor: "Local Interface Chassis ID Port ID System Name\nGE1/0/1 000f-e25d-ee91 000f-e25d-ee91 -\n")
     Dir.mktmpdir do |root|
       inventory = Struct.new(:devices).new([{ "ip" => fixture.device.host, "name" => "edge", "vendor" => "H3C" }])
@@ -449,15 +449,14 @@ class CLITopologyTest < Minitest::Test
                                     connector_factory: ->(*) { fixture.device }, output: output, error: error).run
         assert_equal 1, status
       end
-      assert_includes output.string, "采集完成 1 台"
-      assert_includes output.string, "失败 0 台"
-      assert_includes output.string, "待核实 1 个"
-      assert_includes output.string, "邻居未提供名称 1 个接口"
-      assert_includes output.string, "存在待修正或待核实项"
+      assert_includes output.string, "collected 1"
+      assert_includes output.string, "failed 0 devices"
+      assert_includes output.string, "unverified 1"
+      assert_includes output.string, "neighbor name missing 1 interfaces"
+      assert_includes output.string, "corrections or verification still required"
       assert output.string.lines.size <= 10
-      refute_includes output.string + error.string, "unverified"
       refute_includes output.string, "192.0.2.1\t"
-      assert_includes error.string, "含待核实接口 1 台"
+      assert_includes error.string, "contains unverified interfaces 1 devices"
       report = JSON.parse(File.read(Dir.glob(File.join(root, "*", "summary.json")).fetch(0)))
       assert_equal "unverified", report.fetch("devices").first.fetch("status")
       assert_equal 0, report.fetch("statistics").fetch("failed")
@@ -480,8 +479,8 @@ class CLITopologyTest < Minitest::Test
                                     connector_factory: ->(*) { fixture.device }, output: output, error: error).run
         assert_equal 0, status, error.string
       end
-      assert_includes error.string, "配置：#{path}"
-      assert_includes output.string, "无需修改 1 台"
+      assert_includes error.string, "configuration: #{path}"
+      assert_includes output.string, "unchanged 1"
       refute File.exist?(File.join(root, "topology.yml"))
       assert_empty Dir.glob(File.join(root, "*", "scripts", "*.cfg"))
     end

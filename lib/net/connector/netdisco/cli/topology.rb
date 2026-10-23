@@ -43,7 +43,7 @@ module Net
               return 0
             end
             policy = settings.topology_options
-            raise ArgumentError, "应用配置必须显式传入 --apply；--plan 仅生成计划，--discover 只读发现" if policy.mode == :apply && !options[:apply]
+            raise ArgumentError, "Applying configuration requires explicit --apply; --plan only generates a plan and --discover only reads device state" if policy.mode == :apply && !options[:apply]
 
             inventory, credentials = CLI::Credentials.resolve(settings, input: @input, stdin_credentials: options[:stdin_credentials])
             @progress = Progress.new(io: @error, enabled: !options[:no_progress], verbose: options[:verbose])
@@ -58,13 +58,13 @@ module Net
           rescue Interrupt
             130
           rescue EOFError
-            @error.puts "配置输入未完成，已停止；请检查先前提示的文件。"
+            @error.puts "Configuration setup is incomplete; stopped. Check the files listed above."
             2
           rescue ArgumentError, Inventory::Error => exception
-            @error.puts "拓扑参数或清单错误：#{exception.message}"
+            @error.puts "Topology argument or inventory error: #{exception.message}"
             2
           rescue StandardError => exception
-            @error.puts "拓扑未完成（#{Error::Metadata.type(exception.class.name) || "StandardError"}）"
+            @error.puts "Topology incomplete (#{Error::Metadata.type(exception.class.name) || "StandardError"})"
             2
           end
 
@@ -108,8 +108,8 @@ module Net
             status = fleet.inventory_status
             return unless status
 
-            @error.puts "清单刷新失败，使用历史缓存（#{status[:refresh_error_code]}）" if status[:source] == :stale_cache
-            @error.puts "清单缓存写入失败（#{status[:write_error_type]}）" if status[:write_error_type]
+            @error.puts "Inventory refresh failed; using the previous cache (#{status[:refresh_error_code]})" if status[:source] == :stale_cache
+            @error.puts "Inventory cache write failed (#{status[:write_error_type]})" if status[:write_error_type]
           end
 
           # 仅预览就绪清单，不建立设备连接；无选中设备时返回未完成。
@@ -125,7 +125,7 @@ module Net
           # 先发现并保存审批计划，仅在显式应用模式执行变更，失败后保存已有任务回执。
           # 发现结果先落盘并生成校验摘要，再进入应用；取消只汇总回执，不重新下发配置。
           def execute(devices, settings, credentials, policy, options)
-            raise ArgumentError, "请在 topology.directory 或 --directory 设置拓扑报告目录" unless policy.directory
+            raise ArgumentError, "Set the topology report directory with topology.directory or --directory" unless policy.directory
 
             directory = Storage::BatchDirectory.create(policy.directory)
             selected = devices.select(&:ready?)
@@ -137,12 +137,12 @@ module Net
             @events_mutex = Mutex.new
             @task_results = {}
             credentials = observed_credentials(credentials)
-            @progress.operation_plan(selected, parallel: policy.parallel, label: "拓扑发现/规划")
+            @progress.operation_plan(selected, parallel: policy.parallel, label: "Topology discovery/planning")
             outcomes = @progress.with_updates { collect(selected, settings, credentials, policy, directory) }
             save_plan(directory, outcomes)
             if policy.mode == :apply
               applying = outcomes.filter_map { |outcome| @devices_by_host[outcome[:host]] if %i[planned partial_planned].include?(outcome[:status]) }
-              @progress.operation_plan(applying, parallel: policy.parallel, label: "拓扑应用")
+              @progress.operation_plan(applying, parallel: policy.parallel, label: "Topology apply")
               outcomes = @progress.with_updates { apply_plans(outcomes, settings, credentials, policy, directory) }
             end
             summary = build_summary(devices, outcomes, policy, directory)
@@ -266,7 +266,7 @@ module Net
             begin
               # 阻塞 I/O 仍可取消；完成值或同步失败先固定，再交付返回间隙中的异步中断。
               Thread.handle_interrupt(Exception => :on_blocking) do
-                @progress.start(device, label: "拓扑操作")
+                @progress.start(device, label: "Topology operation")
                 result = yield
               rescue StandardError => failure
                 result = { host: device.host, vendor: device.vendor, status: :failed, diagnostic: Diagnostic.from(failure)&.to_h }
@@ -375,7 +375,7 @@ module Net
             summary[:devices].each { |outcome| Netdisco::Topology::Files.write_report(outcome) }
             lines = result_lines(summary) + summary[:devices].flat_map do |item|
               ["#{item[:host]} #{item[:name].to_s.gsub(/[[:cntrl:]]/, " ")} #{Netdisco::Topology::Presentation.status(item[:status], changes: item.fetch(:changes, 0))} changes=#{item.fetch(:changes, 0)}",
-               "  设备报告：#{item[:device_report]}", "  命令文件：#{item[:script_file] || "未生成"}"] +
+               "  Device report: #{item[:device_report]}", "  Command file: #{item[:script_file] || "not generated"}"] +
                 item.fetch(:neighbors, []).map do |row|
                   "  #{row[:interface]} #{row[:status]} current=#{row[:current].inspect} expected=#{row[:expected].inspect}"
                 end + item.fetch(:issues, []).map { |issue| "  #{issue[:interface]} #{Netdisco::Topology::Presentation.reason(issue[:code])}" } +
@@ -398,10 +398,10 @@ module Net
           # 默认只打印设备、接口两层摘要；逐设备及命令详情已经写入独立报告。
           def result_lines(data)
             stats = data.fetch(:statistics)
-            ["结果：#{Netdisco::Topology::Presentation.result(data)}；模式：#{data[:mode]}",
-             "设备：采集完成 #{stats[:collected]} 台；无需修改 #{stats[:unchanged]} 台；有候选变更 #{stats[:change_devices]} 台；失败 #{stats[:failed]} 台",
-             "接口：候选变更 #{stats[:changes]} 个；待核实 #{stats[:review_interfaces]} 个（涉及 #{stats[:review_devices]} 台设备）",
-             "待核实原因：#{Netdisco::Topology::Presentation.issues(data[:devices].flat_map { |item| item.fetch(:issues, []) })}"]
+            ["Result: #{Netdisco::Topology::Presentation.result(data)}; mode: #{data[:mode]}",
+             "Devices: collected #{stats[:collected]}; unchanged #{stats[:unchanged]}; with candidate changes #{stats[:change_devices]}; failed #{stats[:failed]} devices",
+             "Interfaces: candidate changes #{stats[:changes]}; unverified #{stats[:review_interfaces]} (across #{stats[:review_devices]} devices)",
+             "Unverified reasons: #{Netdisco::Topology::Presentation.issues(data[:devices].flat_map { |item| item.fetch(:issues, []) })}"]
           end
 
           # 按 JSON 或安全文本格式输出设备结果及报告位置。
@@ -410,7 +410,7 @@ module Net
               @output.puts JSON.generate(data)
             else
               if data.key?(:total)
-                @output.puts "清单 #{data[:total]} 台；本次 #{data[:ready]} 台；跳过 #{data[:total] - data[:ready]} 台"
+                @output.puts "Inventory #{data[:total]} devices; selected #{data[:ready]}; skipped #{data[:total] - data[:ready]} devices"
               end
               if data.key?(:total)
                 data.fetch(:devices).each do |item|
@@ -421,11 +421,11 @@ module Net
               if data[:directory]
                 @output.puts result_lines(data)
                 scripts = data[:devices].count { |item| item[:script_file] }
-                @output.puts "命令文件：#{File.join(data[:directory], "scripts")}（#{scripts} 台有变更）" if scripts.positive?
-                @output.puts "设备报告：#{File.join(data[:directory], "devices")}"
-                @output.puts "计划：#{File.join(data[:directory], "plan.json")}"
-                @output.puts "报告：#{File.join(data[:directory], "summary.json")}"
-                @output.puts "文本报告：#{File.join(data[:directory], "summary.txt")}"
+                @output.puts "Command file: #{File.join(data[:directory], "scripts")}(#{scripts} devices with changes)" if scripts.positive?
+                @output.puts "Device report: #{File.join(data[:directory], "devices")}"
+                @output.puts "Plan: #{File.join(data[:directory], "plan.json")}"
+                @output.puts "Report: #{File.join(data[:directory], "summary.json")}"
+                @output.puts "Text report: #{File.join(data[:directory], "summary.txt")}"
               end
             end
           end

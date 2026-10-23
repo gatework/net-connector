@@ -18,10 +18,10 @@ module Net
             begin
               values = JSON.parse(input.gets("\n") || "")
             rescue JSON::ParserError
-              raise ArgumentError, "凭据 JSON 无效", cause: nil
+              raise ArgumentError, "Invalid credentials JSON", cause: nil
             end
             keys = %w[netdisco_username netdisco_password device_username device_password]
-            raise ArgumentError, "需要四个非空凭据字符串" unless values.is_a?(Hash) && keys.all? { |key| values[key].is_a?(String) && !values[key].strip.empty? }
+            raise ArgumentError, "Four nonempty credential strings are required" unless values.is_a?(Hash) && keys.all? { |key| values[key].is_a?(String) && !values[key].strip.empty? }
 
             inventory = settings.inventory(credentials: {
               username: values.fetch("netdisco_username"), password: values.fetch("netdisco_password")

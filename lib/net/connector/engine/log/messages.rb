@@ -11,36 +11,36 @@ module Net
         def format(name, fields)
           case name
           when "connect"
-            "开始连接 #{fields[:host]}（#{fields[:protocol].to_s.upcase}，账号 #{fields[:username]}）"
+            "Connecting to #{fields[:host]}(#{fields[:protocol].to_s.upcase}, user #{fields[:username]})"
           when "connect_failed"
-            "连接失败：#{fields[:message]}（#{fields[:error]}）"
+            "Connection failed: #{fields[:message]}(#{fields[:error]})"
           when "login_start"
-            "等待设备登录提示"
+            "Waiting for the device login prompt"
           when "login_output"
-            "登录过程回显（已脱敏）："
+            "Login output (redacted): "
           when "login_complete"
-            fields[:status] == "ok" ? "登录成功，设备提示符：#{fields[:prompt]}" :
-              "登录失败：#{fields[:message]}（#{fields[:error]}）"
+            fields[:status] == "ok" ? "Login succeeded; device prompt: #{fields[:prompt]}" :
+              "Login failed: #{fields[:message]}(#{fields[:error]})"
           when "command_start"
-            "下发命令：#{fields[:text]}"
+            "Sending command: #{fields[:text]}"
           when "device_output"
-            "设备回显："
+            "Device output: "
           when "command_complete"
-            fields[:status] == "response_received" ? "命令回显结束，已收到设备提示符" :
-              "命令执行失败：#{fields[:message]}（#{fields[:error]}）"
+            fields[:status] == "response_received" ? "Command output complete; device prompt received" :
+              "Command failed: #{fields[:message]}(#{fields[:error]})"
           when "operation_start"
-            "开始处理设备脚本"
+            "Starting device script"
           when "operation_complete"
-            fields[:status] == "completed" ? "设备脚本处理完成" :
-              "设备脚本处理失败：#{fields[:message]}（#{fields[:error]}）"
+            fields[:status] == "completed" ? "Device script complete" :
+              "Device script failed: #{fields[:message]}(#{fields[:error]})"
           when "tftp_backup"
             case fields[:status]
             when "reported_uploaded"
-              "TFTP 备份：设备报告上传成功，目标 #{fields[:server]}/#{fields[:path]}；服务器文件尚未核验"
+              "TFTP backup: device reported a successful upload to #{fields[:server]}/#{fields[:path]}; server file has not been verified"
             when "transfer_failed"
-              "TFTP 备份失败：设备报告传输失败，服务器 #{fields[:server]}"
+              "TFTP backup failed: device reported a transfer failure; server #{fields[:server]}"
             else
-              "TFTP 备份未确认：设备未报告上传成功，服务器 #{fields[:server]}"
+              "TFTP backup unconfirmed: device did not report a successful upload; server #{fields[:server]}"
             end
           else
             name.to_s

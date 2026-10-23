@@ -141,7 +141,7 @@ class CLISetupTest < Minitest::Test
             assert_equal 8, section.fetch("parallel")
           end
           assert_includes output.string, "[13]"
-          assert_includes output.string, "留空继承"
+          assert_includes output.string, "leave blank to inherit"
 
           File.write(env_path, "NC_PARALLEL=17\n")
           configuration = N::CLI::Options.configuration(options, env: {}, mode: mode, directories: [], home: root)
@@ -173,7 +173,7 @@ class CLISetupTest < Minitest::Test
                                    default_env: File.join(root, ".env"), env: {}, input: Terminal.new("n\n"),
                                    output: Terminal.new, error: error).run
       assert_equal 2, status
-      assert_includes error.string, "是否创建"
+      assert_includes error.string, "create it?"
       assert_empty Dir.children(root)
     end
   end
@@ -272,7 +272,7 @@ class CLISetupTest < Minitest::Test
       status = N::CLI::Backup.new(configuration_options: { directories: [], home: root }, argv: ["--init"], env: {}, default_config: path,
                                  input: StringIO.new, output: StringIO.new, error: error).run
       assert_equal 2, status
-      assert_includes error.string, "普通文件"
+      assert_includes error.string, "regular file"
       assert_equal "original", File.read(target)
     end
   end

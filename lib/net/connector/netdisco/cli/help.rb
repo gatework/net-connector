@@ -24,25 +24,25 @@ module Net
           def self.examples(program:, mode:)
             command = "ruby #{File.basename(program)}"
             cases = if mode == :topology
-                      [["预览过滤后的清单", "--inventory-only --name edge --cache-only"],
-                       ["发现邻居", "--discover --hosts 192.0.2.10-20"],
-                       ["生成只读计划", "--plan --host 192.0.2.10"],
-                       ["明确应用并读回保存", "--apply --host 192.0.2.10"]]
+                      [["Preview filtered inventory", "--inventory-only --name edge --cache-only"],
+                       ["Discover neighbors", "--discover --hosts 192.0.2.10-20"],
+                       ["Generate a read-only plan", "--plan --host 192.0.2.10"],
+                       ["Explicitly apply, read back and save", "--apply --host 192.0.2.10"]]
                     elsif mode == :tftp
-                      [["预览待上传设备", "--plan --hosts 192.0.2.10-20"],
-                       ["单台上传，服务器沿用配置", "--host 192.0.2.10"],
-                       ["连续 IP 范围并发上传", "--hosts 192.0.2.10-20 --parallel 8"],
-                       ["上传并核验服务器文件", "--host 192.0.2.10 --tftp-root /srv/tftp --success-policy verified"]]
+                      [["Preview devices selected for upload", "--plan --hosts 192.0.2.10-20"],
+                       ["Upload from one device using the configured server", "--host 192.0.2.10"],
+                       ["Upload concurrently from an IP range", "--hosts 192.0.2.10-20 --parallel 8"],
+                       ["Upload and verify server files", "--host 192.0.2.10 --tftp-root /srv/tftp --success-policy verified"]]
                     else
-                      [["沿用配置执行备份", ""], ["预览连续 IP 范围", "--plan --hosts 192.0.2.10-20"],
-                       ["单台设备配置备份", "--host 192.0.2.10"],
-                       ["按名称筛选并排除设备", "--name szx10 --exclude-name csw,asw,wlc --parallel 8"],
-                       ["使用数据库清单预览", "--config examples/inventory.yml --plan"]]
+                      [["Back up using the configuration", ""], ["Preview an IP range", "--plan --hosts 192.0.2.10-20"],
+                       ["Back up one device configuration", "--host 192.0.2.10"],
+                       ["Filter by name and exclude devices", "--name szx10 --exclude-name csw,asw,wlc --parallel 8"],
+                       ["Preview database inventory", "--config examples/inventory.yml --plan"]]
                     end
-            cases.unshift(["首次生成缺失配置后退出", "--init --non-interactive"])
-            ["常用示例（IP 请替换为实际清单地址）：",
-             *cases.map { |label, arguments| "  #{label}：\n    #{command} #{arguments}" },
-             "包含条件取交集，排除优先；同类参数可逗号分隔或重复传参。"].join("\n")
+            cases.unshift(["Create missing configuration and exit", "--init --non-interactive"])
+            ["Common examples (replace IPs with actual inventory addresses):",
+             *cases.map { |label, arguments| "  #{label}:\n    #{command} #{arguments}" },
+             "Intersect different inclusion types; exclusions take precedence. Repeat options or separate values with commas."].join("\n")
           end
         end
       end

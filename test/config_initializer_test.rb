@@ -89,7 +89,7 @@ class ConfigInitializerTest < Minitest::Test
       settings = N::Settings.new(env: {}, defaults: N::Config.parse(files.data))
       assert_equal 8, settings.parallel
       assert_equal ["edge"], settings.public_config.fetch(:inventory).fetch(:include_names)
-      assert_includes output.string, "值无效"
+      assert_includes output.string, "Invalid value"
     end
   end
 

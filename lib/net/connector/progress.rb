@@ -27,26 +27,26 @@ module Net
 
       # 输出当前开始读取清单的进度提示。
       def reading_inventory(config: nil)
-        write(nil, "正在读取 Netdisco 设备清单#{config ? "（配置：#{config}）" : ""}")
+        write(nil, "Reading Netdisco device inventory#{config ? "(configuration: #{config})" : ""}")
       end
 
       # 以实际选中设备初始化进度，跳过的条目不计入执行任务总数。
-      def plan(total:, selected:, parallel:, label: "全量")
+      def plan(total:, selected:, parallel:, label: "all devices")
         @mutex.synchronize do
           @total = selected
           @completed = @active = 0
           @run_started = monotonic
-          emit(nil, "#{label} | 清单 #{total} 台；本次 #{@total} 台；跳过 #{total - @total} 台；并发 #{parallel}")
+          emit(nil, "#{label} | Inventory #{total} devices; selected #{@total}; skipped #{total - @total} devices; concurrency #{parallel}")
         end
       end
 
       # 任务开始只表示进入登录阶段，不代表设备已连接。
-      def start(host:, label: "采集")
+      def start(host:, label: "collecting")
         @mutex.synchronize do
           @active += 1
-          @stages[host] = "登录"
+          @stages[host] = "logging in"
           @task_started[host] = monotonic
-          @verbose ? emit(host, "开始#{label}") : refresh
+          @verbose ? emit(host, "starting#{label}") : refresh
         end
       end
 
@@ -59,9 +59,9 @@ module Net
           @task_started.delete(host)
           success ? @succeeded += 1 : @failed += 1
           hint = failure_hint(error_code)
-          message = "#{message}；#{hint}" if hint
+          message = "#{message}; #{hint}" if hint
           if @verbose || !success
-            emit(host, "#{message}；耗时 #{duration_ms} ms")
+            emit(host, "#{message}; elapsed #{duration_ms} ms")
           elsif !@tty && ((@completed % 25).zero? || @completed == @total)
             emit(nil, status_line)
           end
@@ -72,9 +72,9 @@ module Net
       # 完成百分比只表示任务结束，最终结果始终由已保存的业务报告决定。
       def finish(success:, succeeded:, partial:, failed:, skipped:, failures: {})
         unless failures.empty?
-          write(nil, "未完成分类：#{failures.sort_by { |code, count| [-count, code.to_s] }.map { |code, count| "#{code}=#{count}" }.join("，")}")
+          write(nil, "Incomplete categories: #{failures.sort_by { |code, count| [-count, code.to_s] }.map { |code, count| "#{code}=#{count}" }.join(", ")}")
         end
-        write(nil, "批次结束：成功 #{succeeded}，部分成功 #{partial}，失败 #{failed}，跳过 #{skipped}；耗时 #{(monotonic - @started_at).round(1)} 秒；结果 #{success ? "完成" : "未完成"}")
+        write(nil, "Batch finished: succeeded #{succeeded}, partial #{partial}, failed #{failed}, skipped #{skipped}; elapsed #{(monotonic - @started_at).round(1)} seconds; result #{success ? "complete" : "incomplete"}")
       end
 
       # 普通批次提示也复用锁、脱敏和输出故障处理。
@@ -89,7 +89,7 @@ module Net
         unless @verbose
           @mutex.synchronize do
             host = event.fields[:host]
-            @stages[host] = "采集" if @stages.key?(host) && event.name == "login_complete" && event.fields[:status] == "ok"
+            @stages[host] = "collecting" if @stages.key?(host) && event.name == "login_complete" && event.fields[:status] == "ok"
             refresh
           end
           return
@@ -97,16 +97,16 @@ module Net
 
         fields = event.fields
         message = case event.name
-                  when "connect" then "正在连接并登录（#{fields[:protocol]}）"
+                  when "connect" then "Connecting and logging in (#{fields[:protocol]})"
                   when "login_complete"
-                    fields[:status] == "ok" ? "登录成功" : "登录失败（#{fields[:code]}）"
-                  when "connect_failed" then "连接失败（#{fields[:code]}）"
-                  when "command_start" then "执行命令：#{fields[:text]}；等待响应"
+                    fields[:status] == "ok" ? "Login succeeded" : "Login failed (#{fields[:code]})"
+                  when "connect_failed" then "Connection failed (#{fields[:code]})"
+                  when "command_start" then "Executing command: #{fields[:text]}; waiting for response"
                   when "command_complete"
-                    fields[:status] == "response_received" ? "命令响应完成（#{fields[:duration_ms]} ms）" :
-                      "命令失败（#{fields[:code]}）"
+                    fields[:status] == "response_received" ? "Command response complete (#{fields[:duration_ms]} ms)" :
+                      "Command failed (#{fields[:code]})"
                   when "operation_complete"
-                    fields[:status] == "completed" ? "脚本处理完成" : "脚本处理失败（#{fields[:code]}）"
+                    fields[:status] == "completed" ? "Script complete" : "Script failed (#{fields[:code]})"
                   end
         write(fields[:host], message) if message
       end
@@ -151,8 +151,8 @@ module Net
       end
 
       # 显示已保存报告的位置与可读标签。
-      def location(path, label: "报告")
-        write(nil, "#{label}：#{path}")
+      def location(path, label: "report")
+        write(nil, "#{label}: #{path}")
       end
 
       private
@@ -160,15 +160,15 @@ module Net
       # 根据已知错误码返回简短排查建议，不展示任意异常正文。
       def failure_hint(code)
         case code
-        when :authentication_failed then "设备拒绝认证，请核对账号、密码或 AAA 策略"
-        when :authentication_error then "认证交互未完成，请核对认证方式或设备 AAA 日志"
-        when :host_key_untrusted then "主机密钥尚未信任，请确认指纹并登记"
-        when :host_key_changed then "已登记主机密钥发生变化，请核实设备身份"
-        when :login_timeout then "未在期限内获得登录提示，请检查 SSH 握手与登录交互"
-        when :connection_timeout then "SSH 连接或握手超时，请检查服务与网络"
-        when :device_error then "设备拒绝命令，请核对厂商映射和账号权限"
-        when :missing_completeness_evidence then "缺少完整性证据，未完成维度见设备报告"
-        when :report_not_saved then "设备报告保存未确认"
+        when :authentication_failed then "Device rejected authentication; check username, password or AAA policy"
+        when :authentication_error then "Authentication dialogue incomplete; check authentication method or device AAA logs"
+        when :host_key_untrusted then "Host key is not yet trusted; verify and register its fingerprint"
+        when :host_key_changed then "Registered host key changed; verify device identity"
+        when :login_timeout then "Login prompt not received before the deadline; check SSH handshake and login dialogue"
+        when :connection_timeout then "SSH connection or handshake timed out; check service and network"
+        when :device_error then "Device rejected the command; check vendor mapping and account permissions"
+        when :missing_completeness_evidence then "Completeness evidence missing; see the device report for incomplete dimensions"
+        when :report_not_saved then "Device report persistence unconfirmed"
         end
       end
 
@@ -176,11 +176,11 @@ module Net
       def status_line
         percent = @total.positive? ? @completed * 100 / @total : 0
         counts = progress_counts
-        "#{@completed}/#{@total} #{percent}% | #{counts} | 登录 #{@stages.values.count("登录")} 采集 #{@stages.values.count("采集")} 排队 #{[@total - @completed - @active, 0].max}"
+        "#{@completed}/#{@total} #{percent}% | #{counts} | Logging in #{@stages.values.count("logging in")} collecting #{@stages.values.count("collecting")} queued #{[@total - @completed - @active, 0].max}"
       end
 
       # 默认统计设备任务，领域适配器可提供自己的计数文案。
-      def progress_counts = "成功 #{@succeeded} 未完成 #{@failed}"
+      def progress_counts = "succeeded #{@succeeded} incomplete #{@failed}"
 
       # 读取单调时钟秒数，避免系统校时影响期限与耗时计算。
       def monotonic = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -198,14 +198,14 @@ module Net
         eta = if @completed == @total && @total.positive?
                 "00:00:00"
               elsif @completed >= 5 && rate.positive?
-                "约 #{duration((@total - @completed) / rate)}"
+                "about #{duration((@total - @completed) / rate)}"
               else
-                "估算中"
+                "estimating"
               end
-        line = "耗时 #{duration(elapsed)} | #{format("%.1f", rate)} 台/秒 | 剩余 #{eta}"
+        line = "elapsed #{duration(elapsed)} | #{format("%.1f", rate)} devices/s | remaining #{eta}"
         host, started = @task_started.min_by { |_key, value| value }
         if started && monotonic - started >= 10
-          line += " | 最久 #{host} #{@stages[host]} #{(monotonic - started).floor}s"
+          line += " | longest #{host} #{@stages[host]} #{(monotonic - started).floor}s"
         end
         line
       end
@@ -260,7 +260,7 @@ module Net
 
         percent = @total.positive? ? " #{(@completed * 100.0 / @total).floor}%" : ""
         clear_refresh
-        line = "[#{Time.now.strftime("%H:%M:%S")}] [#{@completed}/#{@total}#{percent} 执行中 #{@active}] [#{host || "批次"}] #{message}"
+        line = "[#{Time.now.strftime("%H:%M:%S")}] [#{@completed}/#{@total}#{percent} running #{@active}] [#{host || "batch"}] #{message}"
         line = "[#{Time.now.strftime("%H:%M:%S")}] #{host ? "#{host}  " : ""}#{message}" unless @verbose
         write_output(line.gsub(/[[:cntrl:]]/, " ") + "\n")
       end

@@ -105,14 +105,14 @@ class ConnectorExamplesTest < Minitest::Test
         assert JSON.parse(output.lines.last).fetch("tasks_succeeded")
         assert_equal 1, JSON.parse(output.lines.last).fetch("counts").fetch("backed_up")
         refute_includes output + error, "fixture-password"
-        assert_includes error, "登录成功"
-        assert_includes error, "[1/1 100% 执行中 0]"
+        assert_includes error, "Login succeeded"
+        assert_includes error, "[1/1 100% running 0]"
         assert_equal 2, output.lines.size
         directory = JSON.parse(output.lines.last).fetch("directory")
         assert_match(/\A\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}(?:_\d+)?\z/, File.basename(directory))
         assert File.file?(File.join(directory, "unnamed-192.0.2.1.txt"))
         text = File.read(File.join(directory, "summary.txt"))
-        assert_includes text, "成功：1"
+        assert_includes text, "Succeeded: 1"
         assert_includes text, "+08:00"
         refute_includes text, "fixture-password"
         assert_equal 0o600, File.stat(File.join(directory, "summary.txt")).mode & 0o777
@@ -135,8 +135,8 @@ class ConnectorExamplesTest < Minitest::Test
     with_example("backup.rb", [], extra_env: {}, arguments: []) do |output, error, status, _directory|
       assert_equal 1, status.exitstatus
       assert_empty output
-      assert_includes error, "本次 0 台"
-      assert_includes error, "批次结束"
+      assert_includes error, "selected 0"
+      assert_includes error, "Batch finished"
       assert_includes error, "summary.txt"
     end
   end

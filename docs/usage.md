@@ -143,6 +143,10 @@ warn "#{result.error.code}: #{result.steps.size} completed commands" if result.f
 
 `execute_command` runs one command; `execute_script` accepts a `Script` or command array. `Script.load(path)` reads a file. Commands are validated before I/O; completed steps survive later failures. `save_config` explicitly sends save commands; ordinary scripts do not save automatically.
 
+Use `on_receipt: ->(step) { ... }` with these methods or `execute_operation` to retain completed responses even when later logging, postprocessing, output-budget checks or cancellation prevent a successful return. It receives each completed `Command::Result` once, before the optional success-progress block. Timeouts and device rejection without a completed step produce no receipt. A receipt confirms the response, not persistence or the intended configuration effect.
+
+The receipt callback runs synchronously within the operation and must not reenter the device. Its exception stops subsequent commands; an earlier failure or cancellation keeps precedence. Step output is unredacted business data, like `Result#steps`; persist protected output or safe summaries. Interruptions still propagate, and a killed process cannot deliver callbacks.
+
 `result.output` concatenates completed steps as raw bytes without transcoding. Each call returns a mutable binary string; changing it does not change the frozen step outputs. Use `result.config` for the cleaned configuration, or `result.value!` to raise on failure before reading the successful value.
 
 Set `max_script_output_bytes:` to bound cumulative raw responses, including additional queries. Default is `nil`. Exceeding it returns `ScriptOutputLimitExceeded` (`:script_output_limit_exceeded`) and stops subsequent commands; the current command may already have executed. `max_output_bytes` separately limits each response. Neither setting is a process-memory limit.

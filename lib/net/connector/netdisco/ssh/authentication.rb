@@ -14,17 +14,15 @@ module Net
 
           # 在同一认证期限内等待一次密码提示及连接结束；主连接可用性由调用方另行核对。
           def self.respond(arguments, password:)
-            session = Expect::Session.new(buffer_limit: 65_536, write_timeout: 5)
-            session.spawn(*arguments, raw: true)
-            deadline = Expect.monotonic + 15
-            challenge = session.expect(PASSWORD, REJECTED, timeout: [deadline - Expect.monotonic, 0].max)
-            return false unless challenge.number == 1
+            Expect.spawn(*arguments, raw: true, buffer_limit: 65_536, write_timeout: 5) do |session|
+              deadline = Expect.monotonic + 15
+              challenge = session.expect(PASSWORD, REJECTED, timeout: [deadline - Expect.monotonic, 0].max)
+              next false unless challenge.number == 1
 
-            session.write(password + "\n")
-            completion = session.expect(PASSWORD, REJECTED, timeout: [deadline - Expect.monotonic, 0].max)
-            completion.error == :eof
-          ensure
-            session&.close
+              session.write(password + "\n")
+              completion = session.expect(PASSWORD, REJECTED, timeout: [deadline - Expect.monotonic, 0].max)
+              completion.error == :eof
+            end
           end
         end
       end

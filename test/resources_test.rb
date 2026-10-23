@@ -12,7 +12,7 @@ class ResourcesTest < Minitest::Test
       Process.stub(:getrlimit, ->(*) { flunk "invalid input must not inspect process limits" }) do
         error = assert_raises(ArgumentError) { Net::Connector::Resources.prepare!(parallel: parallel) }
         assert_includes error.message, "parallel"
-        refute_includes error.message, "文件描述符额度不足"
+        refute_includes error.message, "Insufficient local file descriptor limit"
       end
     end
   end
@@ -70,8 +70,8 @@ class ResourcesTest < Minitest::Test
         end
       end
     RUBY
-    assert_includes result.fetch("message"), "文件描述符额度不足"
-    assert_includes result.fetch("message"), "未连接设备"
+    assert_includes result.fetch("message"), "Insufficient local file descriptor limit"
+    assert_includes result.fetch("message"), "without connecting to devices"
     assert result.fetch("cause_nil")
   end
 

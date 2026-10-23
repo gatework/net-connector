@@ -12,8 +12,8 @@ module Net
         # 首次运行的文件检查和创建问答；完成初始化后必须退出，不触发设备任务。
         class Setup
           ENVIRONMENT_TEMPLATE = <<~TEXT.freeze
-            # 进程环境优先于此文件；命令行参数 > 原进程环境 > YAML > .env > 内置默认值。
-            # 下列凭据按实际认证方式取消注释并填写；不自动保存当前进程中的密码。
+            # Process environment takes precedence over this file; CLI > original process environment > YAML > .env > built-in defaults.
+            # Uncomment and fill in credentials for the authentication method in use; current process passwords are not saved automatically.
             # ND_URL=
             # ND_USERNAME=
             # ND_PASSWORD=
@@ -21,16 +21,16 @@ module Net
             # NC_DEVICE_USERNAME=
             # NC_DEVICE_PASSWORD=
             # NC_ENABLE_PASSWORD=
-            # PostgreSQL 清单使用 ND_DB_HOST / ND_DB_NAME / ND_DB_USER / ND_DB_PASS。
+            # PostgreSQL inventory uses ND_DB_HOST / ND_DB_NAME / ND_DB_USER / ND_DB_PASS.
             # ND_DB_HOST=
             # ND_DB_NAME=
             # ND_DB_USER=
             # ND_DB_PASS=
-            # TFTP SSH 归档使用现有密钥/agent，或设置以下密码。
-            # 密码含 # 或 $ 时请用单引号包裹，例如 KEY='your-password'。
+            # TFTP SSH archiving uses existing keys/agent, or the password below.
+            # Wrap passwords containing # or $ in single quotes, for example KEY='your-password'.
             # NC_TFTP_SSH_PASSWORD=
-            # 公共参数优先写入各入口 YAML；可在运行时使用 -p / --config / --directory。
-            # 未设置 NC_CONFIG 时按系统、用户、入口目录及启动目录逐层发现配置。
+            # Prefer each entrypoint's YAML for common options; use -p / --config / --directory at runtime.
+            # Without NC_CONFIG, configuration is discovered in system, user, entrypoint and startup directories, in that order.
           TEXT
 
           # 保存调用方 IO 与路径；不读取标准输入、不加载凭据、不创建文件。
@@ -51,7 +51,7 @@ module Net
             missing_config = path && missing?(path)
             missing_env = @env_path && missing?(@env_path)
             return !!@options[:init] unless missing_config || missing_env
-            raise ArgumentError, "--interactive 需要交互终端；自动化请使用 --init --non-interactive" if @options[:interactive] && !terminal?
+            raise ArgumentError, "--interactive requires an interactive terminal; use --init --non-interactive for automation" if @options[:interactive] && !terminal?
 
             create_config = missing_config && approved?(path, required: true)
             create_env = missing_env && approved?(@env_path, required: false)
@@ -59,12 +59,12 @@ module Net
             if create_env
               FileUtils.mkdir_p(File.dirname(File.expand_path(@env_path)), mode: 0o700)
               @initializer.create_environment(path: @env_path, contents: ENVIRONMENT_TEMPLATE)
-              @output.puts "已初始化环境模板：#{@env_path}（未写入密码）"
+              @output.puts "Environment template initialized: #{@env_path}(passwords were not written)"
             end
             stopped = create_config || create_env || @options[:init]
-            @output.puts "请检查配置及凭据后再次运行；本次未读取清单、未连接设备。" if stopped
-            @output.puts "HTTP 清单需设置 netdisco.url 或 ND_URL，并提供 ND_API_KEY 或 ND_USERNAME / ND_PASSWORD；设备凭据支持通用及厂商配置。" if create_config && document.dig("netdisco", "source") == "http"
-            @output.puts "TFTP 请填写 tftp.server 或 tftp.servers，并按实际环境配置文件核验目录；未猜测服务器、VRF 或源接口。" if create_config && @mode == :tftp
+            @output.puts "Check configuration and credentials, then run again; inventory was not read and no devices were connected." if stopped
+            @output.puts "HTTP inventory requires netdisco.url or ND_URL and ND_API_KEY or ND_USERNAME / ND_PASSWORD; device credentials support common and per-vendor settings." if create_config && document.dig("netdisco", "source") == "http"
+            @output.puts "For TFTP, set tftp.server or tftp.servers and the file verification directory for your environment; server, VRF and source interface are not inferred." if create_config && @mode == :tftp
             !!stopped
           end
 
@@ -83,14 +83,14 @@ module Net
             end
             FileUtils.mkdir_p(File.dirname(File.expand_path(path)), mode: 0o700)
             @initializer.create(path: path, document: document, interactive: questionnaire?, mode: @mode, inherited_parallel: inherited_parallel)
-            @output.puts "已初始化配置：#{path}"
+            @output.puts "Configuration initialized: #{path}"
             document
           end
 
           # 缺失与无效文件分开处理，拒绝符号链接、目录及不可读取文件。
           def missing?(path)
             stat = File.lstat(path)
-            raise ArgumentError, "配置路径必须是可读普通文件：#{path}" unless stat.file? && File.readable?(path)
+            raise ArgumentError, "Configuration path must be a readable regular file: #{path}" unless stat.file? && File.readable?(path)
 
             false
           rescue Errno::ENOENT
@@ -114,12 +114,12 @@ module Net
           def approved?(path, required:)
             return true if @options[:init]
             unless terminal? && @options[:interactive] != false
-              raise ArgumentError, "缺少配置：#{path}；请先执行 --init --non-interactive 创建，或使用 --config 指定已有文件" if required
+              raise ArgumentError, "Missing configuration: #{path}; first run --init --non-interactive to create it, or use --config to select an existing file" if required
 
               return false
             end
             loop do
-              @output.print "未找到 #{path}，是否创建？[y/N]："
+              @output.print "Not found: #{path}; create it? [y/N]: "
               @output.flush
               line = @input.gets("\n")
               raise EOFError unless line
@@ -127,11 +127,11 @@ module Net
               answer = line.strip.downcase
               return true if %w[y yes].include?(answer)
               if answer.empty? || %w[n no].include?(answer)
-                raise ArgumentError, "未创建必需配置：#{path}；本次停止" if required
+                raise ArgumentError, "Required configuration was not created: #{path}; stopped" if required
 
                 return false
               end
-              @output.puts "请输入 y 或 n。"
+              @output.puts "Enter y or n."
             end
           end
 

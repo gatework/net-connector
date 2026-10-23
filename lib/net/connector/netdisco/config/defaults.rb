@@ -48,7 +48,7 @@ module Net
             else value
             end
           rescue ArgumentError, TypeError, JSON::ParserError
-            raise ArgumentError, "初始化参数 #{key} 格式无效", cause: nil
+            raise ArgumentError, "Initialization parameter #{key} has an invalid format", cause: nil
           end
 
           # 同一字段声明同时约束加载与生成，不持久化密码或未知环境变量。

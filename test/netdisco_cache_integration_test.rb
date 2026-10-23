@@ -112,7 +112,7 @@ class NetdiscoCacheIntegrationTest < Minitest::Test
     cli = Netdisco::CLI.new(configuration_options: { directories: [] }, argv: %w[--export 192.0.2.1 --refresh-inventory], env: {}, output: output, error: error)
     assert_equal 2, cli.run
     assert_empty output.string
-    assert_includes error.string, "--export 不能与备份选项同时使用"
+    assert_includes error.string, "--export cannot be combined with backup options"
   end
 
   def test_stdin_principal_and_database_query_do_not_share_inventory
@@ -161,7 +161,7 @@ class NetdiscoCacheIntegrationTest < Minitest::Test
         cli = Netdisco::CLI.new(configuration_options: { directories: [] }, argv: %w[--plan --refresh-inventory], env: {}, output: output, error: error,
                                 fleet_factory: ->(*) { fleet })
         assert_equal 0, cli.run, error.string
-        assert_includes error.string, "历史缓存"
+        assert_includes error.string, "previous cache"
         refute_includes error.string, "private-response"
         assert_equal "192.0.2.1", JSON.parse(output.string).fetch("selected").first.fetch("host")
       end

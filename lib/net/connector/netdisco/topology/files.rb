@@ -35,16 +35,16 @@ module Net
             path = outcome[:device_report]
             return unless path
 
-            lines = ["设备：#{text(outcome[:name])}（#{text(outcome[:host])}）", "厂商：#{text(outcome[:vendor])}",
-                     "状态：#{Presentation.status(outcome[:status], changes: outcome.fetch(:changes, 0))}；候选变更：#{outcome.fetch(:changes, 0)}",
-                     outcome[:script_file] ? "命令文件：#{outcome[:script_file]}" : "命令文件：未生成（没有已核实的配置变更）"]
-            lines << "命令校验 SHA-256：#{outcome[:script_sha256]}" if outcome[:script_sha256]
-            lines << "诊断：#{text(outcome.dig(:diagnostic, :error_code))}" if outcome[:diagnostic]
-            lines << "配置命令来自本次计划；文件生成不表示已经下发，执行结果以状态和设备回执为准。"
+            lines = ["Device: #{text(outcome[:name])} (#{text(outcome[:host])})", "Vendor: #{text(outcome[:vendor])}",
+                     "Status: #{Presentation.status(outcome[:status], changes: outcome.fetch(:changes, 0))}; candidate changes: #{outcome.fetch(:changes, 0)}",
+                     outcome[:script_file] ? "Command file: #{outcome[:script_file]}" : "Command file: not generated (no verified configuration changes)"]
+            lines << "Command SHA-256: #{outcome[:script_sha256]}" if outcome[:script_sha256]
+            lines << "Diagnostics: #{text(outcome.dig(:diagnostic, :error_code))}" if outcome[:diagnostic]
+            lines << "Configuration commands come from this plan; generating a file does not mean commands were sent. Check status and device receipts for execution results."
             lines.concat(outcome.fetch(:neighbors, []).map do |row|
-              "#{text(row[:interface])} #{text(row[:status])} 现有=#{row[:current].inspect} 目标=#{row[:expected].inspect}"
+              "#{text(row[:interface])} #{text(row[:status])} current=#{row[:current].inspect} target=#{row[:expected].inspect}"
             end)
-            lines.concat(outcome.fetch(:issues, []).map { |issue| "未核实：#{text(issue[:interface])} #{text(Presentation.reason(issue[:code]))}" })
+            lines.concat(outcome.fetch(:issues, []).map { |issue| "Unverified: #{text(issue[:interface])} #{text(Presentation.reason(issue[:code]))}" })
             FileUtils.mkdir_p(File.dirname(path), mode: 0o700)
             Storage::AtomicFile.write(path, lines.join("\n") + "\n")
           end

@@ -45,6 +45,7 @@ class ConnectorTransportTest < Minitest::Test
     closed = 0
     channel = Object.new
     channel.define_singleton_method(:hard_close) { closed += 1 }
+    channel.define_singleton_method(:alive?) { false }
     original = Interrupt.new("cancel during channel handoff")
     factory = lambda do
       Thread.current.raise(original)
@@ -80,6 +81,7 @@ class ConnectorTransportTest < Minitest::Test
       Thread.current.raise(original)
       closed += 1
     end
+    channel.define_singleton_method(:alive?) { false }
     transport.instance_variable_set(:@channel, channel)
 
     assert_same original, assert_raises(Interrupt) { transport.close }
@@ -106,6 +108,149 @@ class ConnectorTransportTest < Minitest::Test
     end
     assert_equal 1, closed
     assert transport.closed?
+  end
+
+  def test_failed_pty_close_retains_the_child_for_an_explicit_retry
+    with_cleanup_transport do |transport, channels|
+      channel = channels.last
+      pid = channel.pid
+      failure = Errno::EINVAL.new("wait failed")
+      channel.stub(:wait, ->(**) { raise failure }) do
+        assert_same failure, assert_raises(Errno::EINVAL) { transport.close }
+      end
+      assert transport.closed?
+      assert channel.alive?
+
+      transport.close
+
+      refute channel.alive?
+      assert_nil channel.pid
+      assert_raises(Errno::ECHILD) { Process.waitpid(pid, Process::WNOHANG) }
+      channel.stub(:hard_close, -> { flunk "completed channel closed again" }) { transport.close }
+    end
+  end
+
+  def test_reopening_cannot_replace_a_channel_whose_cleanup_is_pending
+    with_cleanup_transport do |transport, channels|
+      channel = channels.last
+      pid = channel.pid
+      failure = Errno::EINVAL.new("wait failed")
+      channel.stub(:wait, ->(**) { raise failure }) do
+        assert_same failure, assert_raises(Errno::EINVAL) { transport.close }
+        assert_same failure, assert_raises(Errno::EINVAL) { transport.open }
+        assert_equal 1, channels.size
+        assert channel.alive?
+      end
+
+      transport.open
+
+      refute channel.alive?
+      assert_raises(Errno::ECHILD) { Process.waitpid(pid, Process::WNOHANG) }
+      assert_equal 2, channels.size
+      assert channels.last.expect("ready", timeout: 5).matched?
+      refute transport.closed?
+    end
+  end
+
+  def test_bounded_pty_close_keeps_ownership_when_the_child_has_not_exited
+    with_cleanup_transport do |transport, channels|
+      channel = channels.last
+      pid = channel.pid
+      channel.stub(:hard_close, nil) do
+        failure = assert_raises(IOError) { transport.close }
+        assert_equal "PTY child is still running after hard close", failure.message
+      end
+      assert transport.closed?
+      assert channel.alive?
+
+      transport.close
+
+      refute channel.alive?
+      assert_raises(Errno::ECHILD) { Process.waitpid(pid, Process::WNOHANG) }
+    end
+  end
+
+  def test_nonlocal_close_exit_keeps_the_child_available_for_cleanup
+    with_cleanup_transport do |transport, channels|
+      channel = channels.last
+      channel.stub(:hard_close, -> { throw :abandoned, :stopped }) do
+        assert_equal :stopped, catch(:abandoned) { transport.close }
+      end
+      assert transport.closed?
+      assert channel.alive?
+
+      transport.close
+
+      refute channel.alive?
+    end
+  end
+
+  def test_close_returns_the_reaped_child_status
+    with_cleanup_transport do |transport, channels|
+      status = transport.close
+
+      assert_instance_of Process::Status, status
+      assert_same channels.last.process_status, status
+    end
+  end
+
+  def test_forked_transport_copy_closes_without_claiming_the_parents_child
+    with_cleanup_transport do |transport, channels|
+      copy_pid = fork do
+        transport.close
+        exit! 0
+      rescue IOError
+        exit! 17
+      end
+      status = Process.waitpid2(copy_pid).last
+
+      assert status.success?, "inherited channel cleanup must not require reaping the parent's child"
+      assert channels.last.alive?
+      refute transport.closed?
+    end
+  end
+
+  def test_ssh_reopen_finishes_old_resources_before_creating_trust_and_keeps_new_logging
+    script = 'trap("HUP", "IGNORE"); STDOUT.sync = true; puts "ready"; loop { sleep 1 }'
+    transport_type = Class.new(Connector::Transports::Ssh) do
+      define_method(:argv) { [RbConfig.ruby, "--disable-gems", "-e", script] }
+    end
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "audit", host_key_policy: :accept_new)
+    channels, snapshots, closed = [], [], []
+    factory = -> { Expect::Session.new.tap { |channel| channels << channel } }
+    trust_factory = lambda do |*, **|
+      Object.new.tap do |snapshot|
+        snapshot.define_singleton_method(:close) { closed << snapshot }
+        snapshots << snapshot
+      end
+    end
+    transport = transport_type.new(configuration, channel_factory: factory)
+    Connector::KnownHosts.stub(:new, trust_factory) do
+      transport.open
+      assert channels.last.expect("ready", timeout: 5).matched?
+      channel = channels.last
+      channel.stub(:wait, ->(**) { raise Errno::EINVAL, "wait failed" }) do
+        assert_raises(Errno::EINVAL) { transport.close }
+        assert_raises(Errno::EINVAL) { transport.open }
+        assert_equal 1, snapshots.size
+      end
+
+      output = StringIO.new
+      transport.log_output = output
+      transport.open
+
+      refute channel.alive?
+      assert channels.last.expect("ready", timeout: 5).matched?
+      assert_includes output.string, "ready"
+      assert_equal 2, snapshots.size
+      assert_equal [snapshots.first], closed
+      status = transport.close
+      assert_same channels.last.process_status, status
+      assert_equal snapshots, closed
+    end
+  ensure
+    channels&.each { |channel| channel.hard_close(timeout: 0) }
+    transport&.close
   end
 
   def test_ssh_trust_factory_failure_wins_over_a_pending_cancellation
@@ -221,8 +366,8 @@ class ConnectorTransportTest < Minitest::Test
     raised = assert_raises(Interrupt) { transport.close }
     assert_same original, raised
     assert_equal %i[channel trust], closed
-    transport.close
-    assert_equal %i[channel trust], closed
+    assert_same original, assert_raises(Interrupt) { transport.close }
+    assert_equal %i[channel trust channel], closed
   end
 
   def test_ssh_close_reports_a_trust_cleanup_failure_without_retrying_the_same_resource
@@ -560,6 +705,20 @@ class ConnectorTransportTest < Minitest::Test
 
   private
 
+  def with_cleanup_transport
+    channels = []
+    factory = -> { Expect::Session.new.tap { |channel| channels << channel } }
+    configuration = Connector::Configuration.new(host: "192.0.2.1", username: "audit")
+    script = 'trap("HUP", "IGNORE"); trap("TERM", "IGNORE"); STDOUT.sync = true; puts "ready"; loop { sleep 1 }'
+    transport = LocalTransport.new(configuration, script, channel_factory: factory)
+    transport.open
+    assert channels.last.expect("ready", timeout: 5).matched?
+    yield transport, channels
+  ensure
+    channels&.each { |channel| channel.hard_close(timeout: 0) }
+    transport&.close
+  end
+
   # 模拟 read_available 已追加正文后的回调，真实适配器仍负责预算与日志处理。
   def with_buffer_channel(logging: true)
     buffer, snapshots, transcript = +"", [], nil
@@ -569,6 +728,7 @@ class ConnectorTransportTest < Minitest::Test
     channel.define_singleton_method(:transcript=) { |writer| transcript = writer }
     channel.define_singleton_method(:spawn) { |*, **| }
     channel.define_singleton_method(:hard_close) {}
+    channel.define_singleton_method(:alive?) { false }
     configuration = Connector::Configuration.new(host: "192.0.2.1", username: "audit", max_output_bytes: 4)
     transport = LocalTransport.new(configuration, "", channel_factory: -> { channel })
     log = StringIO.new

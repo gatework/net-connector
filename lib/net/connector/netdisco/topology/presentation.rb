@@ -6,18 +6,18 @@ module Net
       module Topology
         # JSON 状态码保持稳定；终端、汇总和设备说明共用中文含义及分类统计。
         module Presentation
-          STATUSES = { planned: "已生成计划", partial_planned: "已生成部分计划", unverified: "含待核实接口",
-                       discovered: "发现完成", applied: "应用完成", partial_applied: "部分应用完成", manual_required: "需人工处理",
-                       unsupported_operation: "不支持，已跳过", failed: "执行失败", partial: "执行部分失败",
-                       missing_credentials: "缺少凭据", interrupted: "已中断", not_started: "未开始", offline_review: "离线重审" }.freeze
-          REASONS = { unknown_neighbor_name: "邻居未提供名称", unknown_neighbor_interface: "邻居未提供端口",
-                      ambiguous_neighbor: "同一接口存在多个邻居", interface_missing: "配置中未找到本地接口",
-                      unsafe_description: "目标描述不符合安全约束" }.freeze
+          STATUSES = { planned: "plan generated", partial_planned: "partial plan generated", unverified: "contains unverified interfaces",
+                       discovered: "discovery complete", applied: "apply complete", partial_applied: "partial apply complete", manual_required: "manual action required",
+                       unsupported_operation: "unsupported; skipped", failed: "execution failed", partial: "execution partially failed",
+                       missing_credentials: "missing credentials", interrupted: "interrupted", not_started: "not started", offline_review: "offline review" }.freeze
+          REASONS = { unknown_neighbor_name: "neighbor name missing", unknown_neighbor_interface: "neighbor port missing",
+                      ambiguous_neighbor: "multiple neighbors on one interface", interface_missing: "local interface not found in configuration",
+                      unsafe_description: "target description violates safety constraints" }.freeze
           FAILURES = %i[failed partial missing_credentials interrupted not_started].freeze
 
           # 已规划但没有变更时明确显示无需修改，避免读者将 planned 理解为已经执行。
           def self.status(value, changes: nil)
-            return "无需修改" if value.to_sym == :planned && changes == 0
+            return "no changes needed" if value.to_sym == :planned && changes == 0
 
             STATUSES.fetch(value.to_sym, value.to_s)
           end
@@ -27,7 +27,7 @@ module Net
 
           # 汇总逐接口的问题数量，不把身份不足与设备连接或命令失败混为一谈。
           def self.issues(rows)
-            rows.map { |row| row[:code] }.tally.map { |code, count| "#{reason(code)} #{count} 个接口" }.join("；")
+            rows.map { |row| row[:code] }.tally.map { |code, count| "#{reason(code)} #{count} interfaces" }.join("; ")
           end
 
           # 设备与接口分别统计；含待核实项的设备也可能拥有可执行的局部计划。
@@ -43,14 +43,14 @@ module Net
 
           # 只读计划中有差异或未知证据表示待处理，不能把生成计划描述为配置下发完成。
           def self.result(summary)
-            return "未完成" if summary[:orchestration_error_type] || summary[:interrupted] || summary[:progress_error]
-            return "完成" if summary[:success]
-            return "执行存在失败" if summary.fetch(:statistics).fetch(:failed).positive?
+            return "incomplete" if summary[:orchestration_error_type] || summary[:interrupted] || summary[:progress_error]
+            return "complete" if summary[:success]
+            return "execution contains failures" if summary.fetch(:statistics).fetch(:failed).positive?
 
-            return "没有可处理设备" if summary[:devices].empty?
+            return "no eligible devices" if summary[:devices].empty?
 
-            { plan: "已生成计划，存在待修正或待核实项", discover: "发现结束，仍有待核实接口",
-              apply: "应用结束，仍有待处理项" }.fetch(summary[:mode], "存在待处理项")
+            { plan: "plan generated; corrections or verification still required", discover: "discovery finished; unverified interfaces remain",
+              apply: "apply finished; pending items remain" }.fetch(summary[:mode], "pending items remain")
           end
         end
       end

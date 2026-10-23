@@ -59,14 +59,14 @@ module Net
           @error.puts "net-backup: #{message}"
           2
         rescue OptionParser::ParseError
-          @error.puts "net-backup: 参数无效；使用 --help 查看参数"
+          @error.puts "net-backup: invalid arguments; use --help for options"
           2
         rescue ArgumentError, KeyError, Errno::ENOENT,
           Psych::Exception, JSON::ParserError, Inventory::Error => exception
           @error.puts "net-backup: #{exception.message}"
           2
         rescue StandardError => exception
-          @error.puts "net-backup 失败（#{exception.class}）"
+          @error.puts "net-backup failed (#{exception.class})"
           2
         end
 
@@ -111,7 +111,7 @@ module Net
                    fleet.plan_backup(limit_per_vendor: limit, **refresh)
                  end
           options[:host]&.split(",")&.each do |host|
-            raise ArgumentError, "清单中未找到设备 #{host}" unless plan.inventory.any? { |device| device.host == host }
+            raise ArgumentError, "Device not found in inventory: #{host}" unless plan.inventory.any? { |device| device.host == host }
           end
           plan
         end
@@ -120,9 +120,9 @@ module Net
         def inventory_warning(fleet)
           status = fleet.inventory_status if fleet.respond_to?(:inventory_status)
           if status && status[:source] == :stale_cache
-            @error.puts "net-backup: 清单刷新失败，使用历史缓存（#{status[:refresh_error_code]}）"
+            @error.puts "net-backup: inventory refresh failed; using the previous cache (#{status[:refresh_error_code]})"
           end
-          @error.puts "net-backup: 清单缓存写入失败（#{status[:write_error_type]}）" if status && status[:write_error_type]
+          @error.puts "net-backup: inventory cache write failed (#{status[:write_error_type]})" if status && status[:write_error_type]
         end
 
         # 仅执行已经校验的计划，保留本地与 TFTP 两种结果语义。
@@ -143,25 +143,25 @@ module Net
         def parse_options
           options = { environment: {} }
           parser = OptionParser.new do |args|
-            args.banner = "用法：net-backup [--config FILE] [--plan | --show-config | --export IP] [--tftp]"
+            args.banner = "Usage: net-backup [--config FILE] [--plan | --show-config | --export IP] [--tftp]"
             Options.add_settings(args, options)
             Options.add_execution(args, options)
-            args.on("--init", "创建用户目录中的缺失配置和环境模板后退出") { options[:init] = true }
-            args.on("--interactive", "通过终端问答创建缺失配置") { options[:interactive] = true }
-            args.on("--non-interactive", "禁用配置问答") { options[:interactive] = false }
-            args.on("--source SOURCE", %w[http postgres], "清单来源：http（默认）或 postgres") { |value| options[:source] = value }
-            args.on("--query SQL", "PostgreSQL 清单查询，使用 $1、$2 绑定参数") { |value| options[:query] = value }
-            args.on("--query-params JSON", "查询参数的 JSON 数组") { |value| options[:query_params] = value }
-            args.on("--plan", "预览设备清单，不连接设备") { options[:plan] = true }
-            args.on("--tftp", "由设备发起 TFTP 备份") { options[:tftp] = true }
-            args.on("--export IP", "导出已保存的本地配置") { |value| options[:export] = value }
-            args.on("--output FILE", "将导出配置写入私有文件") { |value| options[:output] = value }
-            args.on("--max-script-output-bytes N", Integer, "每个脚本的累计响应字节上限") { |value| options[:max_script_output_bytes] = value }
-            args.on("-v", "--version", "显示版本") do
+            args.on("--init", "Create missing configuration and environment templates in the user directory, then exit") { options[:init] = true }
+            args.on("--interactive", "Create missing configuration through terminal prompts") { options[:interactive] = true }
+            args.on("--non-interactive", "Disable configuration prompts") { options[:interactive] = false }
+            args.on("--source SOURCE", %w[http postgres], "Inventory source: http (default) or postgres") { |value| options[:source] = value }
+            args.on("--query SQL", "PostgreSQL inventory query using $1 and $2 bound parameters") { |value| options[:query] = value }
+            args.on("--query-params JSON", "JSON array of query parameters") { |value| options[:query_params] = value }
+            args.on("--plan", "Preview device inventory without connecting to devices") { options[:plan] = true }
+            args.on("--tftp", "Have devices initiate TFTP backups") { options[:tftp] = true }
+            args.on("--export IP", "Export a saved local configuration") { |value| options[:export] = value }
+            args.on("--output FILE", "Write exported configuration to a private file") { |value| options[:output] = value }
+            args.on("--max-script-output-bytes N", Integer, "Cumulative response byte limit per script") { |value| options[:max_script_output_bytes] = value }
+            args.on("-v", "--version", "Show version") do
               @output.puts Net::Connector::VERSION
               options[:done] = true
             end
-            args.on("-h", "--help", "显示帮助") do
+            args.on("-h", "--help", "Show help") do
               @output.puts args
               options[:done] = true
             end
@@ -179,15 +179,15 @@ module Net
           Planner.validate_limit!(options[:limit])
           raise ArgumentError, "--tftp-root requires --tftp" if options[:tftp_root] && !options[:tftp]
           modes = [:show_config, :plan, :export].count { |key| options[key] }
-          raise ArgumentError, "--show-config、--plan 和 --export 只能选择一项" if modes > 1
-          raise ArgumentError, "--output 需要同时指定 --export" if options[:output] && !options[:export]
-          raise ArgumentError, "--all 不能与 --limit-per-vendor 同时使用" if options[:all] && options[:limit]
+          raise ArgumentError, "Select only one of --show-config, --plan and --export" if modes > 1
+          raise ArgumentError, "--output requires --export" if options[:output] && !options[:export]
+          raise ArgumentError, "--all cannot be combined with --limit-per-vendor" if options[:all] && options[:limit]
           if options[:export] && (options[:source] || options[:query] || options[:query_params])
-            raise ArgumentError, "--export 不能与清单查询选项同时使用"
+            raise ArgumentError, "--export cannot be combined with inventory query options"
           end
           if options[:export] && (options[:tftp] || options[:all] || options[:limit] || options[:environment].key?("NC_PARALLEL") || options[:host] ||
             options[:success_policy] || options[:tftp_root] || options[:max_script_output_bytes] || options[:force_refresh])
-            raise ArgumentError, "--export 不能与备份选项同时使用"
+            raise ArgumentError, "--export cannot be combined with backup options"
           end
         end
 

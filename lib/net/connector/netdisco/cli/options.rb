@@ -25,15 +25,15 @@ module Net
             raise OptionParser::InvalidArgument unless remaining.empty?
             credentials = values[:environment].keys.any? { |key| key.match?(/USERNAME|PASSWORD/) }
             if values[:stdin_credentials] && (credentials || values[:ask_password] || values[:ask_netdisco_password])
-              raise ArgumentError, "--stdin-credentials 不能与命令行凭据或密码提示同时使用"
+              raise ArgumentError, "--stdin-credentials cannot be combined with command-line credentials or password prompts"
             end
-            read_password(values, :ask_password, "NC_DEVICE_PASSWORD", "设备密码", input: input, output: error)
-            read_password(values, :ask_netdisco_password, "ND_PASSWORD", "Netdisco 密码", input: input, output: error)
+            read_password(values, :ask_password, "NC_DEVICE_PASSWORD", "Device password", input: input, output: error)
+            read_password(values, :ask_netdisco_password, "ND_PASSWORD", "Netdisco password", input: input, output: error)
 
             values
           rescue OptionParser::ParseError
-            limits = mode == :topology ? "并发数须为 1 至 500，设备上限须为正整数" : "并发数须为 1 至 500，抽样须为 1 至 5"
-            raise ArgumentError, "参数无效：#{limits}；使用 --help 查看参数", cause: nil
+            limits = mode == :topology ? "Concurrency must be 1 to 500; device limit must be a positive integer" : "Concurrency must be 1 to 500; sample size must be 1 to 5"
+            raise ArgumentError, "Invalid arguments: #{limits}; use --help for options", cause: nil
           end
 
           # 组装当前模式的选项、帮助和扩展参数，解析器自身不执行设备任务。
@@ -41,80 +41,80 @@ module Net
             raise ArgumentError, "unknown CLI mode" unless %i[backup tftp topology].include?(mode)
 
             OptionParser.new do |opts|
-              default = mode == :topology ? "默认只读规划" : "默认沿用配置"
-              opts.banner = "用法：ruby #{File.basename(program)} [选项]（#{default}）\n命令行参数优先；未指定的项沿用配置及默认值。无筛选时选择全部就绪设备。"
+              default = mode == :topology ? "read-only planning by default" : "use the configuration by default"
+              opts.banner = "Usage: ruby #{File.basename(program)} [options] (#{default})\nCommand-line options take precedence; unspecified values use configuration and defaults. Without filters, all ready devices are selected."
               add_settings(opts, values, mode: mode)
               add_execution(opts, values, mode: mode)
               add_terminal_options(opts, values)
               if mode == :topology
                 add_topology(opts, values)
               else
-                opts.on("--plan", "--inventory-only", "预览过滤后的清单，不连接设备") { values[:inventory_only] = true }
+                opts.on("--plan", "--inventory-only", "Preview filtered inventory without connecting to devices") { values[:inventory_only] = true }
               end
               additional&.call(opts, values)
-              opts.on("--examples", "查看常用命令范例，不执行任务") do
+              opts.on("--examples", "Show common command examples without executing tasks") do
                 output.puts Help.examples(program: program, mode: mode)
                 values[:help] = true
               end
-              opts.on("-h", "--help", "显示常用选项") do
+              opts.on("-h", "--help", "Show common options") do
                 output.puts Help.common(opts, mode: mode)
                 values[:help] = true
               end
-              opts.on("--help-all", "显示完整选项（凭据、SSH、自动化等）") { output.puts opts; values[:help] = true }
+              opts.on("--help-all", "Show all options, including credentials, SSH and automation") { output.puts opts; values[:help] = true }
             end
           end
 
           # 登记进度、JSON、密码输入及配置问答等终端选项。
           def self.add_terminal_options(opts, values)
-            opts.on("--ask-password", "隐藏输入设备密码") { values[:ask_password] = true }
-            opts.on("--ask-netdisco-password", "隐藏输入 Netdisco 密码") { values[:ask_netdisco_password] = true }
+            opts.on("--ask-password", "Prompt for the device password without echoing input") { values[:ask_password] = true }
+            opts.on("--ask-netdisco-password", "Prompt for the Netdisco password without echoing input") { values[:ask_netdisco_password] = true }
             CtxCli::Options.output(opts, values, quiet: :no_progress)
-            opts.on("--stdin-credentials", "从标准输入读取凭据并等待 RUN") { values[:stdin_credentials] = true }
+            opts.on("--stdin-credentials", "Read credentials from stdin and wait for RUN") { values[:stdin_credentials] = true }
             CtxCli::Options.initialization(opts, values)
           end
 
           # 登记互斥的拓扑执行模式和格式化参数，应用模式必须显式选择。
           def self.add_topology(opts, values)
-            { discover: "发现邻居并检查描述", plan: "生成配置计划", apply: "修正、读回并保存" }.each do |mode, description|
+            { discover: "Discover neighbors and check descriptions", plan: "Generate a configuration plan", apply: "Apply corrections, read back and save" }.each do |mode, description|
               opts.on("--#{mode}", description) do
-                raise ArgumentError, "--discover、--plan、--apply 不能同时使用" if values[:topology_mode]
+                raise ArgumentError, "--discover, --plan and --apply are mutually exclusive" if values[:topology_mode]
 
                 values[:topology_mode] = mode
                 values[:apply] = true if mode == :apply
               end
             end
-            opts.on("--inventory-only", "只读取并过滤清单，不连接设备") { values[:inventory_only] = true }
-            opts.on("--limit N", Integer, "最多选择 N 台可发现设备") do |value|
+            opts.on("--inventory-only", "Read and filter inventory without connecting to devices") { values[:inventory_only] = true }
+            opts.on("--limit N", Integer, "Select at most N discoverable devices") do |value|
               raise OptionParser::InvalidArgument unless value.positive?
 
               values[:topology_limit] = value
             end
-            opts.on("--description-format TEXT", "模板仅支持 %{neighbor}、%{port}") { |value| values[:environment]["NC_TOPOLOGY_DESCRIPTION_FORMAT"] = value }
-            opts.on("--full-port-names", "不缩写邻居端口") { values[:environment]["NC_TOPOLOGY_ABBREVIATE"] = "false" }
-            opts.on("--lowercase-ports", "邻居端口转换成小写") { values[:environment]["NC_TOPOLOGY_LOWERCASE"] = "true" }
+            opts.on("--description-format TEXT", "Template supports only %{neighbor} and %{port}") { |value| values[:environment]["NC_TOPOLOGY_DESCRIPTION_FORMAT"] = value }
+            opts.on("--full-port-names", "Keep full neighbor port names") { values[:environment]["NC_TOPOLOGY_ABBREVIATE"] = "false" }
+            opts.on("--lowercase-ports", "Convert neighbor port names to lowercase") { values[:environment]["NC_TOPOLOGY_LOWERCASE"] = "true" }
           end
 
           # 正式 CLI 与批次示例共用并发、抽样、核验和成功策略选项。
           def self.add_execution(opts, values, mode: nil)
-            opts.on("--refresh-inventory", "强制刷新清单；远端失败时回退已验证历史") { values[:force_refresh] = true }
-            opts.on("--cache-only", "仅使用已验证的清单缓存，不查询远端") { values[:environment]["ND_CACHE_MODE"] = "only" }
-            opts.on("--cache-mode MODE", %w[prefer only refresh], "清单缓存 prefer / only / refresh") do |value|
+            opts.on("--refresh-inventory", "Force inventory refresh; fall back to verified history on remote failure") { values[:force_refresh] = true }
+            opts.on("--cache-only", "Use only verified cached inventory without querying the remote source") { values[:environment]["ND_CACHE_MODE"] = "only" }
+            opts.on("--cache-mode MODE", %w[prefer only refresh], "Inventory cache: prefer / only / refresh") do |value|
               values[:environment]["ND_CACHE_MODE"] = value
             end
-            opts.on("-p", "--parallel N", Integer, "并发设备数，1 至 500") do |count|
+            opts.on("-p", "--parallel N", Integer, "Concurrent devices, 1 to 500") do |count|
               raise OptionParser::InvalidArgument unless (1..Settings::MAX_PARALLEL).cover?(count)
 
               values[:environment]["NC_PARALLEL"] = count.to_s
             end
             return if mode == :topology
 
-            opts.on("--sample N", "--limit-per-vendor N", Integer, "每厂商抽样 1 至 5 台") do |count|
+            opts.on("--sample N", "--limit-per-vendor N", Integer, "Sample 1 to 5 devices per vendor") do |count|
               Planner.validate_limit!(count)
               values[:limit] = count
             end
-            opts.on("--tftp-root DIR", "本机 TFTP 服务器文件目录") { |path| values[:tftp_root] = path }
-            opts.on("--all", "选择全部就绪设备") { values[:all] = true }
-            opts.on("--success-policy POLICY", %w[strict selected verified], "成功判定：strict / selected / verified（TFTP 文件核验）") do |policy|
+            opts.on("--tftp-root DIR", "Local directory containing TFTP server files") { |path| values[:tftp_root] = path }
+            opts.on("--all", "Select all ready devices") { values[:all] = true }
+            opts.on("--success-policy POLICY", %w[strict selected verified], "Success policy: strict / selected / verified (TFTP file verification)") do |policy|
               values[:success_policy] = policy.to_sym
             end
           end
@@ -136,7 +136,7 @@ module Net
 
           # CLI > 原进程环境 > YAML > .env；公开环境字段转为内部策略，凭据仍独立读取。
           def self.settings(options, env: ENV, mode: :backup, configuration: nil, defaults: {})
-            raise ArgumentError, "--all 不能与抽样同时使用" if options[:all] && options[:limit]
+            raise ArgumentError, "--all cannot be combined with sampling" if options[:all] && options[:limit]
             if options[:host] && options.fetch(:environment).key?("NC_INCLUDE_HOSTS")
               raise ArgumentError, "--host cannot be combined with --hosts"
             end
@@ -180,14 +180,14 @@ module Net
           def self.add_settings(opts, values, mode: nil)
             add_filters(opts, values)
             {
-              "--username USER" => ["NC_DEVICE_USERNAME", "设备登录用户名"],
-              "--password PASSWORD" => ["NC_DEVICE_PASSWORD", "设备登录密码（可改用 --ask-password）"],
-              "--enable-password PASSWORD" => ["NC_ENABLE_PASSWORD", "设备提权密码"],
-              "--netdisco-url URL" => ["ND_URL", "Netdisco 地址"],
-              "--netdisco-username USER" => ["ND_USERNAME", "Netdisco 用户名"],
-              "--netdisco-password PASSWORD" => ["ND_PASSWORD", "Netdisco 密码"],
-              "--directory DIR" => ["NC_BACKUP_DIRECTORY", "#{mode == :topology ? "拓扑报告" : "备份"}目录，相对启动目录"],
-              "--config FILE" => ["NC_CONFIG", "YAML 配置，相对启动目录"]
+              "--username USER" => ["NC_DEVICE_USERNAME", "Device login username"],
+              "--password PASSWORD" => ["NC_DEVICE_PASSWORD", "Device login password (or use --ask-password)"],
+              "--enable-password PASSWORD" => ["NC_ENABLE_PASSWORD", "Device privilege password"],
+              "--netdisco-url URL" => ["ND_URL", "Netdisco URL"],
+              "--netdisco-username USER" => ["ND_USERNAME", "Netdisco username"],
+              "--netdisco-password PASSWORD" => ["ND_PASSWORD", "Netdisco password"],
+              "--directory DIR" => ["NC_BACKUP_DIRECTORY", "#{mode == :topology ? "Topology report" : "Backup"} directory, relative to the startup directory"],
+              "--config FILE" => ["NC_CONFIG", "YAML configuration, relative to the startup directory"]
             }.each do |flag, (key, description)|
               opts.on(flag, description) do |value|
                 raise OptionParser::InvalidArgument if value.empty?
@@ -195,12 +195,12 @@ module Net
                 values[:environment][key] = value
               end
             end
-            opts.on("--env-file FILE", "最后叠加的环境文件，相对启动目录") { |path| values[:env_file] = path }
-            opts.on("--show-config", "显示生效的非敏感设置与配置来源") { values[:show_config] = true }
-            opts.on("--host-key-policy POLICY", %w[strict accept_new replace], "主机密钥策略：strict / accept_new / replace（变化时自动替换）") do |policy|
+            opts.on("--env-file FILE", "Environment file loaded last, relative to the startup directory") { |path| values[:env_file] = path }
+            opts.on("--show-config", "Show effective nonsensitive settings and configuration sources") { values[:show_config] = true }
+            opts.on("--host-key-policy POLICY", %w[strict accept_new replace], "Host key policy: strict / accept_new / replace (automatically replace changed keys)") do |policy|
               values[:environment]["NC_HOST_KEY_POLICY"] = policy
             end
-            opts.on("--known-hosts FILE", "持久保存主机密钥的文件") do |path|
+            opts.on("--known-hosts FILE", "File for persistent host keys") do |path|
               values[:environment]["NC_KNOWN_HOSTS"] = path
             end
           end
@@ -217,7 +217,7 @@ module Net
                 values[:environment][environment_key] = value
               end
             end
-            opts.on("--host IP", "选择单台设备，可重复") do |value|
+            opts.on("--host IP", "Select one device; may be repeated") do |value|
               raise OptionParser::InvalidArgument if value.empty? || value.match?(/[\/,]/)
 
               begin
@@ -254,7 +254,7 @@ module Net
           def self.read_password(values, flag, key, label, input:, output:)
             return unless values[flag]
 
-            raise ArgumentError, "密码提示与显式密码不能同时使用" if values[:environment].key?(key)
+            raise ArgumentError, "Password prompts cannot be combined with explicit passwords" if values[:environment].key?(key)
             values[:environment][key] = CtxCli::Terminal.new(input: input, out: output).password(label: label)
           end
           private_class_method :read_password, :parser_for

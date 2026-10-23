@@ -130,23 +130,26 @@ module Net
       def close = @session.close
 
       # 将一条文本命令包装成脚本并执行。
-      def execute_command(text, **, &)
-        execute_script(Script.new([Command.new(text, **)]), &)
+      def execute_command(text, on_receipt: nil, **, &)
+        script = Script.new([Command.new(text, **)])
+        return execute_script(script, &) if on_receipt.nil?
+
+        execute_script(script, on_receipt: on_receipt, &)
       end
 
       # 接收脚本或命令数组，统一交给单次会话执行。
-      def execute_script(script, &)
+      def execute_script(script, on_receipt: nil, &)
         script = Script.new(script) unless script.is_a?(Script)
-        perform_script(script, &)
+        perform_script(script, on_receipt: on_receipt, &)
       end
 
       # 多步骤业务操作独占当前会话，内部脚本仍禁止回调重入。
       def with_operation(name, &) = @session.with_operation(name, &)
 
       # 业务层可扩展脚本准备、响应校验和最终结果，所有钩子均在会话锁内执行。
-      def execute_operation(script, name:, prompt: nil, after_command: nil, privilege: true, &finalize)
+      def execute_operation(script, name:, prompt: nil, after_command: nil, privilege: true, on_receipt: nil, &finalize)
         perform_script(script, operation: name, prompt: prompt, after_command: after_command,
-                       privilege: privilege, finalize: finalize)
+                       privilege: privilege, finalize: finalize, on_receipt: on_receipt)
       end
 
       # 返回已确认的提示，供业务层为只读采集绑定准确的结束条件。
@@ -260,7 +263,8 @@ module Net
 
       # 在会话锁内运行脚本及业务回调，保留已完成步骤和统一错误边界。
       def perform_script(script, operation: nil, prompt: nil, after_command: nil, privilege: true,
-                         finalize: nil, &on_step)
+                         finalize: nil, on_receipt: nil, &on_step)
+        raise ArgumentError, "on_receipt must respond to call" unless on_receipt.nil? || on_receipt.respond_to?(:call)
         return Result.new if script.empty?
 
         execution = build_execution(operation: operation, prompt: prompt, after_command: after_command, privilege: privilege)
@@ -269,7 +273,7 @@ module Net
         @session.perform(:script) do
           @session.log_script(operation: operation, steps: execution.steps) do
             @session.with_sensitive_output(output_sensitive) { before_batch(execution) }
-            result = execution.execute_script(script, &on_step)
+            result = execution.execute_script(script, on_receipt: on_receipt, &on_step)
             sensitive_result = output_sensitive || script.any?(&:sensitive?) || execution.sensitive?
             @session.with_sensitive_output(sensitive_result) do
               result = finalize_script_result(result, finalize)

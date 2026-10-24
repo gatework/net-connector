@@ -79,24 +79,30 @@ module Net
 
         # 统一返回写入回执；失败时从异常 receipt 判断目录项是否已经替换。
         def self.write(path, contents)
+          write_stream(path) { |file| file.write(contents) }
+        end
+
+        # 借出私有临时文件供分片写入，生产者正常返回后才同步并替换目标。
+        def self.write_stream(path)
           raise ArgumentError, "path must be a nonempty String" unless path.is_a?(String) && !path.empty?
+          raise ArgumentError, "a streaming writer block is required" unless block_given?
 
           receipt = Receipt.new(path: File.expand_path(path), state: :not_committed, phase: :resolve_parent)
           directory = File.realpath(File.dirname(receipt.path))
           destination = File.join(directory, File.basename(receipt.path))
           receipt = receipt.with(phase: :temporary_file)
-          Tempfile.create([".net-connector-", ".tmp"], directory) do |file|
+          with_owned_file(-> { Tempfile.create([".net-connector-", ".tmp"], directory) }, temporary: true) do |file|
             file.binmode
             file.chmod(0o600)
             receipt = receipt.with(phase: :write)
-            file.write(contents)
+            yield file
             receipt = receipt.with(phase: :file_sync)
             file.flush
             file.fsync
             receipt = receipt.with(phase: :rename)
             File.rename(file.path, destination)
             receipt = receipt.with(state: :committed, phase: :directory_open)
-            File.open(directory, File::RDONLY | File::NOFOLLOW) do |parent|
+            with_owned_file(-> { File.open(directory, File::RDONLY | File::NOFOLLOW) }) do |parent|
               raise IOError, "parent is not a directory" unless parent.stat.directory?
 
               receipt = receipt.with(phase: :directory_sync)
@@ -118,6 +124,57 @@ module Net
                   end
           raise klass.new(receipt: receipt, underlying_type: error.class.name.to_s), cause: nil
         end
+
+        # 唯一持有本次写入的文件句柄；临时目录项身份在取消递送前登记，退出时保留主控制流。
+        def self.with_owned_file(acquire, temporary: false)
+          file = path = identity = nil
+          completed = false
+          Thread.handle_interrupt(Exception => :never) do
+            file = acquire.call
+            if temporary
+              path = file.path
+              identity = file.stat
+            end
+          end
+          result = yield file
+          completed = true
+          result
+        rescue Exception # rubocop:disable Lint/RescueException -- 正常返回标记之后递送的取消也必须先于清理故障。
+          completed = false
+          raise
+        ensure
+          begin
+            cleanup_file(file, path, identity) if file
+          rescue StandardError, NotImplementedError
+            raise if completed
+          end
+        end
+
+        # 关闭失败仍尝试删除属于本次写入的临时目录项，已替换的同名文件不归本作用域所有。
+        def self.cleanup_file(file, path, identity)
+          Thread.handle_interrupt(Exception => :never) do
+            failure = nil
+            begin
+              file.close unless file.closed?
+            rescue Exception => error # rubocop:disable Lint/RescueException -- 关闭故障不能跳过临时目录项清理。
+              failure = error
+            end
+            begin
+              if path && identity
+                current = File.lstat(path)
+                File.unlink(path) if current.dev == identity.dev && current.ino == identity.ino
+              end
+            rescue Errno::ENOENT
+              # 原子替换已经移走临时目录项，或其他清理已将其删除。
+              nil
+            rescue Exception => error # rubocop:disable Lint/RescueException -- 保留最先发生的清理故障。
+              failure ||= error
+            end
+            raise failure if failure
+          end
+        end
+
+        private_class_method :with_owned_file, :cleanup_file
       end
     end
   end

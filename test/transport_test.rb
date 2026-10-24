@@ -26,17 +26,22 @@ class ConnectorTransportTest < Minitest::Test
     [IOError.new("startup failed"), Interrupt.new("startup interrupted")].each do |original|
       configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test", host_key_policy: :accept_new)
       closed = 0
+      cleanup_fails = true
       trust = Object.new
-      trust.define_singleton_method(:close) { closed += 1; raise IOError, "cleanup failed" }
+      trust.define_singleton_method(:close) { closed += 1; raise IOError, "cleanup failed" if cleanup_fails }
       transport = Connector::Transports::Ssh.new(configuration, channel_factory: -> { raise original })
       Connector::KnownHosts.stub(:new, trust) do
         raised = assert_raises(original.class) { transport.open }
         assert_same original, raised
       end
-      assert_equal 1, closed
+      assert_operator closed, :>=, 1
       assert transport.closed?
+      cleanup_fails = false
+      attempts = closed
       transport.close
-      assert_equal 1, closed
+      assert_equal attempts + 1, closed
+      transport.close
+      assert_equal attempts + 1, closed
     end
   end
 
@@ -367,21 +372,23 @@ class ConnectorTransportTest < Minitest::Test
     assert_same original, raised
     assert_equal %i[channel trust], closed
     assert_same original, assert_raises(Interrupt) { transport.close }
-    assert_equal %i[channel trust channel], closed
+    assert_equal %i[channel trust channel trust], closed
   end
 
-  def test_ssh_close_reports_a_trust_cleanup_failure_without_retrying_the_same_resource
+  def test_ssh_close_retries_failed_trust_cleanup_and_releases_it_only_after_success
     configuration = Connector::Configuration.new(host: "192.0.2.1", username: "test")
     transport = Connector::Transports::Ssh.new(configuration)
     closed = 0
     trust = Object.new
     original = IOError.new("trust cleanup failed")
-    trust.define_singleton_method(:close) { closed += 1; raise original }
+    trust.define_singleton_method(:close) { closed += 1; raise original if closed == 1 }
     transport.instance_variable_set(:@known_hosts, trust)
     raised = assert_raises(IOError) { transport.close }
     assert_same original, raised
     transport.close
-    assert_equal 1, closed
+    assert_equal 2, closed
+    transport.close
+    assert_equal 2, closed
   end
 
   def test_fragmented_pager_preserves_output_and_reaps_the_child

@@ -14,6 +14,7 @@ module Net
 
       # 建立本次连接的私有主机密钥快照，初始化失败时清理已取得的资源。
       def initialize(configuration, replace: false)
+        @owner_pid = Process.pid
         destination = configuration.known_hosts || File.join(Dir.home, ".ssh", "known_hosts")
         FileUtils.mkdir_p(File.dirname(destination), mode: 0o700)
         @destination = File.join(File.realpath(File.dirname(destination)), File.basename(destination))
@@ -35,6 +36,11 @@ module Net
       # 在目标文件锁内合并新增信任；检测并发密钥变化后原子写回。
       # 会话只写私有快照；登记时重读共享信任并检查冲突，避免并发连接覆盖已有主机密钥。
       def commit
+        unless @owner_pid == Process.pid
+          raise ConnectionError.new("inherited known_hosts snapshot cannot be committed; reopen the SSH connection",
+                                    code: :known_hosts_inherited, host: @host, phase: :login), cause: nil
+        end
+
         # 纯会话引擎加载不触及文件业务；实际登记信任时才加载持久化协议。
         require_relative "../storage/atomic_file"
         begin
@@ -60,10 +66,10 @@ module Net
         end
       end
 
-      # 关闭并删除私有密钥快照，延迟取消直至清理完成。
+      # 关闭私有密钥快照，创建进程同时删除文件；延迟取消直至清理完成。
       def close
         failure = nil
-        # 清除引用至删除快照期间延后异步取消，不能留下失去所有者的临时文件。
+        # 关闭句柄和删除快照期间延后异步取消，完成清理后再释放引用。
         Thread.handle_interrupt(Exception => :never) do
           close_snapshot
         rescue Exception => error # rubocop:disable Lint/RescueException -- 保存同步清理故障，退出屏蔽范围后继续传播。
@@ -104,17 +110,24 @@ module Net
         raise failure, cause: nil if failure
       end
 
-      # 清除快照引用并删除临时文件，清理错误不覆盖较早的失败。
+      # 创建进程负责删除文件；fork 副本只关闭继承句柄，失败时保留清理引用。
       def close_snapshot
         file = @file
-        @file = nil
-        File.unlink(@path + ".old") if @path && File.exist?(@path + ".old")
+        owned = @owner_pid == Process.pid
+        File.unlink(@path + ".old") if owned && @path && File.exist?(@path + ".old")
       rescue Exception # rubocop:disable Lint/RescueException -- 删除附属文件失败或中断后仍须关闭私有快照。
         failed = true
         raise
       ensure
         begin
-          file&.close!
+          if owned
+            file&.close!
+            # Tempfile 会吞掉删除时的权限错误；路径仍存在表示删除责任尚未完成。
+            raise IOError, "known_hosts snapshot removal is incomplete" if file&.path
+          else
+            file&.close
+          end
+          @file = nil
         rescue Exception # rubocop:disable Lint/RescueException -- 私有快照清理不能覆盖先发生的删除故障。
           raise unless failed
         end

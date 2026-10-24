@@ -1,7 +1,6 @@
 # 服务器端单次归档事务：锁覆盖上传与核验，客户端断开后退出且不重放设备命令。
 """在一个目标锁内处理单次上传事务，客户端断开后退出且不重放设备操作。"""
 
-import base64
 from contextlib import ExitStack
 import fcntl
 import hashlib
@@ -14,6 +13,7 @@ import sys
 import time
 
 MAX_BYTES = 64 * 1024 * 1024
+CHUNK_BYTES = 64 * 1024
 DIRECTORY_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
 
 
@@ -107,7 +107,7 @@ def fingerprint(s):
 
 
 # 从固定目录安全读取有界普通文件，读前、读后和路径身份必须一致。
-def read_file(parent, name, missing=False):
+def read_file(parent, name, missing=False, consume=None):
     try:
         fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=parent)
     except FileNotFoundError:
@@ -118,13 +118,24 @@ def read_file(parent, name, missing=False):
         before = os.fstat(f.fileno())
         if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_BYTES:
             raise ValueError("unsafe or oversized file")
-        data = f.read(MAX_BYTES + 1)
+        digest = hashlib.sha256()
+        size = 0
+        while True:
+            chunk = f.read(CHUNK_BYTES)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_BYTES:
+                raise ValueError("oversized file")
+            digest.update(chunk)
+            if consume is not None and consume(chunk) != len(chunk):
+                raise IOError("incomplete file write")
         after = os.fstat(f.fileno())
-        if len(data) > MAX_BYTES or fingerprint(before) != fingerprint(after):
+        if size != after.st_size or fingerprint(before) != fingerprint(after):
             raise ValueError("file changed while reading")
         if fingerprint(after) != fingerprint(os.stat(name, dir_fd=parent, follow_symlinks=False)):
             raise ValueError("file replaced while reading")
-        return data, fingerprint(after)
+        return digest.hexdigest(), fingerprint(after)
 
 
 # 在固定目录中以随机名称独占创建私有临时文件，碰撞时重新选择名称。
@@ -139,11 +150,13 @@ def temporary(parent, prefix):
 
 
 # 先写全并同步临时文件，再独占链接到归档名并同步目录，已有归档不会被覆盖。
-def persist(parent, name, data):
+def persist(parent, name, source_parent, source_name, expected, digest):
     fd, pending = temporary(parent, ".net-connector-")
     try:
         with os.fdopen(fd, "wb") as f:
-            f.write(data)
+            copied, current = read_file(source_parent, source_name, consume=f.write)
+            if current != expected or copied != digest:
+                raise ValueError("source changed before archive commit")
             f.flush()
             os.fsync(f.fileno())
         # 临时名与最终名均相对固定目录解析，父路径改名也不能将写入重定向。
@@ -218,9 +231,9 @@ def run():
         # 上传前先保留同名历史文件；只有服务器确认就绪后，客户端才允许设备导出。
         verify_boundary()
         old, previous = read_file(root_fd, name, missing=True)
-        if old is not None:
+        if previous is not None:
             previous_fd = directories.private(batch_fd, "previous")
-            persist(previous_fd, archive_name, old)
+            persist(previous_fd, archive_name, root_fd, name, previous, old)
         fd, marker = temporary(root_fd, ".net-connector-upload-")
         try:
             started = os.fstat(fd).st_mtime_ns
@@ -233,26 +246,29 @@ def run():
             return
         verify_boundary()
         # 新文件必须非空、区别于旧基线且不早于本次上传边界，旧文件不能冒充新结果。
-        data, current = read_file(root_fd, name)
-        if not data or current == previous or current[3] < started:
+        digest, current = read_file(root_fd, name)
+        if not current[2] or current == previous or current[3] < started:
             raise ValueError("no new nonempty upload")
-        digest = hashlib.sha256(data).hexdigest()
-        persist(batch_fd, archive_name, data)
-        archived, _ = read_file(batch_fd, archive_name)
-        if hashlib.sha256(archived).hexdigest() != digest:
+        persist(batch_fd, archive_name, root_fd, name, current, digest)
+        archived, saved = read_file(batch_fd, archive_name)
+        if archived != digest or saved[2] != current[2]:
             raise ValueError("archive verification failed")
         verify_boundary()
         destination = os.path.join(root, "archive", batch, archive_name)
-        send(phase="archived", bytes=len(data), sha256=digest, archive_path=destination,
-             data=base64.b64encode(data).decode("ascii"))
+        send(phase="archived", bytes=current[2], sha256=digest, archive_path=destination)
+        delivered, check = read_file(batch_fd, archive_name, consume=sys.stdout.buffer.write)
+        if delivered != digest or check != saved:
+            raise ValueError("archive changed during delivery")
+        verify_boundary()
+        send(phase="delivered")
         # 远端归档及正文已交付客户端；只有收到客户端核验后的明确清理指令才删除 staging。
         action = receive()
         if action.get("action") == "cleanup":
             if action.get("sha256") != digest:
                 raise ValueError("cleanup digest mismatch")
             verify_boundary()
-            data, check = read_file(root_fd, name)
-            if check != current or hashlib.sha256(data).hexdigest() != digest:
+            uploaded, check = read_file(root_fd, name)
+            if check != current or uploaded != digest:
                 raise ValueError("upload changed before cleanup")
             verify_boundary()
             os.unlink(name, dir_fd=root_fd)

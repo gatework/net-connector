@@ -93,7 +93,7 @@ class CLISetupTest < Minitest::Test
         assert_equal 8, mode == :topology ? settings.topology_options.parallel : settings.parallel
         assert_equal directory, files.data.dig(name, "directory")
         assert_equal [path], files.config_files
-        assert_equal path, files.sources.fetch("fields").fetch("#{name}.parallel")
+        assert_equal path, files.sources.fetch("fields").fetch("/#{name}/parallel")
       end
     end
   end

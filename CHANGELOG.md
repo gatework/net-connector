@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 0.18.1 - 2026-10-24
+
+- Stream SSH archive bodies through bounded binary frames and incremental hashes instead of whole-file base64 copies; preserve deadlines, verified server receipts and committed local paths.
+- Retain cleanup ownership across cancellation, failed closes and forked KnownHosts snapshots; reject inherited trust commits before file or lock access.
+- Preserve the primary exception or nonlocal exit when atomic-file and archive-process cleanup also fails.
+- Expose JSON Pointer field provenance through configuration previews and leave runtime dependency versions to host lockfiles.
+
 ## 0.18.0 - 2026-10-23
 
 - Add on_receipt completion callbacks to command, script, save and custom operations, retaining completed responses after later logging, processing, budget or cancellation failures.

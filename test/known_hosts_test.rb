@@ -5,6 +5,8 @@ require "minitest/mock"
 require "tmpdir"
 require "open3"
 require "rbconfig"
+require "timeout"
+require "json"
 require_relative "../lib/net/connector"
 
 class KnownHostsTest < Minitest::Test
@@ -43,13 +45,16 @@ class KnownHostsTest < Minitest::Test
     File.write(entry.path, contents)
     open_file = File.method(:open)
     open = lambda do |path, *arguments, **options, &block|
-      next open_file.call(path, *arguments, **options) unless block
+      file = open_file.call(path, *arguments, **options)
+      if file.stat.directory? && File.realpath(path) == File.realpath(@directory)
+        file.define_singleton_method(:fsync) { raise Errno::EIO, "directory sync failed" }
+      end
+      next file unless block
 
-      open_file.call(path, *arguments, **options) do |file|
-        if file.stat.directory? && File.realpath(path) == File.realpath(@directory)
-          file.define_singleton_method(:fsync) { raise Errno::EIO, "directory sync failed" }
-        end
+      begin
         block.call(file)
+      ensure
+        file.close
       end
     end
     error = File.stub(:open, open) { assert_raises(Net::Connector::ConnectionError) { entry.commit } }
@@ -222,6 +227,127 @@ class KnownHostsTest < Minitest::Test
     assert_empty Dir[File.join(@directory, ".nc-known-hosts-*")]
   end
 
+  def test_inherited_close_preserves_parent_snapshot_and_backup
+    entry = snapshot(1)
+    path = entry.path
+    contents = "192.0.2.1 #{@key}\n"
+    File.write(path, contents)
+    File.write(path + ".old", "parent backup")
+    file = entry.instance_variable_get(:@file)
+
+    assert_equal true, (fork_result { entry.close; entry.close; file.closed? })
+    assert File.exist?(path), "child close must preserve the parent's snapshot"
+    assert_equal "parent backup", File.read(path + ".old")
+    refute file.closed?
+    entry.commit
+    assert_equal contents, File.read(@destination)
+    entry.close
+    refute File.exist?(path)
+    refute File.exist?(path + ".old")
+  ensure
+    entry&.close
+  end
+
+  def test_inherited_commit_is_rejected_before_reading_or_changing_trust
+    original = "192.0.2.9 #{@key}\n"
+    File.write(@destination, original)
+    entry = snapshot(1)
+    [false, true].each do |changed|
+      File.open(entry.path, "a") { |file| file.puts "192.0.2.1 #{@new_key}" } if changed
+      [false, true].each do |closed|
+        result = fork_result do
+          entry.close if closed
+          begin
+            entry.commit
+            { rejected: false }
+          rescue Net::Connector::ConnectionError => error
+            { rejected: true, code: error.code, phase: error.phase, cause: error.cause,
+              diagnostic: Net::Connector::Error::Metadata.code(error.code) }
+          end
+        end
+        assert_equal({ rejected: true, code: "known_hosts_inherited", phase: "login", cause: nil,
+                       diagnostic: "known_hosts_inherited" }, result)
+        assert_equal original, File.read(@destination)
+        assert File.exist?(entry.path)
+      end
+    end
+    entry.commit
+    assert_includes File.read(@destination), "192.0.2.1 #{@new_key}"
+  ensure
+    entry&.close
+  end
+
+  def test_child_reopens_ssh_with_its_own_snapshot_and_preserves_parent_session
+    transport = local_ssh_transport
+    transport.open
+    transport.read([/router#/], timeout: 2)
+    parent_path = transport.instance_variable_get(:@known_hosts).path
+    child = fork_result do
+      transport.open
+      transport.read([/router#/], timeout: 2)
+      child_path = transport.instance_variable_get(:@known_hosts).path
+      transport.authenticated
+      transport.close
+      { independent: child_path != parent_path, removed: !File.exist?(child_path) }
+    end
+    assert_equal({ independent: true, removed: true }, child)
+    assert File.exist?(parent_path), "child reopen must preserve the parent's snapshot"
+    transport.write("continue\n")
+    event = transport.read([/router#/], timeout: 2)
+    assert_equal 0, event.index
+    transport.authenticated
+    assert_equal "192.0.2.1 #{@key}\n", File.read(@destination)
+    transport.close
+    refute File.exist?(parent_path)
+  ensure
+    transport&.close
+  end
+
+  def test_failed_snapshot_close_is_retried_before_ssh_reopen
+    transport = local_ssh_transport
+    transport.open
+    old_snapshot = transport.instance_variable_get(:@known_hosts)
+    path = old_snapshot.path
+    file = old_snapshot.instance_variable_get(:@file)
+    close = file.method(:close!)
+    first = true
+    file.define_singleton_method(:close!) do
+      if first
+        first = false
+        raise IOError, "snapshot close failed before closing"
+      end
+      close.call
+    end
+    assert_raises(IOError) { transport.close }
+    assert File.exist?(path)
+    refute file.closed?
+    transport.open
+    assert file.closed?, "reopen must retry the old snapshot descriptor"
+    refute File.exist?(path)
+    refute_equal path, transport.instance_variable_get(:@known_hosts).path
+  ensure
+    transport&.close
+    close&.call
+  end
+
+  def test_silent_unlink_denial_keeps_snapshot_owned_for_close_or_reopen
+    %i[close open].each do |action|
+      transport = local_ssh_transport
+      transport.open
+      path = transport.instance_variable_get(:@known_hosts).path
+      unlink = File.method(:unlink)
+      File.stub(:unlink, ->(target) { target == path ? (raise Errno::EACCES) : unlink.call(target) }) do
+        assert_raises(IOError) { transport.close }
+      end
+      assert File.exist?(path)
+      transport.public_send(action)
+      refute File.exist?(path), "cleanup ownership was lost after unlink denial"
+      transport.close
+    ensure
+      transport&.close
+    end
+  end
+
   def test_failed_authentication_discards_replacement_without_changing_shared_trust
     original = "192.0.2.1 #{@key}\n"
     File.write(@destination, original)
@@ -338,6 +464,50 @@ class KnownHostsTest < Minitest::Test
   end
 
   private
+
+  def fork_result
+    reader, writer = IO.pipe
+    pid = fork do
+      reader.close
+      begin
+        writer.write(JSON.generate(result: yield))
+        writer.close
+        exit! 0
+      rescue StandardError => error
+        writer.write(JSON.generate(error: [error.class.name, error.message]))
+        writer.close
+        exit! 1
+      end
+    end
+    writer.close
+    result, status = Timeout.timeout(10) { [JSON.parse(reader.read, symbolize_names: true), Process.wait2(pid).last] }
+    pid = nil
+    assert status.success?, "child failed: #{result[:error].inspect}"
+    result.fetch(:result)
+  ensure
+    reader&.close unless reader&.closed?
+    writer&.close unless writer&.closed?
+    if pid
+      Process.kill("KILL", pid) rescue nil
+      Process.wait(pid) rescue nil
+    end
+  end
+
+  def local_ssh_transport
+    config = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit", known_hosts: @destination,
+                                               host_key_policy: :accept_new)
+    transport_class = Class.new(Net::Connector::Transports::Ssh) do
+      attr_accessor :key_line
+
+      def argv
+        path = super.find { |argument| argument.start_with?("UserKnownHostsFile=") }.split("=", 2).last
+        script = "STDOUT.sync = true; File.write(#{path.inspect}, #{key_line.inspect}); puts 'router#'; " \
+                 "STDIN.each_line { puts 'router#' }"
+        [RbConfig.ruby, "--disable-gems", "-e", script]
+      end
+    end
+    transport_class.new(config).tap { |transport| transport.key_line = "192.0.2.1 #{@key}\n" }
+  end
 
   def key(name)
     path = File.join(@directory, name)

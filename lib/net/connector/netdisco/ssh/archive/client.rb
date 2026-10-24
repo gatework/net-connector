@@ -3,7 +3,6 @@
 require_relative "../../../storage/directory"
 
 require "digest"
-require "json"
 require "open3"
 require "securerandom"
 require "shellwords"
@@ -11,6 +10,7 @@ require "tmpdir"
 require_relative "../../tftp/root"
 require_relative "../authentication"
 require_relative "../../tftp/archive"
+require_relative "protocol"
 
 module Net
   module Connector
@@ -41,12 +41,11 @@ module Net
               end
             end
 
-            MAX_FRAME_BYTES = 90 * 1024 * 1024
             SESSION_LIMIT = 4
             WORKER = File.expand_path("worker.py", __dir__)
             ACTIVE_CLIENTS = {}
             ACTIVE_CLIENTS_MUTEX = Mutex.new
-            private_constant :MAX_FRAME_BYTES, :WORKER, :ACTIVE_CLIENTS, :ACTIVE_CLIENTS_MUTEX
+            private_constant :WORKER, :ACTIVE_CLIENTS, :ACTIVE_CLIENTS_MUTEX
 
             # 退出处理只持有仍需清理的连接；已关闭的批次与凭据可由 GC 回收。
             at_exit do
@@ -94,30 +93,26 @@ module Net
               acquired = @slots.pop
               filename = TftpTarget.validate_path!(upload_filename(device))
               archive_name = "#{device.backup_filename(style: :hostname_ip).delete_suffix(".txt")}#{File.extname(filename)}"
-              @launcher.call do |input, output, error, process|
-                begin
-                  write_frame(input, root: @root, filename: filename, archive_name: archive_name, batch: @batch)
-                  expect_phase(output, "ready")
-                  outcome = yield filename
-                  receipt = outcome.backup
-                  unless receipt.is_a?(TftpReceipt) && receipt.path == filename
-                    write_frame(input, action: "abort")
-                    next outcome
-                  end
-                  outcome = outcome.with(started_at: started_at)
-                  write_frame(input, action: "verify")
-                  proof = expect_phase(output, "archived")
-                  outcome = retain_upload(outcome, proof, archive_name)
-                  if outcome.success?
-                    write_frame(input, action: "cleanup", sha256: outcome.backup.server_sha256)
-                    expect_phase(output, "complete")
-                  else
-                    write_frame(input, action: "abort")
-                  end
-                  outcome
-                ensure
-                  stop_process(input, output, error, process)
+              with_process do |protocol|
+                protocol.send_frame(root: @root, filename: filename, archive_name: archive_name, batch: @batch)
+                protocol.expect_phase("ready")
+                outcome = yield filename
+                receipt = outcome.backup
+                unless receipt.is_a?(TftpReceipt) && receipt.path == filename
+                  protocol.send_frame(action: "abort")
+                  next outcome
                 end
+                outcome = outcome.with(started_at: started_at)
+                protocol.send_frame(action: "verify")
+                proof = protocol.expect_phase("archived")
+                outcome = retain_upload(outcome, protocol, proof, archive_name)
+                if outcome.success?
+                  protocol.send_frame(action: "cleanup", sha256: outcome.backup.server_sha256)
+                  protocol.expect_phase("complete")
+                else
+                  protocol.send_frame(action: "abort")
+                end
+                outcome
               end
             rescue StandardError
               raise Tftp::Archive::Failure.new(host: device.host), cause: nil unless outcome
@@ -158,33 +153,26 @@ module Net
 
             # 用实际事务进程预检目录与写入边界，不读取或上传任何设备文件。
             def prepare_archive
-              @launcher.call do |input, output, error, process|
-                begin
-                  write_frame(input, root: @root, filename: "preflight.cfg", archive_name: "preflight.cfg", batch: @batch, action: "preflight")
-                  expect_phase(output, "ready")
-                ensure
-                  stop_process(input, output, error, process)
-                end
+              with_process do |protocol|
+                protocol.send_frame(root: @root, filename: "preflight.cfg", archive_name: "preflight.cfg", batch: @batch, action: "preflight")
+                protocol.expect_phase("ready")
               end
             rescue StandardError
               raise PreparationUnavailable, cause: nil
             end
 
             # 先核对服务器正文与摘要，再保留远端归档路径；后续本地写入失败仍保留已有证据。
-            def retain_upload(outcome, proof, archive_name)
-              bytes = proof.fetch("data").unpack1("m0")
-              digest = Digest::SHA256.hexdigest(bytes)
-              unless bytes.bytesize.positive? && bytes.bytesize == proof.fetch("bytes") && digest == proof.fetch("sha256")
-                raise Tftp::Archive::Failure
-              end
-              receipt = outcome.backup.with(verification: :server_verified, server_sha256: digest, server_bytes: bytes.bytesize,
+            def retain_upload(outcome, protocol, proof, archive_name)
+              receipt = outcome.backup.with(verification: :server_verified, server_sha256: proof.fetch("sha256"), server_bytes: proof.fetch("bytes"),
                                           archive_path: remote_path(proof.fetch("archive_path")))
-              outcome = outcome.with(backup: receipt)
               path = File.join(@report_directory, "tftp", archive_name)
-              Storage::Directory.prepare(File.dirname(path))
-              Storage::AtomicFile.write(path, bytes)
+              persist_upload(path) do |file|
+                failure = receive_upload(protocol, receipt, file)
+                outcome = outcome.with(backup: receipt)
+                raise failure if failure
+              end
               outcome = outcome.with(backup: receipt.with(local_path: path))
-              raise Tftp::Archive::Failure unless Storage::FileReader.fingerprint(path).sha256 == digest
+              raise Tftp::Archive::Failure unless Storage::FileReader.fingerprint(path).sha256 == receipt.server_sha256
 
               outcome
             rescue StandardError => error
@@ -192,6 +180,38 @@ module Net
                 outcome = outcome.with(backup: outcome.backup.with(local_path: path))
               end
               outcome.success? ? archive_failure(outcome) : outcome
+            end
+
+            # 本地准备失败仍接收并核验服务器正文；已经开始接收的失败事务不能重读或重写。
+            def persist_upload(path)
+              received = false
+              Storage::Directory.prepare(File.dirname(path))
+              Storage::AtomicFile.write_stream(path) do |file|
+                received = true
+                yield file
+              end
+            rescue StandardError
+              yield nil unless received
+              raise
+            end
+
+            # 逐块核对摘要，首次写盘错误后只继续读取；完整交付确认后才返回写盘故障。
+            def receive_upload(protocol, receipt, file)
+              digest = Digest::SHA256.new
+              failure = nil
+              protocol.read_payload(receipt.server_bytes) do |chunk|
+                digest << chunk
+                next unless file && !failure
+
+                begin
+                  raise IOError, "incomplete archive write" unless file.write(chunk) == chunk.bytesize
+                rescue StandardError => error
+                  failure = error
+                end
+              end
+              raise Tftp::Archive::Failure unless digest.hexdigest == receipt.server_sha256
+
+              failure
             end
 
             # 保留设备和服务器回执，将归档收尾异常转换为可诊断的部分成功。
@@ -251,11 +271,10 @@ module Net
               false
             end
 
-            # 复用主连接启动一次归档事务进程，会话槽位限制由调用作用域管理。
-            def open_ssh(&)
-              prepare_master
+            # 返回事务管道和等待线程，由调用作用域唯一负责关闭、终止及回收。
+            def open_ssh
               command = "python3 -u -c #{Shellwords.escape(File.read(WORKER))}"
-              Open3.popen3(*ssh_arguments, @uri.host, command, &)
+              Open3.popen3(*ssh_arguments, @uri.host, command)
             end
 
             # 将已校验端点组装为独立 SSH 参数，固定严格主机密钥检查与连接超时。
@@ -265,32 +284,24 @@ module Net
                "-p", (@uri.port || 22).to_s, "-l", @uri.user]
             end
 
-            # 将路径或事务动作编码为单行 JSON 并刷新，协议帧不携带认证凭据。
-            def write_frame(input, **values)
-              input.write(JSON.generate(values) + "\n")
-              input.flush
-            end
-
-            # 在总期限和帧大小上限内读取完整响应，拒绝断连、错误阶段及无效协议数据。
-            def expect_phase(output, phase)
-              deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + 280
-              frame = +"".b
-              loop do
-                remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-                raise Tftp::Archive::Failure unless remaining.positive? && output.wait_readable(remaining)
-
-                chunk = output.read_nonblock(65_536, exception: false)
-                next if chunk == :wait_readable
-                raise Tftp::Archive::Failure if chunk.nil?
-
-                frame << chunk
-                raise Tftp::Archive::Failure if frame.bytesize > MAX_FRAME_BYTES
-                next unless frame.end_with?("\n")
-
-                value = JSON.parse(frame)
-                raise Tftp::Archive::Failure unless value["ok"] == true && value["phase"] == phase
-
-                return value
+            # 每次事务独占进程与协议状态，主故障或非局部退出不能被普通清理错误覆盖。
+            def with_process
+              handles = nil
+              prepare_master unless @custom_launcher
+              completed = false
+              # 取得资源与登记所有权之间暂缓取消；事务本身仍可立即中断。
+              Thread.handle_interrupt(Exception => :never) { handles = @launcher.call }
+              result = yield Protocol.new(handles[0], handles[1])
+              completed = true
+              result
+            rescue Exception # rubocop:disable Lint/RescueException -- 返回前递送的取消仍属于事务主控制流。
+              completed = false
+              raise
+            ensure
+              begin
+                stop_process(*handles) if handles
+              rescue Exception # rubocop:disable Lint/RescueException -- 取消和非局部退出均保留原始控制流。
+                raise if completed
               end
             end
 
@@ -303,7 +314,26 @@ module Net
 
             # 先关闭事务管道并等待子进程退出，超时后分级终止，促使服务器释放锁。
             def stop_process(input, output, error, process)
-              [input, output, error].each { |io| io.close unless io.closed? }
+              Thread.handle_interrupt(Exception => :never) do
+                failure = nil
+                [input, output, error].each do |io|
+                  begin
+                    io.close unless io.closed?
+                  rescue Exception => caught # rubocop:disable Lint/RescueException -- 单个关闭失败仍须回收其余管道和进程。
+                    failure ||= caught
+                  end
+                end
+                begin
+                  reap_process(process)
+                rescue Exception => caught # rubocop:disable Lint/RescueException -- 保留先发生的清理故障。
+                  failure ||= caught
+                end
+                raise failure if failure
+              end
+            end
+
+            # 为正常退出保留短暂宽限，随后终止仍未退出的事务进程并回收等待线程。
+            def reap_process(process)
               return if process.join(2)
 
               Process.kill("TERM", process.pid)

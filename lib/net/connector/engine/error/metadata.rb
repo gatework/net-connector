@@ -25,7 +25,8 @@ module Net
              Net::Connector::Netdisco::Tftp::Archive::Unavailable Net::Connector::Netdisco::Tftp::Archive::Failure]).freeze
         CODES = (CONNECTOR_TYPES.map { |name| name.gsub(/([a-z])([A-Z])/, '\1_\2').downcase.to_sym } +
           %i[authentication_failed connection_failed connection_refused no_route connection_reset
-             connection_timeout host_key_changed host_key_untrusted known_hosts_busy known_hosts_unsafe rsa_too_small unsupported_cipher
+             connection_timeout host_key_changed host_key_untrusted known_hosts_busy known_hosts_unsafe known_hosts_inherited
+             rsa_too_small unsupported_cipher
              ambiguous_description ambiguous_neighbor confirmation_required description_stages_unsupported
              description_unconfirmed description_unsupported incomplete_configuration interface_missing
              neighbor_discovery_unsupported parse_failed invalid_output_encoding persistence_unconfirmed stale_plan startup_config_missing

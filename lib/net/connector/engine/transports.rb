@@ -234,7 +234,6 @@ module Net
           # 一次取消须等待信道和信任快照均完成回收；同步故障仍保留首个。
           Thread.handle_interrupt(Exception => :never) do
             known_hosts = @known_hosts
-            @known_hosts = nil
             begin
               super
             rescue Exception => error # rubocop:disable Lint/RescueException -- 全部资源均须尝试关闭，保留首个失败或中断。
@@ -243,6 +242,7 @@ module Net
             ensure
               begin
                 known_hosts&.close
+                @known_hosts = nil
               rescue Exception => error # rubocop:disable Lint/RescueException -- 信任文件收尾不能覆盖传输关闭的原始异常。
                 unless failure
                   failure = error

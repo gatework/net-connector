@@ -44,6 +44,66 @@ class FilePersistenceTest < Minitest::Test
     end
   end
 
+  def test_streaming_publishes_only_after_all_binary_chunks_are_written
+    assert_respond_to AtomicFile, :write_stream
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "data.bin")
+      File.binwrite(path, "old")
+      handle = nil
+      receipt = AtomicFile.write_stream(path) do |file|
+        handle = file
+        file.write("first\0".b)
+        assert_equal "old", File.binread(path)
+        file.write("\xfflast".b)
+      end
+      assert receipt.durable?
+      assert_equal :complete, receipt.phase
+      assert_equal "first\0\xfflast".b, File.binread(path)
+      assert handle.closed?
+      assert_equal ["data.bin"], Dir.children(directory)
+    end
+  end
+
+  def test_stream_failure_keeps_old_file_and_safe_uncommitted_receipt
+    assert_respond_to AtomicFile, :write_stream
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "data.bin")
+      File.write(path, "old")
+      handle = nil
+      error = assert_raises(AtomicFile::WriteError) do
+        AtomicFile.write_stream(path) do |file|
+          handle = file
+          file.write("partial")
+          raise IOError, @secret
+        end
+      end
+      assert_equal :not_committed, error.receipt.state
+      assert_equal :write, error.receipt.phase
+      assert_equal "old", File.read(path)
+      assert handle.closed?
+      assert_equal ["data.bin"], Dir.children(directory)
+      assert_safe(error)
+    end
+  end
+
+  def test_stream_cancellation_and_nonlocal_exit_remove_uncommitted_temporary_files
+    assert_respond_to AtomicFile, :write_stream
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "data.bin")
+      File.write(path, "old")
+      original = Interrupt.new("stream cancelled")
+      raised = assert_raises(Interrupt) do
+        AtomicFile.write_stream(path) { |file| file.write("partial"); raise original }
+      end
+      assert_same original, raised
+      assert_equal :aborted, catch(:stop_stream) {
+        AtomicFile.write_stream(path) { |file| file.write("partial"); throw :stop_stream, :aborted }
+      }
+      assert_equal "old", File.read(path)
+      assert_equal ["data.bin"], Dir.children(directory)
+    end
+  end
+
   def test_temporary_creation_write_flush_and_file_sync_fail_before_replacement
     { create: :temporary_file, write: :write, flush: :file_sync, fsync: :file_sync }.each do |operation, phase|
       Dir.mktmpdir do |directory|
@@ -60,6 +120,58 @@ class FilePersistenceTest < Minitest::Test
         assert_equal "old", File.read(path)
         assert_equal ["data.txt"], Dir.children(directory)
         assert_safe(failure)
+      end
+    end
+  end
+
+  def test_stream_interrupt_survives_temporary_close_failure
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "data.txt")
+      File.write(path, "old")
+      original = Interrupt.new("stream cancelled")
+      with_close_failure do
+        assert_same original, assert_raises(Interrupt) {
+          AtomicFile.write_stream(path) { |file| file.write("partial"); raise original }
+        }
+      end
+      assert_equal "old", File.read(path)
+      assert_equal ["data.txt"], Dir.children(directory)
+    end
+  end
+
+  def test_stream_throw_survives_temporary_close_failure
+    Dir.mktmpdir do |directory|
+      path = File.join(directory, "data.txt")
+      File.write(path, "old")
+      with_close_failure do
+        assert_equal :cancelled, catch(:cancel_stream) {
+          AtomicFile.write_stream(path) { |file| file.write("partial"); throw :cancel_stream, :cancelled }
+        }
+      end
+      assert_equal "old", File.read(path)
+      assert_equal ["data.txt"], Dir.children(directory)
+    end
+  end
+
+  def test_directory_sync_cancellation_survives_directory_close_failure
+    %i[interrupt throw].each do |kind|
+      Dir.mktmpdir do |directory|
+        path = File.join(directory, "data.txt")
+        original = Interrupt.new("directory sync cancelled")
+        probe = lambda do |_file|
+          raise original if kind == :interrupt
+
+          throw :cancel_sync, :cancelled
+        end
+        with_directory_sync_probe(directory, probe, close_error: IOError.new("directory close failed")) do
+          if kind == :interrupt
+            assert_same original, assert_raises(Interrupt) { AtomicFile.write(path, "committed") }
+          else
+            assert_equal :cancelled, catch(:cancel_sync) { AtomicFile.write(path, "committed") }
+          end
+        end
+        assert_equal "committed", File.read(path)
+        assert_equal ["data.txt"], Dir.children(directory)
       end
     end
   end
@@ -131,9 +243,12 @@ class FilePersistenceTest < Minitest::Test
       assert_safe(error)
 
       create = Tempfile.method(:create)
-      cleanup = lambda do |*args, **options, &block|
-        create.call(*args, **options, &block)
-        raise Errno::EIO, @secret
+      cleanup = lambda do |*args, **options|
+        file = create.call(*args, **options)
+        close = file.method(:close)
+        message = @secret
+        file.define_singleton_method(:close) { close.call; raise Errno::EIO, message }
+        file
       end
       error = Tempfile.stub(:create, cleanup) { assert_raises(IOError) { AtomicFile.write(path, "durable") } }
       assert_equal :durable, error.receipt.state
@@ -150,14 +265,13 @@ class FilePersistenceTest < Minitest::Test
       events = []
       create = Tempfile.method(:create)
       rename = File.method(:rename)
-      create_probe = lambda do |*args, **options, &block|
-        create.call(*args, **options) do |file|
-          %i[write flush fsync].each do |method|
-            original = file.method(method)
-            file.define_singleton_method(method) { |*values| events << method; original.call(*values) }
-          end
-          block.call(file)
+      create_probe = lambda do |*args, **options|
+        file = create.call(*args, **options)
+        %i[write flush fsync].each do |method|
+          original = file.method(method)
+          file.define_singleton_method(method) { |*values| events << method; original.call(*values) }
         end
+        file
       end
       rename_probe = ->(*args) { events << :rename; rename.call(*args) }
       Tempfile.stub(:create, create_probe) do
@@ -341,6 +455,17 @@ class FilePersistenceTest < Minitest::Test
 
   private
 
+  def with_close_failure(&)
+    create = Tempfile.method(:create)
+    replacement = lambda do |*args, **options|
+      file = create.call(*args, **options)
+      close = file.method(:close)
+      file.define_singleton_method(:close) { close.call; raise IOError, "temporary close failed" }
+      file
+    end
+    Tempfile.stub(:create, replacement, &)
+  end
+
   def local_device(&contents)
     Object.new.tap do |device|
       device.define_singleton_method(:host) { "192.0.2.1" }
@@ -356,15 +481,17 @@ class FilePersistenceTest < Minitest::Test
                         credentials: ->(*) { { username: "test" } }, connector_factory: ->(*) { connector })
   end
 
-  def with_temporary_failure(operation, &block)
+  def with_temporary_failure(operation, &)
     failure = ->(*) { raise Errno::EIO, @secret }
-    return Tempfile.stub(:create, failure, &block) if operation == :create
+    return Tempfile.stub(:create, failure, &) if operation == :create
 
     original = Tempfile.method(:create)
-    create = lambda do |*args, **options, &block|
-      original.call(*args, **options) { |file| file.stub(operation, failure) { block.call(file) } }
+    create = lambda do |*args, **options|
+      file = original.call(*args, **options)
+      file.define_singleton_method(operation, failure)
+      file
     end
-    Tempfile.stub(:create, create, &block)
+    Tempfile.stub(:create, create, &)
   end
 
   def with_directory_sync_failure(directory, exception: Errno::EIO, fail_on: 1, &block)
@@ -378,17 +505,27 @@ class FilePersistenceTest < Minitest::Test
     with_directory_sync_probe(directory, probe, &block)
   end
 
-  def with_directory_sync_probe(directory, probe, &block)
+  def with_directory_sync_probe(directory, probe, close_error: nil, &block)
     original = File.method(:open)
     canonical = File.realpath(directory)
     open = lambda do |path, *args, **options, &block|
       next original.call(path, *args, **options, &block) unless path == canonical || path == directory
 
-      original.call(path, *args, **options) do |file|
-        sync = file.method(:fsync)
-        adapter = Object.new
-        adapter.define_singleton_method(:fsync) { sync.call }
-        file.stub(:fsync, -> { probe.call(adapter) }) { block.call(file) }
+      file = original.call(path, *args, **options)
+      if close_error
+        close = file.method(:close)
+        file.define_singleton_method(:close) { close.call; raise close_error }
+      end
+      sync = file.method(:fsync)
+      adapter = Object.new
+      adapter.define_singleton_method(:fsync) { sync.call }
+      file.define_singleton_method(:fsync) { probe.call(adapter) }
+      next file unless block
+
+      begin
+        block.call(file)
+      ensure
+        file.close
       end
     end
     File.stub(:open, open, &block)

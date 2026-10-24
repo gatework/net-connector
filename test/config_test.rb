@@ -34,8 +34,8 @@ class ConfigTest < Minitest::Test
     assert_equal({ "parallel" => nil, "devices" => [], "disabled" => false }, files.specific)
     assert_equal [File.join(@low, "net-connector.yml"), File.join(@low, "vxlan.yml"),
                   File.join(@high, "net-connector.yml"), explicit], files.config_files
-    assert_equal explicit, files.sources.fetch("fields").fetch("parallel")
-    assert_equal File.join(@low, "net-connector.yml"), files.sources.fetch("fields").fetch("ssh.port")
+    assert_equal explicit, files.sources.fetch("fields").fetch("/parallel")
+    assert_equal File.join(@low, "net-connector.yml"), files.sources.fetch("fields").fetch("/ssh/port")
   end
 
   def test_relative_paths_are_resolved_before_each_layer_is_merged
@@ -55,7 +55,7 @@ class ConfigTest < Minitest::Test
       assert_equal({ "ssh" => { "known_hosts" => File.join(@low, "keys") }, "parallel" => 7 }, files.data)
       assert_equal({ "parallel" => 7 }, files.specific)
       assert_equal [File.join(@high, "vxlan.yml"), path], files.config_files
-      assert_equal path, files.sources.fetch("fields").fetch("ssh.known_hosts")
+      assert_equal path, files.sources.fetch("fields").fetch("/ssh/known_hosts")
       refute files.missing?
     end
   end
@@ -251,8 +251,8 @@ class ConfigTest < Minitest::Test
     yaml(@high, "vxlan.yml", "ssh" => {})
     files = loader.load
     assert_equal 22, files.data.dig("ssh", "port")
-    assert_equal low, files.sources.fetch("fields").fetch("ssh.port")
-    refute files.sources.fetch("fields").key?("ssh")
+    assert_equal low, files.sources.fetch("fields").fetch("/ssh/port")
+    refute files.sources.fetch("fields").key?("/ssh")
   end
 
   def test_native_configuration_must_be_a_mapping_and_reject_yaml_objects
@@ -367,7 +367,7 @@ class ConfigTest < Minitest::Test
       assert_equal({ "devices" => [], "disabled" => false, "parallel" => nil,
                      "ssh" => { "known_hosts" => File.join(@root, "keys/hosts") } }, files.data)
       assert_equal "keys/hosts", document.dig("ssh", "known_hosts")
-      assert_equal path, files.sources.fetch("fields").fetch("ssh.known_hosts")
+      assert_equal path, files.sources.fetch("fields").fetch("/ssh/known_hosts")
     end
   end
 

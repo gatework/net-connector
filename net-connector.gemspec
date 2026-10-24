@@ -24,11 +24,11 @@ Gem::Specification.new do |spec|
   spec.bindir = "bin"
   spec.executables = ["net-backup"]
   # 使用当前 Session 与缓冲字节查询契约，具体版本由宿主应用锁定。
-  spec.add_dependency "ctx_cli", ">= 0.2.1"
-  spec.add_dependency "expect-pty", ">= 0.9.4"
+  spec.add_dependency "ctx_cli"
+  spec.add_dependency "expect-pty"
   spec.add_dependency "textfsm"
   spec.add_dependency "pg"
-  spec.add_dependency "dotenv", ">= 3.0"
+  spec.add_dependency "dotenv"
   # 直接使用的标准库 gem 也要声明，最小 Bundler 应用不能借用开发工具的依赖。
   spec.add_dependency "digest"
   spec.add_dependency "fileutils"

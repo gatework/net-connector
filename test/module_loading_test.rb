@@ -79,16 +79,23 @@ class ModuleLoadingTest < Minitest::Test
 
   def test_cancelled_known_hosts_dependency_load_preserves_the_original_failure
     result = isolated(<<~'RUBY')
-      require "net/connector/engine/known_hosts"
-      entry = Net::Connector::KnownHosts.allocate
-      original = Interrupt.new("dependency load cancelled")
-      entry.define_singleton_method(:require_relative) { |_| raise original }
-      observed = begin
-        entry.commit
-      rescue Exception => error
-        error
+      require "tmpdir"
+      require "net/connector/engine/core"
+      Dir.mktmpdir do |directory|
+        configuration = Net::Connector::Configuration.new(host: "192.0.2.1", username: "audit",
+                                                           known_hosts: File.join(directory, "known_hosts"))
+        entry = Net::Connector::KnownHosts.new(configuration)
+        original = Interrupt.new("dependency load cancelled")
+        entry.define_singleton_method(:require_relative) { |_| raise original }
+        observed = begin
+          entry.commit
+        rescue Exception => error
+          error
+        end
+        puts JSON.generate(type: observed.class.name, original: observed.equal?(original))
+      ensure
+        entry&.close
       end
-      puts JSON.generate(type: observed.class.name, original: observed.equal?(original))
     RUBY
     assert_equal "Interrupt", result.fetch("type")
     assert result.fetch("original")

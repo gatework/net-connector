@@ -130,6 +130,21 @@ def read_file(parent, name, missing=False, consume=None):
             digest.update(chunk)
             if consume is not None and consume(chunk) != len(chunk):
                 raise IOError("incomplete file write")
+        # 同一时钟粒度内的覆写可能不改变 stat 时间；投递后重读摘要核对已发送字节。
+        if consume is not None:
+            f.seek(0)
+            verified = hashlib.sha256()
+            verified_size = 0
+            while True:
+                chunk = f.read(CHUNK_BYTES)
+                if not chunk:
+                    break
+                verified_size += len(chunk)
+                if verified_size > MAX_BYTES:
+                    raise ValueError("oversized file")
+                verified.update(chunk)
+            if verified_size != size or verified.digest() != digest.digest():
+                raise ValueError("file changed while delivering")
         after = os.fstat(f.fileno())
         if size != after.st_size or fingerprint(before) != fingerprint(after):
             raise ValueError("file changed while reading")

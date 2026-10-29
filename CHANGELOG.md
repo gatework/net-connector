@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 0.20.0 - 2026-10-29
+
+- Recheck streamed archive content on the pinned descriptor so same-timestamp overwrites cannot receive a successful copy or delivery receipt.
+
+- Bound compatible ctx_cli and expect-pty dependencies to the contract versions tested with this release (ctx_cli 0.4.x and expect-pty 0.9.6 through 0.9.x).
+
 ## 0.19.0 - 2026-10-29
 
 - Extract `Netdisco::Catalog#devices(policy:)` for immutable inventory without credentials or operations; Fleet delegates inventory access. Add live, injected `Credentials#resolve(platform:)` with platform-specific username/password/enable-password precedence and independent secret snapshots.

@@ -155,7 +155,7 @@ SHA-256，首次使用时从官方 GitHub Release 下载，缓存到 `tmp/tools/
 
 运行依赖写在 `net-connector.gemspec`，包括直接使用的、可能从 Ruby 默认
 安装中拆出的标准库 gem。开发工具只写在 Gemfile，不进入运行依赖。
-PTY 与共享脱敏直接依赖 expect-pty 0.9.4+ 的公开 `Session`、`buffer_bytesize` 和 `Expect::Redactor` 接口。
+PTY 与共享脱敏直接依赖 expect-pty 0.9.6+ 的公开 `Session`、`buffer_bytesize` 和 `Expect::Redactor` 接口。
 开发用 `parallel` 保持 1.x。升级 expect-pty 时先验证源码集成，再用本次构建的 gem 验证隔离安装；
 新依赖版本发布前不得将本地构建验证记成已发布版本验收，也不能退回旧接口掩盖依赖缺失。
 
@@ -163,7 +163,7 @@ PTY 与共享脱敏直接依赖 expect-pty 0.9.4+ 的公开 `Session`、`buffer_
 分别解析兼容依赖。应用使用者应在自己的应用中提交 lockfile。测试和打包
 脚本通过隔离安装检查运行依赖，避免依赖开发环境里偶然存在的 gem。
 
-`gemfiles/minimum.gemfile` 固定受支持的依赖下界 expect-pty 0.9.4、textfsm 0.2.0；
+`gemfiles/minimum.gemfile` 固定受支持的依赖下界 expect-pty 0.9.6、ctx_cli 0.4.0、textfsm 0.5.1；
 标准库和开发工具仍按主 Gemfile 的兼容范围解析。普通矩阵检查允许版本的正常解析，
 另在 Ubuntu / Ruby 3.4、4.0 检查这组版本的全量测试与隔离安装。本地复现：
 
@@ -206,17 +206,16 @@ Gitleaks 默认规则之外，还检查网络设备密码/SNMP community 配置�
 扫描工具不会自动改写 Git 历史或真实设备备份。规则用于拦截常见泄露，
 发布前仍需人工确认设备名称、拓扑和业务配置等上下文信息是否适合公开。
 
-## JSON 2 发布依赖与 JSON 3 源码兼容分开验证
+## 使用已发布 TextFSM 分别验证 JSON 2 与 JSON 3
 
-默认及最低依赖任务验证实际发布依赖。TextFSM 0.2.0 的公开声明仍为 `json ~> 2.0`；
-本地同版本 gem 的修订不能证明普通消费者能安装 JSON 3。
+运行依赖要求 TextFSM 0.5.1 或更新版本；0.5.1 的公开 JSON 声明为 `>= 2.0`，
+允许普通消费者选择 JSON 2 或 JSON 3。最低依赖任务固定 TextFSM 0.5.1 与 JSON 2。
 
-CI 的 `json3-source-compatibility` 在 Ruby 3.4 / 4.0 检出固定 TextFSM commit
-`733340de378f2d7fbe530b48f2cf1dd6c30c69b0`，应用仓库内
-`script/compatibility/textfsm-json3.patch`，只放宽依赖声明，再执行完整测试和真实打包隔离安装。
-该任务明确代表尚未发布依赖声明下的源码兼容性；不自动发布、替换正式依赖或修改用户的全局 gem。
+CI 的 `json3-compatibility` 在 Ruby 3.4 / 4.0 使用已发布 TextFSM 0.5.1 与 JSON 3，
+执行完整测试和真实打包隔离安装。脚本核对原始 gem 的 JSON 依赖声明，再将发布包缓存
+交给隔离消费者；不再检出旧源码、修改 metadata 或重建同版本 TextFSM。
 
-复现时，在 `tmp/json3/textfsm` 准备该源码并应用补丁，然后运行：
+本地复现：
 
 ```sh
 BUNDLE_GEMFILE=gemfiles/json3.gemfile bundle install

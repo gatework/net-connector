@@ -5,14 +5,14 @@ require_relative "verify_install"
 
 raise "JSON 3 compatibility check requires JSON 3" unless Gem.loaded_specs.fetch("json").version.segments.first == 3
 
-# 将同一份受测源码真正构建安装，避免 path gem 绕过消费者依赖检查。
+# 隔离安装复用原始发布包，不能用本地重建或放宽声明代替发布依赖。
 specification = Gem.loaded_specs.fetch("textfsm")
-expected = File.expand_path("../tmp/json3/textfsm", __dir__)
-raise "JSON 3 requires the explicit textfsm source fixture" unless specification.full_gem_path == expected
-
-artifact = File.expand_path("../tmp/ci/#{specification.file_name}", __dir__)
-FileUtils.mkdir_p(File.dirname(artifact))
-Dir.chdir(expected) { Gem::Package.build(specification, false, false, artifact) }
-specification.define_singleton_method(:cache_file) { artifact }
-puts "JSON 3 source compatibility: textfsm metadata override; not a published-dependency result"
+raise "JSON 3 requires published TextFSM 0.5.1 or newer" unless specification.version >= Gem::Version.new("0.5.1")
+raise "Published TextFSM package cache missing" unless File.file?(specification.cache_file)
+package = Gem::Package.new(specification.cache_file)
+package.verify
+json = Gem.loaded_specs.fetch("json")
+dependency = package.spec.runtime_dependencies.find { |entry| entry.name == "json" }
+raise "Published TextFSM does not support the selected JSON" unless dependency&.matches_spec?(json)
+puts "JSON 3 published dependencies: TextFSM #{specification.version}, JSON #{json.version}"
 InstalledPackageCheck.run(PackageCheck.build)

@@ -4,6 +4,8 @@
 
 ## 0.20.0 - 2026-10-29
 
+- Require the latest stable TextFSM 0.5.1, align the minimum dependency matrix, and verify JSON 3 with its original published package instead of a source metadata patch.
+
 - Recheck streamed archive content on the pinned descriptor so same-timestamp overwrites cannot receive a successful copy or delivery receipt.
 
 - Bound compatible ctx_cli and expect-pty dependencies to the contract versions tested with this release (ctx_cli 0.4.x and expect-pty 0.9.6 through 0.9.x).

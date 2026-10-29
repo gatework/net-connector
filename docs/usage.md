@@ -165,6 +165,6 @@ Per-command prompts use `interactions: [Net::Connector::Interaction.new(/Token:\
 
 ## Dependencies and extensions
 
-Load device APIs with `require "net/connector"`; Netdisco has a separate entrypoint. Vendor implementations and TextFSM load on demand. The gemspec requires expect-pty 0.9.4+; the host application's lockfile selects concrete dependency versions. The minimum dependency matrix uses TextFSM 0.2.0 and JSON 2, with a separate fixed-source TextFSM patch matrix for JSON 3.
+Load device APIs with `require "net/connector"`; Netdisco has a separate entrypoint. Vendor implementations and TextFSM load on demand. The gemspec requires expect-pty 0.9.6+, ctx_cli 0.4.x and TextFSM 0.5.1+; the host application's lockfile selects concrete dependency versions. The minimum dependency matrix uses TextFSM 0.5.1 and JSON 2. A separate JSON 3 matrix uses the same published TextFSM package without modifying its dependency metadata.
 
 CLI entry points share layered configuration and `.env` loading; dotenv is a declared runtime dependency. Core library calls do not discover host files. Follow the [loading and migration reference](architecture.md#加载入口与厂商策略) (Chinese) for custom profiles, strategies, and protected hooks.

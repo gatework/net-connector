@@ -2,8 +2,9 @@
 
 # 验证受支持的依赖下界；不覆盖旧版 expect-pty 接口。
 eval_gemfile File.expand_path("../Gemfile", __dir__)
-gem "expect-pty", "= 0.9.4"
-gem "textfsm", "= 0.2.0"
+gem "expect-pty", "= 0.9.6"
+gem "ctx_cli", "= 0.4.0"
+gem "textfsm", "= 0.5.1"
 
 # 与默认矩阵的当前 JSON 版本共同覆盖旧主版本兼容性。
 gem "json", "~> 2.0"

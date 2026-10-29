@@ -2,11 +2,11 @@
 
 [English](usage.md) | [返回首页](../README.zh-CN.md) | [Netdisco 批量备份](netdisco.zh-CN.md)
 
-支持 Ruby 3.4 及以上版本和 POSIX 系统。SSH 调用本机 OpenSSH，Telnet 需要本机安装 `telnet` 并显式选择。要求 [`expect-pty`](https://rubygems.org/gems/expect-pty) 0.9.4 及以上；[`textfsm`](https://rubygems.org/gems/textfsm) 由宿主选择版本，最低依赖测试覆盖 0.2.0。
+支持 Ruby 3.4 及以上版本和 POSIX 系统。SSH 调用本机 OpenSSH，Telnet 需要本机安装 `telnet` 并显式选择。要求 [`expect-pty`](https://rubygems.org/gems/expect-pty) 0.9.6 及以上、ctx_cli 0.4.x 和 [`textfsm`](https://rubygems.org/gems/textfsm) 0.5.1 及以上；具体版本由宿主锁定。
 
 脱敏直接复用 expect-pty 的公开 `Expect::Redactor` 接口；连接器只管理秘密作用域和配置输出的隐私策略。
 
-gemspec 声明 expect-pty 的接口版本下界；宿主应用通过自己的 Gemfile 和锁文件固定具体依赖版本。最低依赖组合使用 textfsm 0.2.0 与 JSON 2；JSON 3 另有固定 TextFSM 源码及显式依赖声明补丁的验证通道。开发工具及测试矩阵的版本约束不进入 gem 的运行依赖。
+gemspec 声明所需接口的版本下界；宿主应用通过自己的 Gemfile 和锁文件固定具体依赖版本。最低依赖组合使用 textfsm 0.5.1 与 JSON 2；JSON 3 矩阵也使用同一已发布 TextFSM 包，无需源码或 metadata 补丁。开发工具及测试矩阵的版本约束不进入 gem 的运行依赖。
 
 CLI 与示例入口共用分层配置和 `.env` 加载，dotenv 已声明为运行时依赖；核心库调用不自动发现宿主文件。
 

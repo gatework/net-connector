@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+## 0.19.0 - 2026-10-29
+
+- Extract `Netdisco::Catalog#devices(policy:)` for immutable inventory without credentials or operations; Fleet delegates inventory access. Add live, injected `Credentials#resolve(platform:)` with platform-specific username/password/enable-password precedence and independent secret snapshots.
+
 ## 0.18.1 - 2026-10-24
 
 - Stream SSH archive bodies through bounded binary frames and incremental hashes instead of whole-file base64 copies; preserve deadlines, verified server receipts and committed local paths.

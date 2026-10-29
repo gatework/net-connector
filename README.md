@@ -66,3 +66,22 @@ Licensed under [MIT](LICENSE).
 ## ctx_cli 公共入口
 
 宿主配置文件读取、私有文件初始化、公共参数与终端交互由 ctx_cli 维护。原 `Net::Connector::Config`、配置路径、优先级和 backup/TFTP/topology 策略继续保留。源码联调使用 `CTX_CLI_PATH=../ctx_cli`；隔离安装可通过 `CTX_CLI_GEM=/absolute/path/ctx_cli-0.1.0.gem` 传入精确候选。
+
+
+## Inventory and credentials without device operations
+
+```ruby
+require "net/connector/netdisco/catalog"
+require "net/connector/credentials"
+
+settings = Net::Connector::Netdisco::Settings.new(env: ENV)
+policy = settings.snapshot(mode: :inventory)
+catalog = Net::Connector::Netdisco::Catalog.new(settings: settings)
+devices = catalog.devices(policy: policy)
+# Inspect device.issue before selecting targets; duplicate rows are retained.
+credentials = Net::Connector::Credentials.new(env: ENV).resolve(platform: :cisco_nxos)
+```
+
+Catalog owns inventory reading, normalization, duplicate marking and cache status (`#status`). It does not resolve device credentials, log into devices or create operation reports. Pass one policy snapshot throughout a run. Fleet delegates to Catalog and retains operation orchestration.
+
+Credentials reads the injected environment on every `resolve`; it returns an independent frozen hash, or nil when no username is available. Platform-specific `NC_<PLATFORM>_USERNAME`, `_PASSWORD`, and `_ENABLE_PASSWORD` override `NC_DEVICE_USERNAME`, `NC_DEVICE_PASSWORD`, and `NC_ENABLE_PASSWORD` respectively. Blank values fall back. Secrets are never cached or included in object inspection.

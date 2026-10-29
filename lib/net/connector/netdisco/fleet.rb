@@ -4,6 +4,7 @@ require "fileutils"
 require_relative "../storage"
 require_relative "../device/scope"
 require_relative "inventory"
+require_relative "catalog"
 require_relative "settings"
 require_relative "device"
 require_relative "device/access"
@@ -35,8 +36,7 @@ module Net
         def initialize(inventory: nil, settings: Settings.new, rules: nil, credentials: nil, connector_factory: nil,
                        report_store: Report::Store::Json.new)
           @settings = settings
-          @inventory = inventory
-          @rules = rules
+          @catalog = Catalog.new(settings: settings, inventory: inventory, rules: rules)
           @credentials = credentials
           @connector_factory = connector_factory || ->(device, access_options) { device.build_connector(**access_options) }
           @report_store = report_store
@@ -176,32 +176,9 @@ module Net
 
         # 策略在清单请求之前固定；注入的清单来源仍由调用方负责其自身生命周期。
         def inventory(settings_snapshot, force_refresh: false)
-          @inventory_status = nil
-          raise ArgumentError, "force_refresh must be true or false" unless [true, false].include?(force_refresh)
-
-          inventory = @inventory || @settings.inventory(policy: settings_snapshot)
-          cache_mode = settings_snapshot.inventory_cache_mode
-          raise ArgumentError, "cache-only cannot force refresh" if cache_mode == :only && force_refresh
-          if cache_mode == :only && !inventory.is_a?(Inventory::Cache)
-            raise Inventory::Error.new("validated inventory cache is unavailable", code: :cache_unavailable), cause: nil
-          end
-          rows = if inventory.is_a?(Inventory::Cache)
-                   inventory.devices(force_refresh: force_refresh, cache_mode: cache_mode)
-                 else
-                   inventory.devices
-                 end
-          @inventory_status = if inventory.is_a?(Inventory::Cache)
-                                { source: inventory.status, fetched_at: inventory.fetched_at,
-                                  refresh_error_code: inventory.refresh_error_code, write_error_type: inventory.write_error_type }.freeze
-                              else
-                                { source: :uncached }.freeze
-                              end
-          raise Inventory::Error, "Netdisco returned an invalid device inventory" unless rows.is_a?(Array)
-
-          rules = @rules || settings_snapshot.rules
-          devices = rows.map { |row| Device.from_row(row, rules: rules) }
-          host_counts = devices.each_with_object(Hash.new(0)) { |device, counts| counts[device.host] += 1 if device.host }
-          devices.map { |device| host_counts[device.host] > 1 ? device.with(issue: :duplicate_host) : device }.freeze
+          @catalog.devices(policy: settings_snapshot, force_refresh: force_refresh)
+        ensure
+          @inventory_status = @catalog.status
         end
 
         # 在固定清单快照上生成模式对应的计划，规划阶段不读取设备凭据。

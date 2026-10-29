@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "connector/version"
+require_relative "connector/credentials"
 require_relative "connector/device/base"
 require_relative "connector/vendor"
 

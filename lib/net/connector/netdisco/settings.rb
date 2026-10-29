@@ -346,13 +346,7 @@ module Net
 
         # 每台任务读取最新厂商凭据，缺失字段回退到通用凭据；无用户名时跳过设备。
         def device_credentials_for(device)
-          prefix = "NC_#{device.vendor.to_s.upcase}_"
-          username = secret_value(prefix + "USERNAME") || secret_value("NC_DEVICE_USERNAME")
-          return nil unless username
-
-          { username: username,
-            password: secret_value(prefix + "PASSWORD") || secret_value("NC_DEVICE_PASSWORD"),
-            enable_password: secret_value(prefix + "ENABLE_PASSWORD") || secret_value("NC_ENABLE_PASSWORD") }
+          Net::Connector::Credentials.new(env: @env).resolve(platform: device.vendor)
         end
 
         # 会话日志目录属于公开策略；调用方和批次入口负责实际创建。

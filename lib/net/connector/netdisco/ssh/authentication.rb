@@ -17,11 +17,11 @@ module Net
             Expect.spawn(*arguments, raw: true, buffer_limit: 65_536, write_timeout: 5) do |session|
               deadline = Expect.monotonic + 15
               challenge = session.expect(PASSWORD, REJECTED, timeout: [deadline - Expect.monotonic, 0].max)
-              next false unless challenge.number == 1
+              next false unless challenge.match_number == 1
 
               session.write(password + "\n")
               completion = session.expect(PASSWORD, REJECTED, timeout: [deadline - Expect.monotonic, 0].max)
-              completion.error == :eof
+              completion.eof?
             end
           end
         end

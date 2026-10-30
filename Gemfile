@@ -17,3 +17,4 @@ end
 
 # 显式候选源码联调；普通安装按 gemspec 解析。
 gem "ctx_cli", path: ENV.fetch("CTX_CLI_PATH") if ENV["CTX_CLI_PATH"]
+gem "expect-pty", path: ENV.fetch("EXPECT_PTY_PATH") if ENV["EXPECT_PTY_PATH"]

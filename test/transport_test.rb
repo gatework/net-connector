@@ -471,7 +471,7 @@ class ConnectorTransportTest < Minitest::Test
     channel.define_singleton_method(:expect) do |*patterns, timeout:|
       raise "incorrect read arguments" unless patterns == [/router#/, LocalTransport::STREAM] && timeout == 2
 
-      Struct.new(:number, :before, :match, :error).new(1, "output", "router#", nil)
+      Expect::Result.new(status: :matched, match_number: 1, before: "output", match: "router#")
     end
     configuration = Connector::Configuration.new(host: "192.0.2.1", username: "audit")
     transport = LocalTransport.new(configuration, "")
@@ -480,6 +480,24 @@ class ConnectorTransportTest < Minitest::Test
     assert_equal 0, event.index
     assert_equal "output", event.before
     assert_equal "router#", event.match
+  end
+
+  def test_pty_waiting_events_and_original_errors_are_adapted_explicitly
+    failure = IOError.new("read failed")
+    { eof: :eof, timeout: :timeout, error: failure }.each do |status, expected|
+      result = Expect::Result.new(status:, error: status == :error ? failure : nil, before: "tail")
+      channel = Object.new
+      channel.define_singleton_method(:expect) { |*, **| result }
+      configuration = Connector::Configuration.new(host: "192.0.2.1", username: "audit")
+      transport = LocalTransport.new(configuration, "")
+      transport.instance_variable_set(:@channel, channel)
+
+      event = transport.read([/router#/], timeout: 2)
+      assert_same expected, event.error
+      assert_nil event.index
+      assert_equal "tail", event.before
+      assert_equal "", event.match
+    end
   end
 
   def test_cumulative_output_limit_keeps_finished_steps_and_reaps_the_local_pty

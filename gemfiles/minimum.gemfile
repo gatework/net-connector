@@ -2,7 +2,7 @@
 
 # 验证受支持的依赖下界；不覆盖旧版 expect-pty 接口。
 eval_gemfile File.expand_path("../Gemfile", __dir__)
-gem "expect-pty", "= 0.9.6"
+gem "expect-pty", "= 0.10.0"
 gem "ctx_cli", "= 0.5.0"
 gem "textfsm", "= 0.5.1"
 

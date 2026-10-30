@@ -15,11 +15,11 @@
 
 ## 修改与验证
 
-- 以 gemspec、锁文件和 CI 为依据，当前测试矩阵为 Ruby 3.4/4.0；使用项目 Ruby、Bundler 和中文注释。
+- 以 gemspec、锁文件和 CI 为依据，当前测试矩阵为 Ruby 4.0.6/4.0；使用项目 Ruby、Bundler 和中文注释。
 - 保留暂存、未暂存和未跟踪工作，不 reset/clean/stash。修改不自动包含提交、推送或发布。
 - 根目录运行 `bash script/ci`，包括秘密扫描、lint、工作流检查、完整测试、覆盖率比较、基准 smoke、构建及普通/Bundler 隔离安装。macOS 环境必要时使用 `zsh -ic 'bash script/ci'`。
 - 定向测试使用 `bundle exec ruby -Itest test/<name>_test.rb`；数据库查询改动另跑 `bundle exec rake test:postgres`，仅使用脚本创建的临时数据库。
-- expect 候选源码联调：`RUBYLIB=../expect-ruby/lib bundle exec rake test`；同时保留锁定依赖测试。隔离包验证还须确认实际安装的 expect 候选字节，不能仅凭版本号相同判定。
+- expect 候选源码联调：`EXPECT_PTY_PATH=../expect-ruby bundle exec rake test`，先按同一变量解析开发依赖；普通安装不设置该变量。隔离包验证显式传入 `EXPECT_PTY_GEM=/absolute/path/expect-pty-0.10.0.gem`，确认实际安装的候选字节，不能仅凭版本号相同判定。
 - `script/benchmark_memory.rb` 提供完整离线场景；`script/benchmark_dialogue.rb` 支持 `--library` 基线对比。正确性断言在计时外，记录规模与分配量，不把微基准外推成网络收益。
 - 示例入口修改后，从实际 checkout 直接运行其普通命令，不只通过额外 `-Ilib` 或旁边工作树验证。
 - 更新 CHANGELOG 与相关文档；远程发布与仓库可见性变更仅按明确授权执行。
@@ -31,4 +31,4 @@
 ## 公共 CLI
 
 配置读取、私有初始化、终端边界和公共参数使用 ctx_cli；不要复制对应实现。领域策略、设备能力和备份完成状态留在当前仓库。`CTX_CLI_PATH=../ctx_cli` 显式源码联调；普通入口与安装验证使用候选 gem，不能隐式探测相邻目录。
-`CTX_CLI_GEM=/absolute/path/ctx_cli-0.1.0.gem bash script/ci` 将精确候选传给隔离安装检查；也可 `ruby script/verify_install.rb PACKAGE CLI_PACKAGE`。核心仍支持 Ruby 3.4。
+`CTX_CLI_GEM=/absolute/path/ctx_cli-0.1.0.gem bash script/ci` 将精确候选传给隔离安装检查；也可 `ruby script/verify_install.rb PACKAGE CLI_PACKAGE`。核心仍支持 Ruby 4.0.6。

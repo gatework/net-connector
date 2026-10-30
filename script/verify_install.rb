@@ -16,7 +16,7 @@ module InstalledPackageCheck
       path = File.expand_path(path)
       candidate = Gem::Package.new(path)
       candidate.verify
-      raise "Unexpected CLI candidate" unless candidate.spec.name == "ctx_cli"
+      raise "Unexpected candidate dependency" unless %w[ctx_cli expect-pty].include?(candidate.spec.name)
       [candidate.spec.name, [candidate.spec, path]]
     end
     # 只复制运行时依赖闭包的缓存，禁止开发 Gemfile 给最小应用补齐遗漏的依赖。
@@ -65,11 +65,13 @@ module InstalledPackageCheck
       PackageCheck.command(environment, RbConfig.ruby, "-S", "gem", "install", "--local", "--no-document",
                            File.join(directory, File.basename(artifact)), chdir: directory)
       candidate_files.each_value do |spec, path|
-        Dir.mktmpdir("cli-candidate-") do |source|
+        Dir.mktmpdir("dependency-candidate-") do |source|
           Gem::Package.new(path).extract_files(source)
           spec.files.each do |file|
             installed = File.join(gems, "gems", spec.full_name, file)
-            raise "CLI candidate byte mismatch: #{file}" unless File.binread(installed) == File.binread(File.join(source, file))
+            unless File.binread(installed) == File.binread(File.join(source, file))
+              raise "Candidate byte mismatch: #{spec.name}/#{file}"
+            end
           end
         end
       end

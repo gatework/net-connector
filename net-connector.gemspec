@@ -12,7 +12,7 @@ Gem::Specification.new do |spec|
                      "collect and back up configurations, and discover and reconcile interface " \
                      "descriptions using Netdisco inventories."
   spec.license = "MIT"
-  spec.required_ruby_version = ">= 3.4"
+  spec.required_ruby_version = ">= 4.0.6"
   # 使用明确的发布清单；本地凭据、设备备份、日志和开发产物不能进入安装包。
   spec.files = Dir["lib/**/*.rb", "lib/net/connector/netdisco/ssh/archive/worker.py",
                    "lib/net/connector/textfsm/**/*.textfsm", "lib/net/connector/textfsm/index",
@@ -25,7 +25,7 @@ Gem::Specification.new do |spec|
   spec.executables = ["net-backup"]
   # 使用当前 Session 与缓冲字节查询契约，具体版本由宿主应用锁定。
   spec.add_dependency "ctx_cli", ">= 0.5.0", "< 0.6"
-  spec.add_dependency "expect-pty", ">= 0.9.6", "< 0.10"
+  spec.add_dependency "expect-pty", ">= 0.10.0", "< 0.11"
   spec.add_dependency "textfsm", ">= 0.5.1"
   spec.add_dependency "pg"
   spec.add_dependency "dotenv"

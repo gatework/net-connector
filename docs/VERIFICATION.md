@@ -1,5 +1,20 @@
 # 验证、依赖与敏感数据
 
+## 2026-10-30：expect-pty 0.10 候选联调
+
+使用 RVM Ruby 4.0.6 / Bundler 4.0.16 / Linux x86_64，显式指定 `EXPECT_PTY_PATH=../expect-ruby` 和
+`EXPECT_PTY_GEM=/absolute/path/expect-pty-0.10.0.gem` 运行完整 `bash script/ci`。
+1,285 runs、12,997 assertions，零失败、错误或跳过；源码/历史/包扫描、307 文件 lint、工作流检查、
+关键组覆盖率下限、基准 smoke、普通/Bundler 隔离安装通过，安装后逐文件核对候选包内容。
+历史覆盖率基线的 Ruby 描述与本机不同，比较状态为 not_comparable，未改写历史基线。
+
+PTY 适配显式映射 matched、timeout、eof、error 和 match_number；设备事件继续使用零基 index，
+超时与 EOF 不会因为 Result#error 为 nil 被误判为成功。真实本地 PTY 测试覆盖流式读取、输出上限、关闭与认证。
+最低业务依赖组合（expect-pty 0.10.0、ctx_cli 0.5.0、TextFSM 0.5.1、JSON 2）亦通过完整测试与普通/Bundler 隔离安装；
+先安装候选包，再在未设置 EXPECT_PTY_PATH 的环境中解析 minimum.gemfile。
+日志为 `tmp/lean-ci.log`；最低依赖记录保存在工作区 `.expect-review-20261030/minimum.log`。
+远端 Actions、macOS 和真实设备未在本轮执行。
+
 在项目根目录执行：
 
 ```sh
@@ -128,7 +143,7 @@ NC-00 未保存逐文件数据，因此本轮不伪造逐文件历史下限；�
 
 ## 平台与工具
 
-CI 矩阵为 Ubuntu 24.04 / macOS 15 × Ruby 3.4、4.0。
+CI 矩阵为 Ubuntu 24.04 / macOS 15 × Ruby 4.0.6、4.0。
 GitHub Actions 固定提交 SHA；Gitleaks 与 actionlint 固定版本和各平台归档
 SHA-256，首次使用时从官方 GitHub Release 下载，缓存到 `tmp/tools/`。
 已有工具归档和可执行文件也会再次校验。初次安装依赖和下载工具需要联网；
@@ -155,7 +170,7 @@ SHA-256，首次使用时从官方 GitHub Release 下载，缓存到 `tmp/tools/
 
 运行依赖写在 `net-connector.gemspec`，包括直接使用的、可能从 Ruby 默认
 安装中拆出的标准库 gem。开发工具只写在 Gemfile，不进入运行依赖。
-PTY 与共享脱敏直接依赖 expect-pty 0.9.6+ 的公开 `Session`、`buffer_bytesize` 和 `Expect::Redactor` 接口。
+PTY 与共享脱敏直接依赖 expect-pty 0.10.x 的公开 `Session`、`buffer_bytesize` 和 `Expect::Redactor` 接口。
 开发用 `parallel` 保持 1.x。升级 expect-pty 时先验证源码集成，再用本次构建的 gem 验证隔离安装；
 新依赖版本发布前不得将本地构建验证记成已发布版本验收，也不能退回旧接口掩盖依赖缺失。
 
@@ -163,9 +178,9 @@ PTY 与共享脱敏直接依赖 expect-pty 0.9.6+ 的公开 `Session`、`buffer_
 分别解析兼容依赖。应用使用者应在自己的应用中提交 lockfile。测试和打包
 脚本通过隔离安装检查运行依赖，避免依赖开发环境里偶然存在的 gem。
 
-`gemfiles/minimum.gemfile` 固定受支持的依赖下界 expect-pty 0.9.6、ctx_cli 0.4.0、textfsm 0.5.1；
+`gemfiles/minimum.gemfile` 固定受支持的依赖下界 expect-pty 0.10.0、ctx_cli 0.5.0、textfsm 0.5.1；
 标准库和开发工具仍按主 Gemfile 的兼容范围解析。普通矩阵检查允许版本的正常解析，
-另在 Ubuntu / Ruby 3.4、4.0 检查这组版本的全量测试与隔离安装。本地复现：
+另在 Ubuntu / Ruby 4.0.6、4.0 检查这组版本的全量测试与隔离安装。本地复现：
 
 ```sh
 BUNDLE_GEMFILE=gemfiles/minimum.gemfile bundle install
@@ -211,7 +226,7 @@ Gitleaks 默认规则之外，还检查网络设备密码/SNMP community 配置�
 运行依赖要求 TextFSM 0.5.1 或更新版本；0.5.1 的公开 JSON 声明为 `>= 2.0`，
 允许普通消费者选择 JSON 2 或 JSON 3。最低依赖任务固定 TextFSM 0.5.1 与 JSON 2。
 
-CI 的 `json3-compatibility` 在 Ruby 3.4 / 4.0 使用已发布 TextFSM 0.5.1 与 JSON 3，
+CI 的 `json3-compatibility` 在 Ruby 4.0.6 / 4.0 使用已发布 TextFSM 0.5.1 与 JSON 3，
 执行完整测试和真实打包隔离安装。脚本核对原始 gem 的 JSON 依赖声明，再将发布包缓存
 交给隔离消费者；不再检出旧源码、修改 metadata 或重建同版本 TextFSM。
 
@@ -244,7 +259,7 @@ TFTP 远端未核验回执以及自定义日志目录；离线复核同时支持
 实施记录使用当前工作区文件和方法可见性快照，区别已有改动与本轮增量，不以 Git HEAD 冒充修改前基线。
 源码根目录 `RENAMES.md` 记录批准的改名与兼容边界。完整验收仍运行 `bundle exec rake ci`；
 临时 PostgreSQL 使用 `bundle exec rake test:postgres`，可通过 `NC_TEST_PG_BINDIR` 指定服务端工具目录。
-最低 Ruby 3.4 必须在对应解释器中运行 lint/test；RuboCop 的 TargetRubyVersion 和 Ruby 4.0 测试不能替代此项。
+最低 Ruby 4.0.6 必须在对应解释器中运行 lint/test；RuboCop 的 TargetRubyVersion 和 Ruby 4.0 测试不能替代此项。
 
 ## 报告统计基准
 

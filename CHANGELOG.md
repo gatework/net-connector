@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.22.0 - 2026-10-30
+
+- Require Ruby 4.0.6 and expect-pty 0.10.x. Adapt its explicit Result status and match_number in PTY transport and SSH authentication while retaining connector event semantics and zero-based indexes.
+- Accept explicit expect-pty source and package candidates for integration and isolated installation checks; verify the installed candidate bytes.
+
 ## 0.21.0 - 2026-10-30
 
 - Rename neighbor fields to `remote_name`, `remote_interface` and `remote_chassis_id`, retaining `local_interface`. Collection progress reads schema 4 `target`; require ctx_cli 0.5. No legacy accessor aliases.

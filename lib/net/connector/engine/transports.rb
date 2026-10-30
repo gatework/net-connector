@@ -61,8 +61,15 @@ module Net
         # 从信道读取下一事件，并把字符串字段转换为字节字符串。
         def read(patterns, timeout:)
           result = @channel.expect(*patterns, STREAM, timeout: timeout)
-          Event.new(index: result.number && (result.number - 1), before: result.before.to_s,
-                    match: result.match.to_s, error: result.error)
+          # 传输事件维持连接器的零基索引与事件协议；PTY 的等待状态和异常在适配边界明确转换。
+          error = case result.status
+                  when :matched then nil
+                  when :eof, :timeout then result.status
+                  when :error then result.error
+                  else raise ArgumentError, "unknown PTY result status"
+                  end
+          Event.new(index: result.match_number && (result.match_number - 1), before: result.before.to_s,
+                    match: result.match.to_s, error:)
         end
 
         # 临时设置写入超时，完成写入后恢复原设置。

@@ -15,4 +15,4 @@ json = Gem.loaded_specs.fetch("json")
 dependency = package.spec.runtime_dependencies.find { |entry| entry.name == "json" }
 raise "Published TextFSM does not support the selected JSON" unless dependency&.matches_spec?(json)
 puts "JSON 3 published dependencies: TextFSM #{specification.version}, JSON #{json.version}"
-InstalledPackageCheck.run(PackageCheck.build)
+InstalledPackageCheck.run(PackageCheck.build, candidates: [ENV["CTX_CLI_GEM"], ENV["EXPECT_PTY_GEM"]].compact)

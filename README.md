@@ -4,7 +4,7 @@
 
 Ruby sessions for network device CLIs over SSH or Telnet. Collect configurations, save private backups, run interactive scripts, parse output with TextFSM, and back up fleets from Netdisco inventories.
 
-Requires Ruby 3.4+, expect-pty 0.9.6+, ctx_cli 0.4.x, TextFSM 0.5.1+ and a POSIX system. SSH uses local OpenSSH; Telnet requires a local `telnet` executable and explicit configuration.
+Requires Ruby 4.0.6+, expect-pty 0.10.x, ctx_cli 0.5.x, TextFSM 0.5.1+ and a POSIX system. SSH uses local OpenSSH; Telnet requires a local `telnet` executable and explicit configuration.
 
 ## Install
 

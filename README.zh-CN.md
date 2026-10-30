@@ -4,7 +4,7 @@
 
 通过 SSH 或 Telnet 操作网络设备的 Ruby 库。支持配置采集、私有备份、交互脚本、TextFSM 解析，以及基于 Netdisco 清单的批量备份。
 
-需要 Ruby 3.4+、expect-pty 0.9.6+、ctx_cli 0.4.x、TextFSM 0.5.1+ 和 POSIX 系统。SSH 使用本机 OpenSSH；Telnet 需要本机安装 `telnet` 并显式配置。
+需要 Ruby 4.0.6+、expect-pty 0.10.x、ctx_cli 0.5.x、TextFSM 0.5.1+ 和 POSIX 系统。SSH 使用本机 OpenSSH；Telnet 需要本机安装 `telnet` 并显式配置。
 
 ## 安装
 

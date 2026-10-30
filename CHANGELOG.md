@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-## 0.21.0 (2026-10-30)
+## 0.21.0 - 2026-10-30
 
 - Rename neighbor fields to `remote_name`, `remote_interface` and `remote_chassis_id`, retaining `local_interface`. Collection progress reads schema 4 `target`; require ctx_cli 0.5. No legacy accessor aliases.
 

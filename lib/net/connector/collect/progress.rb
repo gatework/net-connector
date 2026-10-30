@@ -27,7 +27,7 @@ module Net
                     when "partial" then "Partially complete (#{code})"
                     else "Incomplete (#{code})"
                     end
-          super(host: result.fetch("device").fetch("host"), success: status == "complete",
+          super(host: result.fetch("target").fetch("host"), success: status == "complete",
                 duration_ms: result.fetch("duration_ms"), message: message, error_code: code&.to_sym)
         end
 

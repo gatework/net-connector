@@ -85,3 +85,7 @@ credentials = Net::Connector::Credentials.new(env: ENV).resolve(platform: :cisco
 Catalog owns inventory reading, normalization, duplicate marking and cache status (`#status`). It does not resolve device credentials, log into devices or create operation reports. Pass one policy snapshot throughout a run. Fleet delegates to Catalog and retains operation orchestration.
 
 Credentials reads the injected environment on every `resolve`; it returns an independent frozen hash, or nil when no username is available. Platform-specific `NC_<PLATFORM>_USERNAME`, `_PASSWORD`, and `_ENABLE_PASSWORD` override `NC_DEVICE_USERNAME`, `NC_DEVICE_PASSWORD`, and `NC_ENABLE_PASSWORD` respectively. Blank values fall back. Secrets are never cached or included in object inspection.
+
+## Domain contract migration (2026-10-30)
+
+Rename neighbor fields to `remote_name`, `remote_interface` and `remote_chassis_id`, retaining `local_interface`. Collection progress reads schema 4 `target`; require ctx_cli 0.5. No legacy accessor aliases. See the [schema 4 migration and module contracts](https://github.com/gatework/ctx_runner/blob/main/docs/contracts-2026-10-30.md). Regenerate old collection reports and change plans; changing only their version number is not supported.

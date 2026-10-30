@@ -4,7 +4,7 @@ require "minitest/autorun"
 require_relative "../lib/net/connector"
 
 class InterfaceDescriptionTest < Minitest::Test
-  Neighbor = Struct.new(:neighbor_name, :neighbor_interface)
+  Neighbor = Struct.new(:remote_name, :remote_interface)
   Names = Net::Connector::Interfaces::Name
   Descriptions = Net::Connector::Interfaces::Description
 
@@ -59,8 +59,8 @@ class InterfaceDescriptionTest < Minitest::Test
     assert_equal "To_Core-SW_eth1/2", Descriptions.format(neighbor, lowercase: true)
     assert_equal "To_Core-SW_Ethernet1/2", Descriptions.format(neighbor, abbreviate: false)
     assert_equal "To_Core-SW_ethernet1/2", Descriptions.format(neighbor, abbreviate: false, lowercase: true)
-    assert_equal "Ethernet1/2", neighbor.neighbor_interface
-    assert_equal "Core-SW", neighbor.neighbor_name
+    assert_equal "Ethernet1/2", neighbor.remote_interface
+    assert_equal "Core-SW", neighbor.remote_name
   end
 
   def test_equivalent_cisco_huawei_and_h3c_peer_interfaces_share_the_same_default_description

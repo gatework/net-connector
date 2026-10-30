@@ -10,11 +10,11 @@ module Net
         # 将邻居名称和接口拼成默认描述；统一邻居接口简称，原始发现记录保持不变。
         def self.format(neighbor, abbreviate: true, lowercase: false)
           port = if abbreviate
-                   Name.short(neighbor.neighbor_interface, lowercase: lowercase)
+                   Name.short(neighbor.remote_interface, lowercase: lowercase)
                  else
-                   lowercase ? neighbor.neighbor_interface.downcase : neighbor.neighbor_interface
+                   lowercase ? neighbor.remote_interface.downcase : neighbor.remote_interface
                  end
-          validate!("To_#{neighbor.neighbor_name.tr(" ", "_")}_#{port.tr(" ", "_")}")
+          validate!("To_#{neighbor.remote_name.tr(" ", "_")}_#{port.tr(" ", "_")}")
         end
 
         # 保留语义相同的旧描述；只归一末尾已知接口别名和大小写，不模糊匹配名称或端口编号。

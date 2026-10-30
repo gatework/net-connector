@@ -180,7 +180,7 @@ class VendorPlatformsTest < Minitest::Test
              "Port ID : ge-0/0/1\nSystem name : edge01\nManagement Info\n  Port ID : 1\n" \
              "Local Interface : ge-0/0/2\nPort ID : xe-0/0/3\nSystem name : edge02\n"
     build(:juniper, "#{detail}#{PROMPTS.fetch(:juniper)}")
-    assert_equal %w[ge-0/0/1 xe-0/0/3], @device.interfaces.neighbors.map(&:neighbor_interface)
+    assert_equal %w[ge-0/0/1 xe-0/0/3], @device.interfaces.neighbors.map(&:remote_interface)
   end
 
   def test_juniper_management_port_cannot_complete_a_partial_neighbor

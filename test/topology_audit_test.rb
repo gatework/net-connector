@@ -84,7 +84,7 @@ class TopologyAuditTest < Minitest::Test
       def with_operation(_phase) = yield
     end.new("192.0.2.1", :palo_alto, profile)
     topology = C::Interfaces.new(context)
-    peer = C::Interfaces::Neighbor.new(local_interface: "ethernet1/1", neighbor_name: "peer", neighbor_interface: "Ethernet1/2", chassis_id: "peer-chassis", protocol: :lldp)
+    peer = C::Interfaces::Neighbor.new(local_interface: "ethernet1/1", remote_name: "peer", remote_interface: "Ethernet1/2", remote_chassis_id: "peer-chassis", protocol: :lldp)
     audit = topology.stub(:neighbors, [peer]) do
       topology.stub(:descriptions, { "ethernet1/1" => "old" }) { topology.audit }
     end
@@ -97,11 +97,11 @@ class TopologyAuditTest < Minitest::Test
 
   def test_unknown_neighbor_names_and_ports_are_reported_without_commands
     ["-", "--", "n/a", "N/A", "unknown", "Unknown", "null", "none", " "].each do |value|
-      [:neighbor_name, :neighbor_interface].each do |field|
+      [:remote_name, :remote_interface].each do |field|
         fixture = TopologyFixture.new(:h3c)
         topology = C::Interfaces.new(fixture.device)
-        peer = C::Interfaces::Neighbor.new(local_interface: "GE1/0/1", neighbor_name: "peer", neighbor_interface: "GE1/0/2",
-                                        chassis_id: "000f-e25d-ee91", protocol: :lldp).with(**{ field => value })
+        peer = C::Interfaces::Neighbor.new(local_interface: "GE1/0/1", remote_name: "peer", remote_interface: "GE1/0/2",
+                                        remote_chassis_id: "000f-e25d-ee91", protocol: :lldp).with(**{ field => value })
         audit = topology.stub(:neighbors, [peer]) do
           topology.stub(:descriptions, { "gigabitethernet1/0/1" => "existing description" }) do
             topology.audit
@@ -109,7 +109,7 @@ class TopologyAuditTest < Minitest::Test
         end
         assert_equal :unverified, audit.comparisons.first.fetch(:status), "#{field}=#{value.inspect}"
         assert_nil audit.comparisons.first.fetch(:expected)
-        assert_equal([field == :neighbor_name ? :unknown_neighbor_name : :unknown_neighbor_interface], audit.issues.map { |issue| issue.fetch(:code) })
+        assert_equal([field == :remote_name ? :unknown_neighbor_name : :unknown_neighbor_interface], audit.issues.map { |issue| issue.fetch(:code) })
         assert_empty audit.plan.changes
         assert_empty audit.plan.commands
         assert_empty audit.plan.evidence

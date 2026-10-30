@@ -88,9 +88,9 @@ module Net
 
         rows.map do |row|
           Neighbor.new(local_interface: row.fetch("LOCAL_INTERFACE").strip.freeze,
-                       neighbor_name: row.fetch("NEIGHBOR_NAME", "").strip.freeze,
-                       neighbor_interface: row.fetch("NEIGHBOR_INTERFACE").strip.freeze,
-                       chassis_id: row.fetch("CHASSIS_ID", "").strip.freeze,
+                       remote_name: row.fetch("NEIGHBOR_NAME", "").strip.freeze,
+                       remote_interface: row.fetch("NEIGHBOR_INTERFACE").strip.freeze,
+                       remote_chassis_id: row.fetch("CHASSIS_ID", "").strip.freeze,
                        protocol: @strategy.protocol).freeze
         end
       end
@@ -272,7 +272,7 @@ module Net
         plan.changes.each do |change|
           Description.validate!(change.new_description)
           unless evidence.fetch(@strategy.interface_key(change.interface)) ==
-                 [change.neighbor.neighbor_name, change.neighbor.neighbor_interface, change.old_description]
+                 [change.neighbor.remote_name, change.neighbor.remote_interface, change.old_description]
             raise ArgumentError, "plan changes do not match its discovery evidence"
           end
         end
@@ -319,7 +319,7 @@ module Net
 
         interfaces.transform_values do |peers|
           peer = peers.fetch(0)
-          [peer.neighbor_name, peer.neighbor_interface, current.fetch(@strategy.interface_key(peer.local_interface))].freeze
+          [peer.remote_name, peer.remote_interface, current.fetch(@strategy.interface_key(peer.local_interface))].freeze
         end.freeze
       end
 

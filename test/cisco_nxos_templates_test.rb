@@ -29,9 +29,9 @@ class CiscoNxosTemplatesTest < Minitest::Test
     build("Device ID:leaf-b(SERIAL01)\nSystem Name: leaf-b\nInterface: Ethernet1/1, Port ID (outgoing port): Ethernet1/2\n" \
           "Device ID:core-c\nInterface: Ethernet1/3, Port ID (outgoing port): Ethernet2/1\n")
     neighbors = @device.interfaces.neighbors
-    assert_equal ["leaf-b(SERIAL01)", "core-c"], neighbors.map(&:neighbor_name)
+    assert_equal ["leaf-b(SERIAL01)", "core-c"], neighbors.map(&:remote_name)
     assert_equal %w[Ethernet1/1 Ethernet1/3], neighbors.map(&:local_interface)
-    assert_equal %w[Ethernet1/2 Ethernet2/1], neighbors.map(&:neighbor_interface)
+    assert_equal %w[Ethernet1/2 Ethernet2/1], neighbors.map(&:remote_interface)
     assert(neighbors.all? { |neighbor| neighbor.protocol == :cdp })
   end
 

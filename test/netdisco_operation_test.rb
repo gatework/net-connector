@@ -288,7 +288,7 @@ class NetdiscoOperationTest < Minitest::Test
     assert batch.success?
     assert_same original, value
     assert value.evidence.frozen?
-    assert value.changes.first.neighbor.neighbor_name.frozen?
+    assert value.changes.first.neighbor.remote_name.frozen?
     assert_equal :plan, @connectors.fetch(@hosts.first).calls.first.first
     assert_same formatter, @connectors.fetch(@hosts.first).calls.first.last
     refute_includes JSON.generate(batch.to_h), "secret-neighbor"
@@ -512,8 +512,8 @@ class NetdiscoOperationTest < Minitest::Test
 
   # 直接构造审批值，验证领域对象与批次共用同一不可变边界。
   def plan(host)
-    neighbor = Connector::Interfaces::Neighbor.new(local_interface: "GigabitEthernet1/0/1", neighbor_name: "secret-neighbor",
-                                                 neighbor_interface: "Ethernet1", chassis_id: "chassis", protocol: :lldp)
+    neighbor = Connector::Interfaces::Neighbor.new(local_interface: "GigabitEthernet1/0/1", remote_name: "secret-neighbor",
+                                                 remote_interface: "Ethernet1", remote_chassis_id: "chassis", protocol: :lldp)
     change = Connector::Interfaces::Change.new(interface: "GigabitEthernet1/0/1", old_description: "old", new_description: "new", neighbor: neighbor)
     profile = Connector.vendor_class(:h3c).profile
     context = Struct.new(:host, :profile).new(host, profile)

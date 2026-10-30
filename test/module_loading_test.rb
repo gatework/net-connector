@@ -52,7 +52,7 @@ class ModuleLoadingTest < Minitest::Test
       output = StringIO.new
       progress = Net::Connector::Collect::Progress.new(io: output)
       device = { "host" => "192.0.2.1" }
-      item = { "device" => device, "status" => "complete", "report_saved" => true, "duration_ms" => 1 }
+      item = { "target" => device, "status" => "complete", "report_saved" => true, "duration_ms" => 1 }
       progress.with_updates do
         progress.plan(devices: [device], total: 2, parallel: 3, label: "采集")
         progress.start(device)

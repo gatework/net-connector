@@ -51,10 +51,10 @@ module Net
 
           # 使用当前模板和端口展示策略生成缺失或确需修正的目标描述。
           def description_for(neighbor)
-            port = neighbor.neighbor_interface
+            port = neighbor.remote_interface
             port = Net::Connector::Interfaces::Name.short(port) if abbreviate_ports
             port = port.downcase if lowercase_ports
-            format(neighbor: neighbor.neighbor_name, port: port)
+            format(neighbor: neighbor.remote_name, port: port)
           end
 
           # 仅显式声明的旧名称前缀可保留；不把未知名称、包含匹配或不同编号当作同一邻居。
@@ -63,7 +63,7 @@ module Net
             return true if comparison.equivalent?(current, expected)
 
             neighbor_name_prefixes.any? do |prefix|
-              variant = neighbor.with(neighbor_name: prefix + neighbor.neighbor_name)
+              variant = neighbor.with(remote_name: prefix + neighbor.remote_name)
               comparison.equivalent?(current, description_for(variant))
             end
           end

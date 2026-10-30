@@ -46,7 +46,7 @@ class TopologySyncTest < Minitest::Test
       assert result.success?, "#{local}: #{result.error.inspect}"
       assert_equal "To_peer_#{expected}", fixture.description
       assert_equal local, fixture.device.interfaces.neighbors.first.local_interface
-      assert_equal remote, fixture.device.interfaces.neighbors.first.neighbor_interface
+      assert_equal remote, fixture.device.interfaces.neighbors.first.remote_interface
       assert_includes fixture.observed.map(&:first), "interface #{Net::Connector::Interfaces::Name.configuration(local)}"
       assert_equal(1, fixture.observed.count { |command, _| command == fixture.sample.fetch(:save) })
     ensure
@@ -69,7 +69,7 @@ class TopologySyncTest < Minitest::Test
     each_fixture do |fixture|
       result = fixture.device.interfaces.sync(abbreviate: false, lowercase: true)
       assert result.success?
-      assert_equal "To_peer_#{fixture.device.interfaces.neighbors.first.neighbor_interface.downcase}", fixture.description
+      assert_equal "To_peer_#{fixture.device.interfaces.neighbors.first.remote_interface.downcase}", fixture.description
       result = fixture.device.interfaces.sync { "custom uplink" }
       assert result.success?
       assert_equal "custom uplink", fixture.description

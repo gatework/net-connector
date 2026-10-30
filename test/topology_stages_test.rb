@@ -174,8 +174,8 @@ class TopologyStagesTest < Minitest::Test
     refute device.supports?(:interface_description_changes)
     error = assert_raises(Net::Connector::UnsupportedOperation) { device.interfaces.plan }
     assert_equal :candidate_isolation_unavailable, error.code
-    neighbor = Net::Connector::Interfaces::Neighbor.new(local_interface: "Ethernet1", neighbor_name: "peer",
-                                                      neighbor_interface: "Ethernet2", chassis_id: "chassis", protocol: :lldp)
+    neighbor = Net::Connector::Interfaces::Neighbor.new(local_interface: "Ethernet1", remote_name: "peer",
+                                                      remote_interface: "Ethernet2", remote_chassis_id: "chassis", protocol: :lldp)
     change = Net::Connector::Interfaces::Change.new(interface: "Ethernet1", old_description: "", new_description: "new", neighbor: neighbor)
     plan = Net::Connector::Interfaces::Plan.new(host: device.host, vendor: device.vendor,
                                               evidence: {}, changes: [change], commands: ["configure", "commit"])

@@ -100,7 +100,7 @@ class DeviceReliabilityTest < Minitest::Test
     assert_raises(FrozenError) { plan.commands.first.replace("reload") }
     assert_raises(FrozenError) { plan.changes.first.new_description.replace("changed") }
     assert_raises(FrozenError) { plan.evidence.values.first.last.replace("changed") }
-    assert_raises(FrozenError) { plan.changes.first.neighbor.neighbor_name.replace("changed") }
+    assert_raises(FrozenError) { plan.changes.first.neighbor.remote_name.replace("changed") }
   end
 
   def test_tftp_failure_evidence_survives_color_and_carriage_return

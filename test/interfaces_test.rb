@@ -26,7 +26,7 @@ class InterfaceCollectionTest < Minitest::Test
     refute @fixture.device.connected?
     assert_empty @fixture.observed
 
-    assert_equal "peer", collection.neighbors.fetch(0).neighbor_name
+    assert_equal "peer", collection.neighbors.fetch(0).remote_name
     assert_equal({ "gigabitethernet1/0/1" => "original" }, collection.descriptions)
   end
 

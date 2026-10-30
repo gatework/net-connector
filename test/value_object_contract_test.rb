@@ -176,14 +176,14 @@ class ValueObjectContractTest < Minitest::Test
 
   def test_topology_updates_own_nested_evidence_and_change_strings
     name = +"peer"
-    neighbor = Connector::Interfaces::Neighbor.new(local_interface: +"Ethernet1", neighbor_name: name,
-                                                 neighbor_interface: +"Ethernet2", chassis_id: +"chassis", protocol: :lldp)
+    neighbor = Connector::Interfaces::Neighbor.new(local_interface: +"Ethernet1", remote_name: name,
+                                                 remote_interface: +"Ethernet2", remote_chassis_id: +"chassis", protocol: :lldp)
     name.replace("changed")
-    assert_equal "peer", neighbor.neighbor_name
+    assert_equal "peer", neighbor.remote_name
     replacement = +"next-peer"
-    updated_neighbor = neighbor.with(neighbor_name: replacement)
+    updated_neighbor = neighbor.with(remote_name: replacement)
     replacement.clear
-    assert_equal "next-peer", updated_neighbor.neighbor_name
+    assert_equal "next-peer", updated_neighbor.remote_name
     description = +"approved"
     change = Connector::Interfaces::Change.new(interface: +"Ethernet1", old_description: +"old",
                                               new_description: description, neighbor: neighbor)

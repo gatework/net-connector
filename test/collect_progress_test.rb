@@ -13,7 +13,7 @@ class CollectProgressTest < Minitest::Test
   end
 
   def result(status: :partial, saved: true, **fields)
-    { "device" => @device, "status" => status.to_s, "report_saved" => saved, "duration_ms" => 42,
+    { "target" => @device, "status" => status.to_s, "report_saved" => saved, "duration_ms" => 42,
       "dimensions" => {
         "vpc" => { "status" => "complete", "issues" => ["vpc_not_configured"] },
         "collection" => { "status" => status.to_s, "issues" => [] },

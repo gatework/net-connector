@@ -16,8 +16,8 @@ class VendorTopologyParityTest < Minitest::Test
     TEXT
     rows = @device.interfaces.neighbors
     assert_equal ["Gigabitethernet 0/1/0", "XGE1/0/5"], rows.map(&:local_interface)
-    assert_equal ["Gigabitethernet 0/1/1", "XGE1/0/18"], rows.map(&:neighbor_interface)
-    assert(rows.all? { |neighbor| neighbor.protocol == :lldp && neighbor.chassis_id.empty? })
+    assert_equal ["Gigabitethernet 0/1/1", "XGE1/0/18"], rows.map(&:remote_interface)
+    assert(rows.all? { |neighbor| neighbor.protocol == :lldp && neighbor.remote_chassis_id.empty? })
     assert_equal ["display lldp neighbor brief\n"], @transport.writes
   end
 

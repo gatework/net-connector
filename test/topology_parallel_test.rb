@@ -70,7 +70,7 @@ class TopologyParallelTest < Minitest::Test
     plan = @device.interfaces.plan(abbreviate: false, lowercase: true)
     assert_equal "To_peer_gigabitethernet1/0/2", plan.changes.first.new_description
     assert_equal "GigabitEthernet1/0/1", plan.changes.first.interface
-    assert_equal "GigabitEthernet1/0/2", plan.changes.first.neighbor.neighbor_interface
+    assert_equal "GigabitEthernet1/0/2", plan.changes.first.neighbor.remote_interface
   end
 
   def test_stale_plan_releases_operation_lock_without_applying_changes

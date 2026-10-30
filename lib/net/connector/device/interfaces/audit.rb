@@ -64,7 +64,7 @@ module Net
         def inspect_interface(interface, peers)
           peer = peers.first
           current = @descriptions[interface]
-          row = { interface: peer.local_interface, neighbor: peer.neighbor_name, port: peer.neighbor_interface,
+          row = { interface: peer.local_interface, neighbor: peer.remote_name, port: peer.remote_interface,
                   current: current, expected: nil, status: :unverified }
           @comparisons << row
           if peers.size != 1
@@ -78,7 +78,7 @@ module Net
           local = @strategy.configuration_interface(peer.local_interface)
           Description.validate_interface!(local)
           row.merge!(expected: proposed, status: compare_status(current, proposed, peer))
-          @evidence[interface] = [peer.neighbor_name, peer.neighbor_interface, current]
+          @evidence[interface] = [peer.remote_name, peer.remote_interface, current]
           return if row[:status] == :matches
 
           @changes << Change.new(interface: local, old_description: current, new_description: proposed, neighbor: peer)

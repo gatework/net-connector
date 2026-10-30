@@ -56,8 +56,8 @@ class TopologyTest < Minitest::Test
   def test_unsupported_vendor_rejects_nonempty_forged_plan_without_network_calls
     device = Device.new(vendor: :topsec, neighbor_output: "")
     topology = Net::Connector::Interfaces.new(device)
-    neighbor = Net::Connector::Interfaces::Neighbor.new(local_interface: "Ethernet1", neighbor_name: "peer",
-                                                      neighbor_interface: "Ethernet2", chassis_id: "chassis", protocol: :lldp)
+    neighbor = Net::Connector::Interfaces::Neighbor.new(local_interface: "Ethernet1", remote_name: "peer",
+                                                      remote_interface: "Ethernet2", remote_chassis_id: "chassis", protocol: :lldp)
     change = Net::Connector::Interfaces::Change.new(interface: "Ethernet1", old_description: "", new_description: "new", neighbor: neighbor)
     plan = Net::Connector::Interfaces::Plan.new(host: device.host, vendor: device.vendor,
                                               evidence: {}, changes: [change], commands: ["reload"])
@@ -85,8 +85,8 @@ class TopologyTest < Minitest::Test
     assert_equal :description_unsupported, error.code
     assert_equal :plan, error.phase
 
-    neighbor = Net::Connector::Interfaces::Neighbor.new(local_interface: "Ethernet1", neighbor_name: "peer",
-                                                      neighbor_interface: "Ethernet2", chassis_id: "chassis", protocol: :lldp)
+    neighbor = Net::Connector::Interfaces::Neighbor.new(local_interface: "Ethernet1", remote_name: "peer",
+                                                      remote_interface: "Ethernet2", remote_chassis_id: "chassis", protocol: :lldp)
     change = Net::Connector::Interfaces::Change.new(interface: "Ethernet1", old_description: "", new_description: "new", neighbor: neighbor)
     plan = Net::Connector::Interfaces::Plan.new(host: device.host, vendor: device.vendor,
                                               evidence: {}, changes: [change], commands: ["reload"])
@@ -120,14 +120,14 @@ class TopologyTest < Minitest::Test
       device = Device.new(vendor: :h3c, neighbor_output: output)
       neighbor = Net::Connector::Interfaces.new(device).neighbors.fetch(0)
       assert_equal "XGE1/0/1", neighbor.local_interface
-      assert_equal "switch-a", neighbor.neighbor_name
-      assert_equal "Ten-GigabitEthernet1/0/2", neighbor.neighbor_interface
+      assert_equal "switch-a", neighbor.remote_name
+      assert_equal "Ten-GigabitEthernet1/0/2", neighbor.remote_interface
       assert_equal :lldp, neighbor.protocol
     end
 
     device = Device.new(vendor: :h3c, neighbor_output: "Local Interface Chassis ID Port ID System Name\n" \
       "GE1/0/1 000f-e25d-ee91 Port 12 switch-b\n")
-    assert_equal "Port 12", Net::Connector::Interfaces.new(device).neighbors.fetch(0).neighbor_interface
+    assert_equal "Port 12", Net::Connector::Interfaces.new(device).neighbors.fetch(0).remote_interface
   end
 
   def test_hillstone_and_palo_alto_lldp
@@ -147,7 +147,7 @@ class TopologyTest < Minitest::Test
     OUTPUT
     [hillstone, panos].each do |device|
       neighbor = Net::Connector::Interfaces.new(device).neighbors.fetch(0)
-      assert_equal "switch-b", neighbor.neighbor_name
+      assert_equal "switch-b", neighbor.remote_name
       assert_equal :lldp, neighbor.protocol
     end
   end
@@ -188,7 +188,7 @@ class TopologyTest < Minitest::Test
     OUTPUT
     neighbor = Net::Connector::Interfaces.new(device).neighbors.fetch(0)
     assert_equal :cdp, neighbor.protocol
-    assert_equal "leaf-b", neighbor.neighbor_name
+    assert_equal "leaf-b", neighbor.remote_name
     assert_equal ["show cdp neighbors detail"], device.commands
 
     radware = Device.new(vendor: :radware, neighbor_output: "")
@@ -269,11 +269,11 @@ class TopologyTest < Minitest::Test
     plan = topology.plan
     assert_equal "To_Core-SW_Eth1/2", plan.changes.first.new_description
     assert_equal "Ethernet1/1", plan.changes.first.interface
-    assert_equal "Ethernet1/2", plan.changes.first.neighbor.neighbor_interface
+    assert_equal "Ethernet1/2", plan.changes.first.neighbor.remote_interface
     assert_equal ["Core-SW", "Ethernet1/2", "old uplink"], plan.evidence.fetch("ethernet1/1")
     assert_equal "To_Core-SW_eth1/2", topology.plan(lowercase: true).changes.first.new_description
     assert_equal "To_Core-SW_Ethernet1/2", topology.plan(abbreviate: false).changes.first.new_description
-    assert_equal "Ethernet1/2", topology.plan { |neighbor| neighbor.neighbor_interface }.changes.first.new_description
+    assert_equal "Ethernet1/2", topology.plan { |neighbor| neighbor.remote_interface }.changes.first.new_description
 
     device.on_execute = ->(_) { device.config_output = device.config_output.sub("old uplink", "To_Core-SW_Eth1/2") }
     assert topology.apply(plan, confirmed: true).success?

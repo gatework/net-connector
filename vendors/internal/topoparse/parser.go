@@ -5,11 +5,11 @@ package topoparse
 import (
 	"strings"
 
-	"github.com/gatework/go-net-connector/internal/ifname"
-	"github.com/gatework/go-net-connector/internal/terminal"
-	"github.com/gatework/go-net-connector/platform"
-	"github.com/gatework/go-net-connector/textfsm"
-	"github.com/gatework/go-net-connector/topology"
+	"github.com/gatework/net-connector/internal/ifname"
+	"github.com/gatework/net-connector/internal/terminal"
+	"github.com/gatework/net-connector/platform"
+	"github.com/gatework/net-connector/textfsm"
+	"github.com/gatework/net-connector/topology"
 )
 
 // Discovery protocols recorded on parsed neighbors.

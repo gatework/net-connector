@@ -1,8 +1,8 @@
 package cisco
 
 import (
-	"github.com/gatework/go-net-connector/internal/ifname"
-	"github.com/gatework/go-net-connector/vendors/internal/topoparse"
+	"github.com/gatework/net-connector/internal/ifname"
+	"github.com/gatework/net-connector/vendors/internal/topoparse"
 )
 
 func iosTopologyParser() topoparse.Parser {

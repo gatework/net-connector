@@ -1,6 +1,6 @@
 package cli
 
-import "github.com/gatework/go-net-connector/internal/workflow"
+import "github.com/gatework/net-connector/internal/workflow"
 
 type requestKind uint8
 

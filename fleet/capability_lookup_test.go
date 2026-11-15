@@ -3,8 +3,8 @@ package fleet
 import (
 	"testing"
 
-	"github.com/gatework/go-net-connector/inventory"
-	"github.com/gatework/go-net-connector/vendors"
+	"github.com/gatework/net-connector/inventory"
+	"github.com/gatework/net-connector/vendors"
 )
 
 func TestPlanLooksUpCapabilitiesOncePerVendorPerPlan(t *testing.T) {

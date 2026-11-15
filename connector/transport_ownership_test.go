@@ -14,7 +14,7 @@ import (
 	"time"
 
 	"github.com/gatework/go-expect"
-	"github.com/gatework/go-net-connector/storage"
+	"github.com/gatework/net-connector/storage"
 )
 
 // Cancel exactly when Start has acquired a child, without a timing-dependent

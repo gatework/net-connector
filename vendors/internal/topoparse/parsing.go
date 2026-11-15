@@ -6,8 +6,8 @@ import (
 	"sync"
 	"unicode"
 
-	"github.com/gatework/go-net-connector/platform"
-	"github.com/gatework/go-net-connector/topology"
+	"github.com/gatework/net-connector/platform"
+	"github.com/gatework/net-connector/topology"
 )
 
 var (

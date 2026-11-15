@@ -3,9 +3,9 @@ package transfer_test
 import (
 	"testing"
 
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/transfer"
 
-	"github.com/gatework/go-net-connector/vendors"
+	"github.com/gatework/net-connector/vendors"
 )
 
 func FuzzTargetValidation(f *testing.F) {

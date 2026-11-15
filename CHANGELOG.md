@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.9.0 - 2026-11-15
+
+- Breaking: rename the Go module from `github.com/gatework/go-net-connector` to `github.com/gatework/net-connector`. Update imports and module requirements together; earlier tags retain their original module path.
+- Rename release archives and the embedded application identity to `net-connector`. Command names remain `netman` and `tftp-archive`.
+
 ## v0.8.0 - 2026-11-12
 
 - Breaking: one vocabulary. Package `vendors/dialect` is now `platform`; family types are `Platform` (`h3c.Platform`, `cisco.IOSPlatform`, …); `fleet.Record.Vendor` and `Mapping.Connector` are `Platform`; `Record.BackupFilename(style)` is `Record.Filename()`.

@@ -13,9 +13,9 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/gatework/go-net-connector/config"
-	"github.com/gatework/go-net-connector/internal/bootstrap"
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/config"
+	"github.com/gatework/net-connector/internal/bootstrap"
+	"github.com/gatework/net-connector/transfer"
 )
 
 var errSetupDeclined = errors.New("未创建必需的配置文件")

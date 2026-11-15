@@ -8,9 +8,9 @@ import (
 	goruntime "runtime"
 	"testing"
 
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/inventory"
-	"github.com/gatework/go-net-connector/netdisco"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/inventory"
+	"github.com/gatework/net-connector/netdisco"
 )
 
 func TestTopologyGoexitRetainsDeviceIdentity(t *testing.T) {

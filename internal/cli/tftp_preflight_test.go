@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gatework/go-net-connector/internal/workflow"
+	"github.com/gatework/net-connector/internal/workflow"
 )
 
 func TestTFTPArchivePreflightDiagnostic(t *testing.T) {

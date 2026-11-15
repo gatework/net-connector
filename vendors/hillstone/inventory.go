@@ -3,7 +3,7 @@ package hillstone
 import (
 	"regexp"
 
-	"github.com/gatework/go-net-connector/platform"
+	"github.com/gatework/net-connector/platform"
 )
 
 var labelPattern = regexp.MustCompile(`\bhillstone\b`)

@@ -8,10 +8,10 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/transfer"
 
-	"github.com/gatework/go-net-connector/inventory"
-	"github.com/gatework/go-net-connector/platform"
+	"github.com/gatework/net-connector/inventory"
+	"github.com/gatework/net-connector/platform"
 )
 
 // ErrInvalidPlan identifies invalid rules, task plans, or report inputs.

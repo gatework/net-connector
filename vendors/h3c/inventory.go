@@ -3,7 +3,7 @@ package h3c
 import (
 	"regexp"
 
-	"github.com/gatework/go-net-connector/platform"
+	"github.com/gatework/net-connector/platform"
 )
 
 var (

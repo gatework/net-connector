@@ -14,7 +14,7 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/gatework/go-net-connector/inventory"
+	"github.com/gatework/net-connector/inventory"
 )
 
 // Source provides complete bounded inventory rows for one fetch.

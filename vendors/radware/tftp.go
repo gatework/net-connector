@@ -4,10 +4,10 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/platform"
-	"github.com/gatework/go-net-connector/transfer"
-	"github.com/gatework/go-net-connector/vendors/internal/driver"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/platform"
+	"github.com/gatework/net-connector/transfer"
+	"github.com/gatework/net-connector/vendors/internal/driver"
 )
 
 var transferReceiptPattern = regexp.MustCompile(`(?i)^Current\s+config\s+successfully\s+transferred\s+to\s+([^\s:]+):(\S+)$`)

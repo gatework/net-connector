@@ -1,4 +1,4 @@
-module github.com/gatework/go-net-connector
+module github.com/gatework/net-connector
 
 go 1.26.0
 

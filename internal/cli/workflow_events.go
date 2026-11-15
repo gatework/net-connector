@@ -4,10 +4,10 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/gatework/go-net-connector/archive"
-	"github.com/gatework/go-net-connector/internal/display"
-	"github.com/gatework/go-net-connector/internal/progress"
-	"github.com/gatework/go-net-connector/internal/workflow"
+	"github.com/gatework/net-connector/archive"
+	"github.com/gatework/net-connector/internal/display"
+	"github.com/gatework/net-connector/internal/progress"
+	"github.com/gatework/net-connector/internal/workflow"
 )
 
 func workflowObserver(p *progress.Reporter) workflow.Observer {

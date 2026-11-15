@@ -1,8 +1,8 @@
 package archive
 
 import (
-	"github.com/gatework/go-net-connector/storage"
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/storage"
+	"github.com/gatework/net-connector/transfer"
 )
 
 // CleanupState distinguishes an unrequested cleanup from an uncertain delete.

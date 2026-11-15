@@ -14,8 +14,8 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/gatework/go-net-connector/config"
-	"github.com/gatework/go-net-connector/inventory"
+	"github.com/gatework/net-connector/config"
+	"github.com/gatework/net-connector/inventory"
 )
 
 // ErrFile identifies an inventory file that cannot be used as a whole. No

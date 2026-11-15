@@ -15,7 +15,7 @@ import tempfile
 
 BINS = ('netman', 'tftp-archive')
 PLATFORMS = ('darwin_amd64', 'darwin_arm64', 'linux_amd64', 'linux_arm64')
-MODULE = 'github.com/gatework/go-net-connector'
+MODULE = 'github.com/gatework/net-connector'
 SEMVER = re.compile(r'v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\Z')
 
 
@@ -186,7 +186,7 @@ def json_stream(raw):
 
 
 def third_party_notices(root):
-    lines = ['Third-party notices for go-net-connector\n\n']
+    lines = ['Third-party notices for net-connector\n\n']
     goroot = Path(go(root, 'env', 'GOROOT').decode().strip())
     lines.append('Go standard library (' + go(root, 'env', 'GOVERSION').decode().strip() + ')\n')
     for name in ('LICENSE', 'PATENTS'):
@@ -209,7 +209,7 @@ def third_party_notices(root):
 
 
 def asset_names(version, sha):
-    prefix = 'go-net-connector_' + version + '_' + sha + '_'
+    prefix = 'net-connector_' + version + '_' + sha + '_'
     return {platform: prefix + platform + '.tar.gz' for platform in (*PLATFORMS, 'source')}
 
 
@@ -234,7 +234,7 @@ def package(root, directory, sha):
     tree = source_tree(root, sha)
     names = asset_names(version, sha)
     manifest = {'schema': 1, 'version': version, 'revision': sha, 'toolchain': go(root, 'env', 'GOVERSION').decode().strip(), 'platforms': {}}
-    with tempfile.TemporaryDirectory(prefix='go-net-connector-release-') as temp:
+    with tempfile.TemporaryDirectory(prefix='net-connector-release-') as temp:
         source = Path(temp) / 'source'
         source.mkdir()
         materialize(tree, source)
@@ -249,7 +249,7 @@ def package(root, directory, sha):
                 raise ValueError('module resolution changed committed build inputs; run tidy before packaging')
         staged = Path(temp) / 'dist'
         staged.mkdir()
-        (staged / names['source']).write_bytes(archive_bytes({'go-net-connector/' + name: value for name, value in tree.items()}))
+        (staged / names['source']).write_bytes(archive_bytes({'net-connector/' + name: value for name, value in tree.items()}))
         for platform, name in ((p, names[p]) for p in PLATFORMS):
             env = go_env()
             env.update(zip(('GOOS', 'GOARCH'), platform.split('_')))
@@ -275,7 +275,7 @@ def package(root, directory, sha):
 
 
 def binary_identity(version, sha):
-    return 'go-net-connector ' + version + ' revision ' + sha
+    return 'net-connector ' + version + ' revision ' + sha
 
 
 def verify_binary(root, content, platform, binary, version, sha, toolchain):
@@ -309,7 +309,7 @@ def verify(root, directory, sha, version=None):
     if (directory / 'SHA256SUMS').read_text() != checksum_text(directory):
         raise ValueError('artifact checksum mismatch')
     tree = source_tree(root, sha)
-    if read_archive(directory / names['source']) != {'go-net-connector/' + name: value for name, value in tree.items()}:
+    if read_archive(directory / names['source']) != {'net-connector/' + name: value for name, value in tree.items()}:
         raise ValueError('source bytes, modes, symlinks or file set differ from the committed tree')
     manifest = json.loads((directory / 'MANIFEST.json').read_text())
     if (set(manifest) != {'schema', 'version', 'revision', 'toolchain', 'platforms'} or manifest['schema'] != 1 or

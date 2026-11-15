@@ -4,7 +4,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/gatework/go-net-connector/platform"
+	"github.com/gatework/net-connector/platform"
 )
 
 func validateInterfaceRows(text string, rows []map[string]any) error {

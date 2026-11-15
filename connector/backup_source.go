@@ -11,7 +11,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/gatework/go-net-connector/storage"
+	"github.com/gatework/net-connector/storage"
 )
 
 // BackupSource identifies unmodified command responses; it excludes login data.

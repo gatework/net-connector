@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gatework/go-net-connector/archive"
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/archive"
+	"github.com/gatework/net-connector/transfer"
 )
 
 func TestCredentialOptionDiagnostics(t *testing.T) {

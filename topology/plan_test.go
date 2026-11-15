@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gatework/go-net-connector/topology"
+	"github.com/gatework/net-connector/topology"
 
-	"github.com/gatework/go-net-connector/internal/ifname"
-	"github.com/gatework/go-net-connector/vendors"
+	"github.com/gatework/net-connector/internal/ifname"
+	"github.com/gatework/net-connector/vendors"
 )
 
 func TestBuildPlanPureAndExactStages(t *testing.T) {

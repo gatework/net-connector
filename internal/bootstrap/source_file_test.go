@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/gatework/go-net-connector/config"
+	"github.com/gatework/net-connector/config"
 )
 
 func TestStructuredSourceFileOverridesDefaults(t *testing.T) {

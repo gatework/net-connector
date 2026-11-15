@@ -1,9 +1,9 @@
 package bootstrap
 
 import (
-	"github.com/gatework/go-net-connector/archive"
-	"github.com/gatework/go-net-connector/config"
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/archive"
+	"github.com/gatework/net-connector/config"
+	"github.com/gatework/net-connector/transfer"
 )
 
 // TFTPPolicy returns the validated platform transfer policy.

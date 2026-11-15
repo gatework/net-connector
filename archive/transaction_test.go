@@ -16,8 +16,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gatework/go-net-connector/storage"
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/storage"
+	"github.com/gatework/net-connector/transfer"
 )
 
 func transactionClient(t *testing.T, limits Timeouts) (*Client, string) {

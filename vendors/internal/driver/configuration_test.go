@@ -3,7 +3,7 @@ package driver
 import (
 	"testing"
 
-	"github.com/gatework/go-net-connector/connector"
+	"github.com/gatework/net-connector/connector"
 )
 
 func TestBaseConfigPolicyPreservesVisibleConfiguration(t *testing.T) {

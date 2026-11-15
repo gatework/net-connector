@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/gatework/go-net-connector/config"
-	"github.com/gatework/go-net-connector/netdisco"
+	"github.com/gatework/net-connector/config"
+	"github.com/gatework/net-connector/netdisco"
 )
 
 func TestInventoryReturnsPostgresConstructorError(t *testing.T) {

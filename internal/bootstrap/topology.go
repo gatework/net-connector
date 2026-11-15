@@ -4,9 +4,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/gatework/go-net-connector/netdisco"
+	"github.com/gatework/net-connector/netdisco"
 
-	"github.com/gatework/go-net-connector/config"
+	"github.com/gatework/net-connector/config"
 )
 
 var topologyPrefix = regexp.MustCompile(`^[\pL\pN_.-]+$`)

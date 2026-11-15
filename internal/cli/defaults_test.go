@@ -9,7 +9,7 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/gatework/go-net-connector/config"
+	"github.com/gatework/net-connector/config"
 )
 
 func TestDefaultsIgnoreConfigurationAndCredentials(t *testing.T) {

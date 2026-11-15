@@ -9,8 +9,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gatework/go-net-connector/internal/batchreport"
-	"github.com/gatework/go-net-connector/parallel"
+	"github.com/gatework/net-connector/internal/batchreport"
+	"github.com/gatework/net-connector/parallel"
 )
 
 // pipelineRun owns the journal and per-device evidence for one Execute call.

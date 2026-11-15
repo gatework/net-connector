@@ -4,7 +4,7 @@ package centec
 import (
 	"time"
 
-	"github.com/gatework/go-net-connector/vendors/internal/driver"
+	"github.com/gatework/net-connector/vendors/internal/driver"
 )
 
 var saveConfirmationPattern = driver.Regex(`(?i)^(?:\[OK\]|Copy complete\.)$`)

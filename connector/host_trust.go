@@ -13,7 +13,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gatework/go-net-connector/storage"
+	"github.com/gatework/net-connector/storage"
 )
 
 type hostTrust struct {

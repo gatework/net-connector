@@ -3,18 +3,18 @@ package vendors_test
 import (
 	"testing"
 
-	"github.com/gatework/go-net-connector/platform"
-	"github.com/gatework/go-net-connector/topology"
-	"github.com/gatework/go-net-connector/vendors/centec"
-	"github.com/gatework/go-net-connector/vendors/cisco"
-	"github.com/gatework/go-net-connector/vendors/fortinet"
-	"github.com/gatework/go-net-connector/vendors/h3c"
-	"github.com/gatework/go-net-connector/vendors/hillstone"
-	"github.com/gatework/go-net-connector/vendors/huawei"
-	"github.com/gatework/go-net-connector/vendors/juniper"
-	"github.com/gatework/go-net-connector/vendors/paloalto"
-	"github.com/gatework/go-net-connector/vendors/radware"
-	"github.com/gatework/go-net-connector/vendors/topsec"
+	"github.com/gatework/net-connector/platform"
+	"github.com/gatework/net-connector/topology"
+	"github.com/gatework/net-connector/vendors/centec"
+	"github.com/gatework/net-connector/vendors/cisco"
+	"github.com/gatework/net-connector/vendors/fortinet"
+	"github.com/gatework/net-connector/vendors/h3c"
+	"github.com/gatework/net-connector/vendors/hillstone"
+	"github.com/gatework/net-connector/vendors/huawei"
+	"github.com/gatework/net-connector/vendors/juniper"
+	"github.com/gatework/net-connector/vendors/paloalto"
+	"github.com/gatework/net-connector/vendors/radware"
+	"github.com/gatework/net-connector/vendors/topsec"
 )
 
 func TestFamilyPackagesExposePlatformConstructors(t *testing.T) {

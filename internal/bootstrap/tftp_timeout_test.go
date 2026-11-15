@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gatework/go-net-connector/config"
+	"github.com/gatework/net-connector/config"
 )
 
 func TestTFTPUploadTimeoutConfiguration(t *testing.T) {

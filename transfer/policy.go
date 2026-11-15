@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gatework/go-net-connector/platform"
+	"github.com/gatework/net-connector/platform"
 )
 
 // PolicyOptions declares default and per-device transfer destinations and vendor options.

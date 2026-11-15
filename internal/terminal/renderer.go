@@ -10,7 +10,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/gatework/go-net-connector/internal/textcodec"
+	"github.com/gatework/net-connector/internal/textcodec"
 )
 
 // ErrLimit reports an oversized terminal line or escape sequence.

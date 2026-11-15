@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/gatework/go-net-connector/inventory"
-	"github.com/gatework/go-net-connector/transfer"
-	"github.com/gatework/go-net-connector/vendors"
+	"github.com/gatework/net-connector/inventory"
+	"github.com/gatework/net-connector/transfer"
+	"github.com/gatework/net-connector/vendors"
 )
 
 // Include vendor resolution and capability lookup in the timed workload.

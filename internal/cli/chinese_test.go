@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gatework/go-net-connector/internal/workflow"
+	"github.com/gatework/net-connector/internal/workflow"
 
-	"github.com/gatework/go-net-connector/netdisco"
+	"github.com/gatework/net-connector/netdisco"
 )
 
 func TestChineseHelpIsOffline(t *testing.T) {

@@ -1,8 +1,8 @@
 package topsec_test
 
 import (
-	"github.com/gatework/go-net-connector/platform"
-	"github.com/gatework/go-net-connector/vendors/topsec"
+	"github.com/gatework/net-connector/platform"
+	"github.com/gatework/net-connector/vendors/topsec"
 )
 
 // The declared capabilities are checked at compile time: a renamed or

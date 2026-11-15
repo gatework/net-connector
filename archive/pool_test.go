@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/transfer"
 )
 
 func TestNewPoolValidationAndSlots(t *testing.T) {

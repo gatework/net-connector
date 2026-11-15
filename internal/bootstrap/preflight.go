@@ -4,8 +4,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gatework/go-net-connector/config"
-	"github.com/gatework/go-net-connector/vendors"
+	"github.com/gatework/net-connector/config"
+	"github.com/gatework/net-connector/vendors"
 )
 
 // ValidateTFTP checks local requirements without reading credentials or opening a connection.

@@ -11,7 +11,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/gatework/go-net-connector/internal/display"
+	"github.com/gatework/net-connector/internal/display"
 )
 
 type taskStage uint8

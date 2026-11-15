@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gatework/go-net-connector/topology"
+	"github.com/gatework/net-connector/topology"
 
-	"github.com/gatework/go-net-connector/vendors"
+	"github.com/gatework/net-connector/vendors"
 )
 
 func BenchmarkParseNeighbors1000(b *testing.B) {

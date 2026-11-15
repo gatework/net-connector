@@ -1,4 +1,4 @@
-# Releasing go-net-connector
+# Releasing net-connector
 
 The release owner publishes the downloaded bytes from one successful **exact commit** of the `Go` workflow. The workflow has read-only repository permissions and creates no tag or GitHub release. Branch pushes and manual runs may produce artifacts after every gate passes; pull requests run checks without packaging.
 
@@ -25,8 +25,8 @@ Packaging rejects tracked worktree/index changes and existing output paths. It r
 
 The single CI artifact is named `release-FULL_SHA-RUN_ATTEMPT` and contains eight files:
 
-- Four `go-net-connector_VERSION_FULL_SHA_OS_ARCH.tar.gz` archives for Linux/Darwin × amd64/arm64. Each includes both commands (`netman` and `tftp-archive`) under `bin/`, README, project license, complete dependency license/notice texts, VERSION and REVISION.
-- `go-net-connector_VERSION_FULL_SHA_source.tar.gz`, containing the exact committed tree under `go-net-connector/`, preserving executable modes and safe symlinks.
+- Four `net-connector_VERSION_FULL_SHA_OS_ARCH.tar.gz` archives for Linux/Darwin × amd64/arm64. Each includes both commands (`netman` and `tftp-archive`) under `bin/`, README, project license, complete dependency license/notice texts, VERSION and REVISION.
+- `net-connector_VERSION_FULL_SHA_source.tar.gz`, containing the exact committed tree under `net-connector/`, preserving executable modes and safe symlinks.
 - `REVISION`, `MANIFEST.json` and `SHA256SUMS`.
 
 The manifest records version, SHA, compiler and every platform payload's file sizes, modes and SHA-256 digests. `SHA256SUMS` covers all other files, including the manifest. Tar entries have deterministic ordering, ownership and timestamps; gzip records no local filename and uses a zero timestamp. Go builds use `CGO_ENABLED=0`, `-trimpath`, no build ID and an embedded version/SHA identity. Reproducibility means the same tree and toolchain; changing a compiler patch can change binaries. Verification checks the source bytes and modes against Git, the exact archive/asset file sets, checksums, payload manifests, embedded identity and Go command/platform/toolchain metadata. It does not trust a rewritten checksum list alone.

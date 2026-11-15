@@ -9,10 +9,10 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/internal/display"
-	"github.com/gatework/go-net-connector/internal/workflow"
-	"github.com/gatework/go-net-connector/vendors"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/internal/display"
+	"github.com/gatework/net-connector/internal/workflow"
+	"github.com/gatework/net-connector/vendors"
 )
 
 // maxScriptBytes bounds one script file before parsing.

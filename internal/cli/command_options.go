@@ -4,8 +4,8 @@ import (
 	"net/netip"
 	"strings"
 
-	"github.com/gatework/go-net-connector/internal/batchreport"
-	"github.com/gatework/go-net-connector/netdisco"
+	"github.com/gatework/net-connector/internal/batchreport"
+	"github.com/gatework/net-connector/netdisco"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"

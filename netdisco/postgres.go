@@ -13,7 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/gatework/go-net-connector/inventory"
+	"github.com/gatework/net-connector/inventory"
 )
 
 // PostgresOptions defines a read-only inventory query and its resource limits.

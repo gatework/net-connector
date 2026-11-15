@@ -3,7 +3,7 @@ package centec
 import (
 	"testing"
 
-	"github.com/gatework/go-net-connector/connector"
+	"github.com/gatework/net-connector/connector"
 )
 
 func TestConfigurationCleaningRetainsCentecBanner(t *testing.T) {

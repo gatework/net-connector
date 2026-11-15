@@ -4,7 +4,7 @@
 
 ## 范围
 
-单模块 `github.com/gatework/go-net-connector`，Go ≥ 1.26，Linux/macOS amd64/arm64。通过 go-expect 与系统 SSH/Telnet 客户端驱动网络设备，提供登录、配置采集与备份、TFTP/原生远程备份、邻居发现与接口描述修正、批量脚本下发（含变更前后快照与差异、候选配置提交）、只读命令采集和设备事实采集；清单来自 Netdisco 或本地文件。依赖使用固定的正式版本，`GOWORK=off` 解析，不使用 `replace`。
+单模块 `github.com/gatework/net-connector`，Go ≥ 1.26，Linux/macOS amd64/arm64。通过 go-expect 与系统 SSH/Telnet 客户端驱动网络设备，提供登录、配置采集与备份、TFTP/原生远程备份、邻居发现与接口描述修正、批量脚本下发（含变更前后快照与差异、候选配置提交）、只读命令采集和设备事实采集；清单来自 Netdisco 或本地文件。依赖使用固定的正式版本，`GOWORK=off` 解析，不使用 `replace`。
 
 ## 分层与所有权
 

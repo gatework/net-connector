@@ -14,7 +14,7 @@ import (
 
 	"github.com/creack/pty"
 
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/transfer"
 )
 
 func TestInstalledWorkerCLI(t *testing.T) {

@@ -21,16 +21,16 @@ def command(root, *args):
 
 
 def fixture(root):
-    (root / 'go.mod').write_text('module github.com/gatework/go-net-connector\n\ngo 1.26.0\n')
+    (root / 'go.mod').write_text('module github.com/gatework/net-connector\n\ngo 1.26.0\n')
     (root / 'VERSION').write_text('v0.1.0\n')
     (root / 'README.md').write_text('release fixture\n')
     (root / 'LICENSE').write_text('fixture license\n')
     (root / 'internal/buildinfo').mkdir(parents=True)
-    (root / 'internal/buildinfo/version.go').write_text('package buildinfo\nvar Identity = "go-net-connector development revision unknown"\n')
+    (root / 'internal/buildinfo/version.go').write_text('package buildinfo\nvar Identity = "net-connector development revision unknown"\n')
     for name in BINS:
         p = root / 'cmd' / name
         p.mkdir(parents=True)
-        (p / 'main.go').write_text('package main\nimport("fmt"; "github.com/gatework/go-net-connector/internal/buildinfo")\nfunc main(){fmt.Println(buildinfo.Identity)}\n')
+        (p / 'main.go').write_text('package main\nimport("fmt"; "github.com/gatework/net-connector/internal/buildinfo")\nfunc main(){fmt.Println(buildinfo.Identity)}\n')
     (root / 'executable').write_text('#!/bin/sh\nexit 0\n')
     (root / 'executable').chmod(0o755)
     (root / 'readme-link').symlink_to('README.md')
@@ -147,12 +147,12 @@ class ReleaseTests(unittest.TestCase):
         for path in archives:
             if '_source.tar.gz' in path.name:
                 with tarfile.open(path) as source:
-                    self.assertEqual(source.extractfile('go-net-connector/README.md').read(), b'release fixture\n')
-                    self.assertEqual(source.getmember('go-net-connector/executable').mode, 0o755)
-                    self.assertTrue(source.getmember('go-net-connector/readme-link').issym())
-                    self.assertEqual(source.getmember('go-net-connector/readme-chain').linkname, 'readme-link')
-                    self.assertEqual(source.getmember('go-net-connector/back-link').linkname, 'directory-link/../../README.md')
-                    self.assertEqual(source.getmember('go-net-connector/safe-repeat').linkname, 'root-link/root-link/README.md')
+                    self.assertEqual(source.extractfile('net-connector/README.md').read(), b'release fixture\n')
+                    self.assertEqual(source.getmember('net-connector/executable').mode, 0o755)
+                    self.assertTrue(source.getmember('net-connector/readme-link').issym())
+                    self.assertEqual(source.getmember('net-connector/readme-chain').linkname, 'readme-link')
+                    self.assertEqual(source.getmember('net-connector/back-link').linkname, 'directory-link/../../README.md')
+                    self.assertEqual(source.getmember('net-connector/safe-repeat').linkname, 'root-link/root-link/README.md')
                 continue
             with tarfile.open(path) as archive:
                 self.assertEqual(set(m.name for m in archive if m.name.startswith('bin/')), {'bin/' + name for name in BINS})
@@ -197,7 +197,7 @@ class ReleaseTests(unittest.TestCase):
                     if mutation == 'missing':
                         return [(m, b) for m, b in entries if not m.name.endswith('/README.md')]
                     if mutation == 'extra':
-                        member = tarfile.TarInfo('go-net-connector/untracked')
+                        member = tarfile.TarInfo('net-connector/untracked')
                         member.mode = 0o644
                         return entries + [(member, b'untracked')]
                     changed = []
@@ -245,7 +245,7 @@ class ReleaseTests(unittest.TestCase):
                 elif mutation == 'version':
                     (root / 'VERSION').write_text('v0.0.0\n')
                 elif mutation == 'floor':
-                    (root / 'go.mod').write_text('module github.com/gatework/go-net-connector\n\ngo 1.25.0\n')
+                    (root / 'go.mod').write_text('module github.com/gatework/net-connector\n\ngo 1.25.0\n')
                 else:
                     (root / 'unsafe-link').symlink_to('../outside')
                 if mutation not in ('dirty', 'staged'):
@@ -271,7 +271,7 @@ class ReleaseTests(unittest.TestCase):
                 with tarfile.open(path) as archive:
                     content = archive.extractfile('bin/netman').read()
                 if mutation == 'version':
-                    content = content.replace(b'go-net-connector v0.1.0 revision ', b'go-net-connector v0.2.0 revision ')
+                    content = content.replace(b'net-connector v0.1.0 revision ', b'net-connector v0.2.0 revision ')
                 elif mutation == 'revision':
                     content = content.replace(self.sha.encode(), b'0' * 40)
                 else:

@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gatework/go-net-connector/internal/terminal"
+	"github.com/gatework/net-connector/internal/terminal"
 )
 
 // LogLevel selects which structured session events reach the Logger.

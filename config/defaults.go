@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/gatework/go-net-connector/internal/batchreport"
+	"github.com/gatework/net-connector/internal/batchreport"
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/gatework/go-net-connector/archive"
+	"github.com/gatework/net-connector/archive"
 )
 
 // Defaults returns a fresh configuration with the requested operation defaults.

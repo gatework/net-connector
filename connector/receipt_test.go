@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gatework/go-net-connector/internal/textcodec"
+	"github.com/gatework/net-connector/internal/textcodec"
 )
 
 func TestSingleAcceptedRequiresOneMatchingMainCommand(t *testing.T) {

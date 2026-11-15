@@ -14,15 +14,15 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gatework/go-net-connector/archive"
-	"github.com/gatework/go-net-connector/config"
-	"github.com/gatework/go-net-connector/fleet"
-	"github.com/gatework/go-net-connector/internal/batchreport"
-	"github.com/gatework/go-net-connector/inventory"
-	"github.com/gatework/go-net-connector/platform"
-	"github.com/gatework/go-net-connector/storage"
-	"github.com/gatework/go-net-connector/topology"
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/archive"
+	"github.com/gatework/net-connector/config"
+	"github.com/gatework/net-connector/fleet"
+	"github.com/gatework/net-connector/internal/batchreport"
+	"github.com/gatework/net-connector/inventory"
+	"github.com/gatework/net-connector/platform"
+	"github.com/gatework/net-connector/storage"
+	"github.com/gatework/net-connector/topology"
+	"github.com/gatework/net-connector/transfer"
 )
 
 // ErrTFTPArchivePreflight identifies preparation failures before any device upload.

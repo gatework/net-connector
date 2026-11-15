@@ -5,10 +5,10 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/platform"
-	"github.com/gatework/go-net-connector/topology"
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/platform"
+	"github.com/gatework/net-connector/topology"
+	"github.com/gatework/net-connector/transfer"
 )
 
 func TestBuiltinRegistryReturnsDetachedTerminals(t *testing.T) {

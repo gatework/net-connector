@@ -5,8 +5,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/internal/terminal"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/internal/terminal"
 )
 
 const maxEvidenceLines = 1 << 16

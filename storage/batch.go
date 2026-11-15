@@ -14,7 +14,7 @@ import (
 
 	"golang.org/x/sys/unix"
 
-	"github.com/gatework/go-net-connector/internal/batchreport"
+	"github.com/gatework/net-connector/internal/batchreport"
 )
 
 // ErrBatchEvidence means the selected batch cannot establish the requested file.

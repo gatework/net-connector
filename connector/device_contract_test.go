@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gatework/go-net-connector/internal/terminal"
+	"github.com/gatework/net-connector/internal/terminal"
 )
 
 type reviewFailSink struct{}

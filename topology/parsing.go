@@ -3,7 +3,7 @@ package topology
 import (
 	"errors"
 
-	"github.com/gatework/go-net-connector/platform"
+	"github.com/gatework/net-connector/platform"
 )
 
 // ParseNeighbors delegates command-output interpretation to the resolved

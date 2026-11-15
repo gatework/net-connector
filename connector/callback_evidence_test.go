@@ -12,7 +12,7 @@ import (
 	"golang.org/x/text/encoding/simplifiedchinese"
 
 	expect "github.com/gatework/go-expect"
-	"github.com/gatework/go-net-connector/internal/textcodec"
+	"github.com/gatework/net-connector/internal/textcodec"
 )
 
 func TestHookAndReceiptErrorsBothSurvive(t *testing.T) {

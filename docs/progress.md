@@ -100,3 +100,7 @@ Adopt go-standards v1.0.2 through standard.mk, the distributed lint configuratio
 ## 2026-11-12 v0.8.0 发布准备
 
 `VERSION` 定为 v0.8.0，CHANGELOG 的 Unreleased 归入 v0.8.0，新增 `docs/releases/v0.8.0.md` 并更新 README 当前版本。验证：在仅含跟踪与新增文件的干净副本上 `GOWORK=off make check` PASS（含 race、lint、govulncheck、架构、安装 worker、fuzz 与消费者检查）；工作区内 `goimports -l .` 会扫描被忽略的 `.reference/`、`.superpowers/`、`.work/` 参考目录而失败，CI 干净检出不含这些目录。
+
+## v0.9.0 模块路径迁移
+
+模块与全部导入迁移到 `github.com/gatework/net-connector`，同步发布归档与程序身份；命令仍为 `netman`、`tftp-archive`。发布隔离使用已发布的 go-standards v1.0.2，原工作区并行规范升级保留。发布夹具 11 项通过；完整 make check 与同提交远端 CI 为发布门禁，发布资产须复用 CI 产物并下载回验。

@@ -12,10 +12,10 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/gatework/go-net-connector/fleet"
-	"github.com/gatework/go-net-connector/internal/batchreport"
-	"github.com/gatework/go-net-connector/internal/display"
-	"github.com/gatework/go-net-connector/internal/workflow"
+	"github.com/gatework/net-connector/fleet"
+	"github.com/gatework/net-connector/internal/batchreport"
+	"github.com/gatework/net-connector/internal/display"
+	"github.com/gatework/net-connector/internal/workflow"
 )
 
 func operationLabel(o options) string {

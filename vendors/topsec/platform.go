@@ -4,7 +4,7 @@ package topsec
 import (
 	"time"
 
-	"github.com/gatework/go-net-connector/vendors/internal/driver"
+	"github.com/gatework/net-connector/vendors/internal/driver"
 )
 
 // Platform is the built-in Topsec platform.

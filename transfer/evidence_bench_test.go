@@ -5,7 +5,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gatework/go-net-connector/connector"
+	"github.com/gatework/net-connector/connector"
 )
 
 func BenchmarkEvidence(b *testing.B) {

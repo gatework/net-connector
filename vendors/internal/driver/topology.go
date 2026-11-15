@@ -1,10 +1,10 @@
 package driver
 
 import (
-	"github.com/gatework/go-net-connector/internal/ifname"
-	"github.com/gatework/go-net-connector/platform"
-	"github.com/gatework/go-net-connector/topology"
-	"github.com/gatework/go-net-connector/vendors/internal/topoparse"
+	"github.com/gatework/net-connector/internal/ifname"
+	"github.com/gatework/net-connector/platform"
+	"github.com/gatework/net-connector/topology"
+	"github.com/gatework/net-connector/vendors/internal/topoparse"
 )
 
 // NeighborPolicy owns one platform's neighbor command selection and parsing.

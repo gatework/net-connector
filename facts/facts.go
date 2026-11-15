@@ -7,8 +7,8 @@ import (
 	"context"
 	"errors"
 
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/platform"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/platform"
 )
 
 // ErrUnsupported means the platform does not declare fact collection.

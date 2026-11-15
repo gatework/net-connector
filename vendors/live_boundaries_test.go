@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gatework/go-net-connector/connector"
+	"github.com/gatework/net-connector/connector"
 )
 
 func TestPANCollectionAcceptsPaddedPrompts(t *testing.T) {

@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/gatework/go-net-connector/facts"
-	"github.com/gatework/go-net-connector/platform"
+	"github.com/gatework/net-connector/facts"
+	"github.com/gatework/net-connector/platform"
 )
 
 // The outputs below follow the vendors' published command references. They

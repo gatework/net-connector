@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/gatework/go-net-connector/config"
+	"github.com/gatework/net-connector/config"
 )
 
 func inventoryServices(t *testing.T, root string, environment map[string]string) (*Services, error) {

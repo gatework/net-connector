@@ -6,9 +6,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/gatework/go-net-connector/config"
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/fleet"
+	"github.com/gatework/net-connector/config"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/fleet"
 )
 
 func TestPolicyDoesNotResolveCredentials(t *testing.T) {

@@ -9,7 +9,7 @@ import (
 
 	"golang.org/x/term"
 
-	"github.com/gatework/go-net-connector/config"
+	"github.com/gatework/net-connector/config"
 
 	"golang.org/x/sys/unix"
 )

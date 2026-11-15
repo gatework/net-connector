@@ -1,7 +1,7 @@
 package transfer
 
 import (
-	"github.com/gatework/go-net-connector/connector"
+	"github.com/gatework/net-connector/connector"
 )
 
 // TFTPPolicy is the device-specific half of a TFTP operation. Shared target

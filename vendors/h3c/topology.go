@@ -3,8 +3,8 @@ package h3c
 import (
 	"strings"
 
-	"github.com/gatework/go-net-connector/internal/ifname"
-	"github.com/gatework/go-net-connector/vendors/internal/topoparse"
+	"github.com/gatework/net-connector/internal/ifname"
+	"github.com/gatework/net-connector/vendors/internal/topoparse"
 )
 
 var headerPattern = topoparse.Pattern(`(?i)^\s*(?:System Name\s+Local Interface\b|(?:Local Interface|LocalIf)\s+)`)

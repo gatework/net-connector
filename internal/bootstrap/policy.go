@@ -3,10 +3,10 @@ package bootstrap
 import (
 	"context"
 
-	"github.com/gatework/go-net-connector/config"
-	"github.com/gatework/go-net-connector/internal/batchreport"
-	"github.com/gatework/go-net-connector/internal/workflow"
-	"github.com/gatework/go-net-connector/netdisco"
+	"github.com/gatework/net-connector/config"
+	"github.com/gatework/net-connector/internal/batchreport"
+	"github.com/gatework/net-connector/internal/workflow"
+	"github.com/gatework/net-connector/netdisco"
 )
 
 // PolicyOptions describes the application input layer before configuration I/O.

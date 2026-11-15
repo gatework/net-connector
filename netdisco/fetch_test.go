@@ -16,7 +16,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gatework/go-net-connector/inventory"
+	"github.com/gatework/net-connector/inventory"
 )
 
 func TestFetchHTTPCacheEvidence(t *testing.T) {

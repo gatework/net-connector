@@ -10,7 +10,7 @@ import (
 
 	expect "github.com/gatework/go-expect"
 
-	"github.com/gatework/go-net-connector/connector"
+	"github.com/gatework/net-connector/connector"
 )
 
 // Regex compiles a fixed platform expression during platform construction.

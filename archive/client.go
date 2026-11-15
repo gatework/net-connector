@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gatework/go-net-connector/storage"
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/storage"
+	"github.com/gatework/net-connector/transfer"
 )
 
 // ClientOptions selects archive storage, a worker launcher and phase timeouts.

@@ -10,7 +10,7 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/gatework/go-net-connector/connector"
+	"github.com/gatework/net-connector/connector"
 )
 
 var (

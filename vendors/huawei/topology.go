@@ -3,8 +3,8 @@ package huawei
 import (
 	"strings"
 
-	"github.com/gatework/go-net-connector/internal/ifname"
-	"github.com/gatework/go-net-connector/vendors/internal/topoparse"
+	"github.com/gatework/net-connector/internal/ifname"
+	"github.com/gatework/net-connector/vendors/internal/topoparse"
 )
 
 var headerPattern = topoparse.Pattern(`(?i)^[ \t]*Local Intf[ \t]+Neighbor Dev[ \t]+Neighbor Intf[ \t]+Exptime`)

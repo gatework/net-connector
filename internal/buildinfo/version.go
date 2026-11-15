@@ -2,4 +2,4 @@
 package buildinfo
 
 // Identity includes both the release version and the exact source commit.
-var Identity = "go-net-connector development revision unknown"
+var Identity = "net-connector development revision unknown"

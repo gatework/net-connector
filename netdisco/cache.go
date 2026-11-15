@@ -15,8 +15,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/gatework/go-net-connector/inventory"
-	"github.com/gatework/go-net-connector/storage"
+	"github.com/gatework/net-connector/inventory"
+	"github.com/gatework/net-connector/storage"
 
 	"golang.org/x/sys/unix"
 )

@@ -6,9 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/fleet"
-	"github.com/gatework/go-net-connector/storage"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/fleet"
+	"github.com/gatework/net-connector/storage"
 )
 
 func (runtime Runtime) logDir(mode, directory string) string {

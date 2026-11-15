@@ -4,9 +4,9 @@ import (
 	"slices"
 	"strconv"
 
-	"github.com/gatework/go-net-connector/internal/terminal"
-	"github.com/gatework/go-net-connector/platform"
-	"github.com/gatework/go-net-connector/vendors/internal/topoparse"
+	"github.com/gatework/net-connector/internal/terminal"
+	"github.com/gatework/net-connector/platform"
+	"github.com/gatework/net-connector/vendors/internal/topoparse"
 )
 
 func topologyParser() topoparse.Parser {

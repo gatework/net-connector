@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/gatework/go-net-connector/internal/display"
+	"github.com/gatework/net-connector/internal/display"
 
-	"github.com/gatework/go-net-connector/storage"
+	"github.com/gatework/net-connector/storage"
 )
 
 // exportBatch is independent of configuration, inventory, and device factories.

@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gatework/go-net-connector/connector"
+	"github.com/gatework/net-connector/connector"
 )
 
 type exchange struct{ send, receive string }

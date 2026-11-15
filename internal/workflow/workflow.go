@@ -8,12 +8,12 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/gatework/go-net-connector/archive"
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/fleet"
-	"github.com/gatework/go-net-connector/internal/batchreport"
-	"github.com/gatework/go-net-connector/transfer"
-	"github.com/gatework/go-net-connector/vendors"
+	"github.com/gatework/net-connector/archive"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/fleet"
+	"github.com/gatework/net-connector/internal/batchreport"
+	"github.com/gatework/net-connector/transfer"
+	"github.com/gatework/net-connector/vendors"
 )
 
 // ErrInvalidRequest reports an invalid operation or execution budget.

@@ -11,9 +11,9 @@ import (
 
 	"github.com/creack/pty"
 
-	"github.com/gatework/go-net-connector/config"
-	"github.com/gatework/go-net-connector/inventory"
-	"github.com/gatework/go-net-connector/netdisco"
+	"github.com/gatework/net-connector/config"
+	"github.com/gatework/net-connector/inventory"
+	"github.com/gatework/net-connector/netdisco"
 )
 
 func TestSetupAsksOnlyMissingEnvironmentFacts(t *testing.T) {

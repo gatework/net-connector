@@ -4,9 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/gatework/go-net-connector/archive"
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/internal/batchreport"
+	"github.com/gatework/net-connector/archive"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/internal/batchreport"
 )
 
 // Event carries bounded operation facts, never terminal text or response bodies.

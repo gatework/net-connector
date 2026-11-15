@@ -14,7 +14,7 @@ import (
 	"golang.org/x/term"
 
 	expect "github.com/gatework/go-expect"
-	"github.com/gatework/go-net-connector/internal/nilcheck"
+	"github.com/gatework/net-connector/internal/nilcheck"
 )
 
 // InteractOptions borrows a file input and cooperative output. Input must have

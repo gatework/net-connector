@@ -3,10 +3,10 @@ package driver
 import (
 	"strings"
 
-	"github.com/gatework/go-net-connector/facts"
-	"github.com/gatework/go-net-connector/platform"
-	"github.com/gatework/go-net-connector/textfsm"
-	"github.com/gatework/go-net-connector/vendors/internal/topoparse"
+	"github.com/gatework/net-connector/facts"
+	"github.com/gatework/net-connector/platform"
+	"github.com/gatework/net-connector/textfsm"
+	"github.com/gatework/net-connector/vendors/internal/topoparse"
 )
 
 // FactsReader declares a platform's fact commands and the embedded TextFSM

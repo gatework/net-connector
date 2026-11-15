@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/gatework/go-net-connector/config"
-	"github.com/gatework/go-net-connector/netdisco"
+	"github.com/gatework/net-connector/config"
+	"github.com/gatework/net-connector/netdisco"
 )
 
 func TestAPICacheRequiresNonSecretNamespace(t *testing.T) {

@@ -6,12 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gatework/go-net-connector/facts"
-	"github.com/gatework/go-net-connector/fleet"
-	"github.com/gatework/go-net-connector/internal/batchreport"
-	"github.com/gatework/go-net-connector/inventory"
-	"github.com/gatework/go-net-connector/platform"
-	"github.com/gatework/go-net-connector/storage"
+	"github.com/gatework/net-connector/facts"
+	"github.com/gatework/net-connector/fleet"
+	"github.com/gatework/net-connector/internal/batchreport"
+	"github.com/gatework/net-connector/inventory"
+	"github.com/gatework/net-connector/platform"
+	"github.com/gatework/net-connector/storage"
 )
 
 // FactsStage collects what a device reports about itself with the platform's

@@ -8,8 +8,8 @@ import (
 
 	"go.yaml.in/yaml/v3"
 
-	"github.com/gatework/go-net-connector/config"
-	"github.com/gatework/go-net-connector/internal/display"
+	"github.com/gatework/net-connector/config"
+	"github.com/gatework/net-connector/internal/display"
 )
 
 func (r Runtime) renderDefaults(scope string, jsonOutput bool) int {

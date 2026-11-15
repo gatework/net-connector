@@ -6,7 +6,7 @@ import (
 	"io"
 	"testing"
 
-	"github.com/gatework/go-net-connector/connector"
+	"github.com/gatework/net-connector/connector"
 )
 
 const (

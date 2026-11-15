@@ -3,7 +3,7 @@ package topology
 import (
 	"context"
 
-	"github.com/gatework/go-net-connector/connector"
+	"github.com/gatework/net-connector/connector"
 )
 
 // The tests live in package topology_test because they build fixtures from

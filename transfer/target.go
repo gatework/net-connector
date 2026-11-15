@@ -7,8 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/platform"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/platform"
 )
 
 // Named source interfaces accepted by platforms that distinguish their

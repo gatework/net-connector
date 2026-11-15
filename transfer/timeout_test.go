@@ -9,10 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/transfer"
 
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/vendors"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/vendors"
 )
 
 func TestUploadCommandTimeoutOverride(t *testing.T) {

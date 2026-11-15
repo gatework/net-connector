@@ -7,7 +7,7 @@ import (
 
 	expect "github.com/gatework/go-expect"
 
-	"github.com/gatework/go-net-connector/connector"
+	"github.com/gatework/net-connector/connector"
 )
 
 // CandidateSteps declares the fixed commands around a candidate change.

@@ -1,11 +1,11 @@
 package juniper_test
 
 import (
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/platform"
-	"github.com/gatework/go-net-connector/topology"
-	"github.com/gatework/go-net-connector/transfer"
-	"github.com/gatework/go-net-connector/vendors/juniper"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/platform"
+	"github.com/gatework/net-connector/topology"
+	"github.com/gatework/net-connector/transfer"
+	"github.com/gatework/net-connector/vendors/juniper"
 )
 
 // The declared capabilities are checked at compile time: a renamed or

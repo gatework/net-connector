@@ -3,7 +3,7 @@ package cisco
 import (
 	"testing"
 
-	"github.com/gatework/go-net-connector/connector"
+	"github.com/gatework/net-connector/connector"
 )
 
 func TestConfigurationCleaningRetainsCiscoHeaderAndVolatileLines(t *testing.T) {

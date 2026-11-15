@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/gatework/go-net-connector/topology"
+	"github.com/gatework/net-connector/topology"
 )
 
 func TestRadwareExposesOnlyItsSupportedTopologyBehaviors(t *testing.T) {

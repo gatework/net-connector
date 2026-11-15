@@ -5,8 +5,8 @@ import (
 	"errors"
 	"slices"
 
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/platform"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/platform"
 )
 
 // Client binds stateless platform rules to a device. Constructing it performs no I/O.

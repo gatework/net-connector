@@ -8,8 +8,8 @@ import (
 	"github.com/rivo/uniseg"
 	"github.com/spf13/cobra"
 
-	"github.com/gatework/go-net-connector/internal/workflow"
-	"github.com/gatework/go-net-connector/vendors"
+	"github.com/gatework/net-connector/internal/workflow"
+	"github.com/gatework/net-connector/vendors"
 )
 
 func addPlatformCommands(root *cobra.Command) {

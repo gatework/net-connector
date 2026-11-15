@@ -1,8 +1,8 @@
 package cisco
 
 import (
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/vendors/internal/driver"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/vendors/internal/driver"
 )
 
 type configPolicy struct{ driver.BaseConfigPolicy }

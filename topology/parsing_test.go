@@ -6,9 +6,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/gatework/go-net-connector/topology"
+	"github.com/gatework/net-connector/topology"
 
-	"github.com/gatework/go-net-connector/vendors"
+	"github.com/gatework/net-connector/vendors"
 )
 
 func TestParseNeighborPlatformsAndPartialEvidence(t *testing.T) {

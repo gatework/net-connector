@@ -4,10 +4,10 @@ import (
 	"context"
 	"io"
 
-	"github.com/gatework/go-net-connector/config"
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/fleet"
-	"github.com/gatework/go-net-connector/internal/workflow"
+	"github.com/gatework/net-connector/config"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/fleet"
+	"github.com/gatework/net-connector/internal/workflow"
 )
 
 // WorkflowRuntime assembles operation dependencies without opening a device.

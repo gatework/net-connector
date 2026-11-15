@@ -13,7 +13,7 @@ import (
 
 	fsm "github.com/sirikothe/gotextfsm"
 
-	"github.com/gatework/go-net-connector/internal/terminal"
+	"github.com/gatework/net-connector/internal/terminal"
 )
 
 var (

@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"unicode/utf8"
 
-	"github.com/gatework/go-net-connector/internal/terminal"
-	"github.com/gatework/go-net-connector/internal/textcodec"
+	"github.com/gatework/net-connector/internal/terminal"
+	"github.com/gatework/net-connector/internal/textcodec"
 )
 
 // Response is an immutable snapshot of received bytes and verified text.

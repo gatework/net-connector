@@ -12,14 +12,14 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/gatework/go-net-connector/config"
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/internal/bootstrap"
-	"github.com/gatework/go-net-connector/internal/display"
-	"github.com/gatework/go-net-connector/internal/progress"
-	"github.com/gatework/go-net-connector/internal/workflow"
-	"github.com/gatework/go-net-connector/inventory"
-	"github.com/gatework/go-net-connector/netdisco"
+	"github.com/gatework/net-connector/config"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/internal/bootstrap"
+	"github.com/gatework/net-connector/internal/display"
+	"github.com/gatework/net-connector/internal/progress"
+	"github.com/gatework/net-connector/internal/workflow"
+	"github.com/gatework/net-connector/inventory"
+	"github.com/gatework/net-connector/netdisco"
 )
 
 // Runtime supplies the CLI input, output and environment boundaries.

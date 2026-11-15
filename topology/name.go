@@ -6,7 +6,7 @@ import (
 	"unicode"
 	"unicode/utf8"
 
-	"github.com/gatework/go-net-connector/internal/ifname"
+	"github.com/gatework/net-connector/internal/ifname"
 )
 
 // InterfaceKey normalizes equivalent interface spellings for comparison.

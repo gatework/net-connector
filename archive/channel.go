@@ -6,7 +6,7 @@ import (
 	"io"
 	"time"
 
-	"github.com/gatework/go-net-connector/internal/nilcheck"
+	"github.com/gatework/net-connector/internal/nilcheck"
 )
 
 // Channel owns the bidirectional worker stream and its cleanup callbacks.

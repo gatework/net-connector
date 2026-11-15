@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/gatework/go-net-connector/internal/batchreport"
+	"github.com/gatework/net-connector/internal/batchreport"
 )
 
 // Options defines configuration locations and explicit input layers.

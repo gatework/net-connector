@@ -1,4 +1,4 @@
-# go-net-connector
+# net-connector
 
 面向网络管理员的设备自动化模块：设备登录、配置采集与备份、TFTP 与原生远程备份、邻居发现与接口描述修正、批量脚本下发和只读命令采集。支持 Go 1.26+，目标平台为 Linux/macOS、amd64/arm64。
 
@@ -14,7 +14,7 @@ GOWORK=off go test ./...
 GOWORK=off go build -o bin/ ./cmd/...
 ```
 
-当前版本为 [v0.8.0](docs/releases/v0.8.0.md)：统一平台术语，新增提交模型平台下发、设备事实采集与本地静态清单。配置使用平铺的 `net-connector.yml`，归档协议为 v2。
+当前版本为 v0.9.0，Go 模块路径为 `github.com/gatework/net-connector`。最近发布的 [v0.8.0](docs/releases/v0.8.0.md) 统一平台术语，新增提交模型平台下发、设备事实采集与本地静态清单。配置使用平铺的 `net-connector.yml`，归档协议为 v2。
 
 系统需要 `ssh`；Telnet 连接另需系统 `telnet`。SSH 归档服务器需要管理员安装 `tftp-archive`，默认路径 `/usr/local/bin/tftp-archive`。客户端只探测协议版本和能力，不上传或安装 worker。
 
@@ -212,3 +212,9 @@ CLI 文件备份的完整性与文本编码质量分别统计。设备原生配�
 ## 开发检查
 
 运行 `make check`，使用固定版本 `go-standards v1.0.2` 的共享配置和工具，并执行本仓库的安装归档、架构、fuzz 和消费者检查。开发工具不进入库模块的运行时依赖。
+
+## 模块路径迁移
+
+模块路径已由 `github.com/gatework/go-net-connector` 改为 `github.com/gatework/net-connector`。GitHub 仓库重命名不会修改旧标签中的 `go.mod`；消费者必须使用包含新模块声明的新发布版本，不能假定旧标签可直接用于新路径。
+
+迁移消费者时，将依赖和导入路径一起更新到 `github.com/gatework/net-connector v0.9.0`，并运行 `GOWORK=off go mod tidy`、测试和独立消费者检查。不要复制旧路径的 `go.sum` 校验值，也不要提交本地 `replace`。

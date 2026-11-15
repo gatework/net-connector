@@ -10,9 +10,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/inventory"
-	"github.com/gatework/go-net-connector/netdisco"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/inventory"
+	"github.com/gatework/net-connector/netdisco"
 )
 
 func TestBackupAutomaticallyDecodesDeviceOutput(t *testing.T) {

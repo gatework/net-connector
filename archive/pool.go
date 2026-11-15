@@ -11,7 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/gatework/go-net-connector/transfer"
+	"github.com/gatework/net-connector/transfer"
 )
 
 // PoolOptions describes local or SSH archive storage. NewPool does no I/O.

@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/gatework/go-net-connector/connector"
+	"github.com/gatework/net-connector/connector"
 )
 
 func TestH3CBackupConvertsGBKToUTF8(t *testing.T) {

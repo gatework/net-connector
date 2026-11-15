@@ -11,9 +11,9 @@ import (
 
 	expect "github.com/gatework/go-expect"
 
-	"github.com/gatework/go-net-connector/internal/terminal"
-	"github.com/gatework/go-net-connector/internal/textcodec"
-	"github.com/gatework/go-net-connector/storage"
+	"github.com/gatework/net-connector/internal/terminal"
+	"github.com/gatework/net-connector/internal/textcodec"
+	"github.com/gatework/net-connector/storage"
 )
 
 type renderedConfig struct{}

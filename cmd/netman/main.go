@@ -10,7 +10,7 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/gatework/go-net-connector/internal/cli"
+	"github.com/gatework/net-connector/internal/cli"
 )
 
 func main() {

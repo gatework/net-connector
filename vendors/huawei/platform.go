@@ -4,7 +4,7 @@ package huawei
 import (
 	"time"
 
-	"github.com/gatework/go-net-connector/vendors/internal/driver"
+	"github.com/gatework/net-connector/vendors/internal/driver"
 )
 
 var saveConfirmationPattern = driver.Regex(`(?i)^(?:Info:[ \t]*)?(?:Save the configuration successfully\.|The configuration has been saved successfully\.|Configuration is saved to device successfully\.)$`)

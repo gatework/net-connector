@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/gatework/go-net-connector/internal/display"
-	"github.com/gatework/go-net-connector/internal/textdiff"
-	"github.com/gatework/go-net-connector/storage"
+	"github.com/gatework/net-connector/internal/display"
+	"github.com/gatework/net-connector/internal/textdiff"
+	"github.com/gatework/net-connector/storage"
 )
 
 // diffBatches compares one device's saved configuration between two batches.

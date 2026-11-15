@@ -27,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix="nc-consumer-") as temporary:
     consumer = package / "consumercheck"
     consumer.mkdir()
     (consumer / "main_test.go").write_text('''package consumercheck
-import("testing";"errors";"context";"os";"path/filepath";"time";"github.com/gatework/go-net-connector/archive";"github.com/gatework/go-net-connector/transfer";"github.com/gatework/go-net-connector/vendors";"github.com/gatework/go-net-connector/platform";"github.com/gatework/go-net-connector/vendors/h3c";"github.com/gatework/go-net-connector/topology";"github.com/gatework/go-net-connector/textfsm";"github.com/gatework/go-net-connector/connector";"github.com/gatework/go-net-connector/fleet")
+import("testing";"errors";"context";"os";"path/filepath";"time";"github.com/gatework/net-connector/archive";"github.com/gatework/net-connector/transfer";"github.com/gatework/net-connector/vendors";"github.com/gatework/net-connector/platform";"github.com/gatework/net-connector/vendors/h3c";"github.com/gatework/net-connector/topology";"github.com/gatework/net-connector/textfsm";"github.com/gatework/net-connector/connector";"github.com/gatework/net-connector/fleet")
 func TestSourceConsumer(t *testing.T){
  registry:=vendors.NewBuiltinRegistry()
  declaration,e:=registry.Lookup("cisco_ios");if e!=nil{t.Fatal(e)}
@@ -62,7 +62,7 @@ func TestSourceConsumer(t *testing.T){
             if not source.name.endswith("_test.go"):
                 shutil.copy2(source, paired / source.name)
         for source in package.rglob("*.go"):
-            source.write_text(source.read_text().replace('"github.com/gatework/go-expect"', '"github.com/gatework/go-net-connector/sourceexpect"'))
+            source.write_text(source.read_text().replace('"github.com/gatework/go-expect"', '"github.com/gatework/net-connector/sourceexpect"'))
     subprocess.run(["go", "test", "./consumercheck"], cwd=package, env=env, check=True)
     dependency = json.loads(subprocess.check_output(["go", "list", "-m", "-json", "github.com/gatework/go-expect"], cwd=package, env=env))
     if dependency.get("Replace") or not dependency.get("Version"):

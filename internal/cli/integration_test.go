@@ -15,10 +15,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gatework/go-net-connector/connector"
-	"github.com/gatework/go-net-connector/internal/batchreport"
-	"github.com/gatework/go-net-connector/inventory"
-	"github.com/gatework/go-net-connector/netdisco"
+	"github.com/gatework/net-connector/connector"
+	"github.com/gatework/net-connector/internal/batchreport"
+	"github.com/gatework/net-connector/inventory"
+	"github.com/gatework/net-connector/netdisco"
 )
 
 func fixtureRuntime(t *testing.T) (Runtime, *bytes.Buffer, *bytes.Buffer) {

@@ -63,14 +63,14 @@ jobs:
           python3 scripts/release.py verify --sha "$GITHUB_SHA"
           package_tmp=$(mktemp -d)
           trap 'rm -rf "$package_tmp"' EXIT
-          tar -xzf "dist/go-net-connector_$(cat VERSION)_${GITHUB_SHA}_linux_amd64.tar.gz" -C "$package_tmp"
+          tar -xzf "dist/net-connector_$(cat VERSION)_${GITHUB_SHA}_linux_amd64.tar.gz" -C "$package_tmp"
           for binary in netman tftp-archive; do
-            "$package_tmp/bin/$binary" --version | grep -F "go-net-connector $(cat VERSION) revision $GITHUB_SHA"
+            "$package_tmp/bin/$binary" --version | grep -F "net-connector $(cat VERSION) revision $GITHUB_SHA"
           done
           NC_TEST_ARCHIVE_WORKER="$package_tmp/bin/tftp-archive" go test -race -shuffle=on -count=1 -v ./archive -run TestInstalled
           mkdir "$package_tmp/source"
-          tar -xzf "dist/go-net-connector_$(cat VERSION)_${GITHUB_SHA}_source.tar.gz" -C "$package_tmp/source"
-          cd "$package_tmp/source/go-net-connector"
+          tar -xzf "dist/net-connector_$(cat VERSION)_${GITHUB_SHA}_source.tar.gz" -C "$package_tmp/source"
+          cd "$package_tmp/source/net-connector"
           go mod verify
           go mod tidy -diff
           go test -race -shuffle=on -count=1 ./...

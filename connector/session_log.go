@@ -8,8 +8,8 @@ import (
 	"sync"
 
 	expect "github.com/gatework/go-expect"
-	"github.com/gatework/go-net-connector/internal/terminal"
-	"github.com/gatework/go-net-connector/internal/textcodec"
+	"github.com/gatework/net-connector/internal/terminal"
+	"github.com/gatework/net-connector/internal/textcodec"
 )
 
 type logWriter struct {

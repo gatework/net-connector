@@ -16,8 +16,8 @@ import (
 	"golang.org/x/sys/unix"
 	"golang.org/x/term"
 
-	"github.com/gatework/go-net-connector/archive"
-	"github.com/gatework/go-net-connector/internal/buildinfo"
+	"github.com/gatework/net-connector/archive"
+	"github.com/gatework/net-connector/internal/buildinfo"
 )
 
 func main() {

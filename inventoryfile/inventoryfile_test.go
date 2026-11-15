@@ -9,7 +9,7 @@ import (
 	"syscall"
 	"testing"
 
-	"github.com/gatework/go-net-connector/inventory"
+	"github.com/gatework/net-connector/inventory"
 )
 
 func write(t *testing.T, name, body string) string {

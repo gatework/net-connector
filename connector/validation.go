@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	expect "github.com/gatework/go-expect"
-	"github.com/gatework/go-net-connector/internal/nilcheck"
+	"github.com/gatework/net-connector/internal/nilcheck"
 )
 
 // Validate checks terminal declarations without applying defaults.

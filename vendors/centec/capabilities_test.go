@@ -1,9 +1,9 @@
 package centec_test
 
 import (
-	"github.com/gatework/go-net-connector/platform"
-	"github.com/gatework/go-net-connector/transfer"
-	"github.com/gatework/go-net-connector/vendors/centec"
+	"github.com/gatework/net-connector/platform"
+	"github.com/gatework/net-connector/transfer"
+	"github.com/gatework/net-connector/vendors/centec"
 )
 
 // The declared capabilities are checked at compile time: a renamed or

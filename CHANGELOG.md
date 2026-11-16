@@ -2,6 +2,7 @@
 
 ## v0.9.1 - 2026-11-16
 
+- Preserve parent deadline errors when operation-scope cancellation races with timeout propagation.
 - Retire direct and operation-scoped device sessions when the final observer cancels the operation, while retaining accepted command receipts.
 - Release archive upload callback contexts and pool preparation resources on panic or Goexit; publish preparation progress on the Prepare caller.
 - Adopt published go-standards v1.1.0 and update pgx, pflag, YAML and golang.org/x dependencies while retaining Go 1.26 and the published go-expect v0.6.1 dependency.

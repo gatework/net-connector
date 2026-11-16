@@ -31,9 +31,16 @@ func (s *callScope) enter(parent context.Context) (context.Context, func(), erro
 	s.busy = true
 	s.calls.Add(1)
 	ctx, cancel := context.WithCancel(parent)
-	stop := context.AfterFunc(s.ctx, cancel)
+	// If the caller is already done, its own propagation owns the error kind.
+	// A competing scope callback must not replace DeadlineExceeded with Canceled.
+	cancelScope := func() {
+		if parent.Err() == nil {
+			cancel()
+		}
+	}
+	stop := context.AfterFunc(s.ctx, cancelScope)
 	if s.ctx.Err() != nil {
-		cancel()
+		cancelScope()
 	}
 	return ctx, func() {
 		stop()

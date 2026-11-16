@@ -457,6 +457,8 @@ func decodeEnv(s string, kind FieldKind) (any, error) {
 		return a, nil
 	case KindJSON, KindJSONArray:
 		return decodeJSON(s)
+	case KindString, KindOptionalString:
+		return s, nil
 	default:
 		return s, nil
 	}

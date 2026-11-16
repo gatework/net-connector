@@ -107,7 +107,7 @@ func (d *Device) execute(ctx context.Context, script Script, opts ExecuteOptions
 		if e := d.sessionEvent(ctx, "operation_complete", level, Command{}, status); e != nil {
 			err = joinFailures(err, e)
 		}
-		if err == nil && d.operation != nil && d.operation.borrowed {
+		if err == nil {
 			err = ctx.Err()
 		}
 		if err != nil {
@@ -364,6 +364,8 @@ func (x *execution) verify(cc context.Context, c Command, step StepResult, respo
 	var diagnostic string
 	var conversionErr error
 	switch x.textMode {
+	case configTextRendered:
+		diagnostic, conversionErr = response.data.convert()
 	case configTextBackupSource:
 		diagnostic, conversionErr = response.data.convertBackup()
 	case configTextPreserveInvalid:

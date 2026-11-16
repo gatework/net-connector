@@ -415,25 +415,45 @@ func TestBorrowedScopeJoinsCallAndRetainsCleanup(t *testing.T) {
 	}
 }
 
-func TestBorrowedFinalObserverCancellationRetiresAcceptedResponse(t *testing.T) {
-	ctx, cancel := context.WithCancel(t.Context())
-	defer cancel()
-	d, _ := borrowedFixture(t, fixtureDriver(), ConnectionConfig{OnSessionEvent: func(_ context.Context, event SessionEvent) error {
-		if event.Name == "operation_complete" {
-			cancel()
-		}
-		return nil
-	}}, []borrowedExchange{{"query", "accepted\nsw#", false}}, 0, nil)
-	connectBorrowed(t, d)
-	operationErr, cleanupErr := d.WithBorrowedOperation(ctx, func(ctx context.Context, op *Operation) error {
-		result, err := op.ExecuteCommand(ctx, Command{Text: "query"}, ExecuteOptions{})
-		if !errors.Is(err, context.Canceled) || op.Connected() || len(result.Steps()) != 1 {
-			t.Fatalf("late cancellation: err=%v connected=%t steps=%d", err, op.Connected(), len(result.Steps()))
-		}
-		return err
-	})
-	if !errors.Is(operationErr, context.Canceled) || cleanupErr != nil {
-		t.Fatalf("operation=%v cleanup=%v", operationErr, cleanupErr)
+func TestFinalObserverCancellationRetiresAcceptedResponse(t *testing.T) {
+	for _, scope := range []string{"direct", "operation", "borrowed"} {
+		t.Run(scope, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(t.Context())
+			defer cancel()
+			d, wire := borrowedFixture(t, fixtureDriver(), ConnectionConfig{OnSessionEvent: func(_ context.Context, event SessionEvent) error {
+				if event.Name == "operation_complete" {
+					cancel()
+				}
+				return nil
+			}}, []borrowedExchange{{"query", "accepted\nsw#", false}}, 0, nil)
+			connectBorrowed(t, d)
+			check := func(result Result, err error) error {
+				if !errors.Is(err, context.Canceled) || d.Connected() || len(result.Steps()) != 1 {
+					t.Fatalf("late cancellation: err=%v connected=%t steps=%d", err, d.Connected(), len(result.Steps()))
+				}
+				step, receiptErr := result.SingleAccepted("query")
+				if receiptErr != nil || step.Response().Raw() != "accepted\nsw#" {
+					t.Fatalf("accepted response lost: receipt=%v raw=%q", receiptErr, step.Response().Raw())
+				}
+				return err
+			}
+			var operationErr, cleanupErr error
+			switch scope {
+			case "direct":
+				operationErr = check(d.ExecuteCommand(ctx, Command{Text: "query"}, ExecuteOptions{}))
+			case "operation":
+				operationErr = d.WithOperation(ctx, func(ctx context.Context, op *Operation) error {
+					return check(op.ExecuteCommand(ctx, Command{Text: "query"}, ExecuteOptions{}))
+				})
+			case "borrowed":
+				operationErr, cleanupErr = d.WithBorrowedOperation(ctx, func(ctx context.Context, op *Operation) error {
+					return check(op.ExecuteCommand(ctx, Command{Text: "query"}, ExecuteOptions{}))
+				})
+			}
+			if !errors.Is(operationErr, context.Canceled) || cleanupErr != nil || wire.opens.Load() != 1 || wire.closes.Load() != 1 {
+				t.Fatalf("operation=%v cleanup=%v opens=%d closes=%d", operationErr, cleanupErr, wire.opens.Load(), wire.closes.Load())
+			}
+		})
 	}
 }
 

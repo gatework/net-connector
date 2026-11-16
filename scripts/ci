@@ -2,18 +2,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export GOWORK=off GOFLAGS=-mod=readonly GOTOOLCHAIN=local
-format_files=$(go run golang.org/x/tools/cmd/goimports@v0.52.0 -l .)
-if [[ -n "$format_files" ]]; then
-  printf 'Go files require import/format normalization:\n%s\n' "$format_files"
-  exit 1
-fi
+python3 scripts/check-format.py
 python3 scripts/release.py check-modules
 python3 scripts/check-architecture.py
 python3 scripts/test_architecture.py
 go version
 go mod verify
 go mod tidy -diff
-git diff --exit-code -- go.mod go.sum
 ci_tmp=$(mktemp -d)
 trap 'rm -rf "$ci_tmp"' EXIT
 go build -o "$ci_tmp/bin/" ./cmd/...

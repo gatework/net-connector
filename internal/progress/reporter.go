@@ -29,6 +29,8 @@ const (
 
 func (s taskStage) label() string {
 	switch s {
+	case stageUnknown:
+		return "未知阶段"
 	case stageConnect:
 		return "连接与登录"
 	case stageConfig:
@@ -464,7 +466,7 @@ func (p *Reporter) activityLocked() string {
 			upload++
 		case stageArchiveVerification:
 			archive++
-		case stageTFTPCommand:
+		case stageTFTPCommand, stageUnknown, stageConfig, stageNeighborCollection:
 			operation++
 		default:
 			operation++

@@ -5,8 +5,11 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 	"time"
+
+	"github.com/gatework/net-connector/transfer"
 )
 
 func TestClientPrepareRejectsClosedBeforeSideEffects(t *testing.T) {
@@ -120,4 +123,49 @@ func TestClientPrepareWaitCanCancel(t *testing.T) {
 	}
 	close(release)
 	<-first
+}
+
+func TestClientUploadAbnormalCallbackCancelsContext(t *testing.T) {
+	for _, mode := range []string{"panic", "goexit"} {
+		t.Run(mode, func(t *testing.T) {
+			root, err := filepath.EvalSymlinks(t.TempDir())
+			if err != nil {
+				t.Fatal(err)
+			}
+			client, err := NewClient(ClientOptions{Root: root, Directory: t.TempDir(), Launcher: LocalLauncher()})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer client.Close()
+			if err := client.Prepare(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			callbackContexts := make(chan context.Context, 1)
+			var recovered any
+			done := make(chan struct{})
+			go func() {
+				defer close(done)
+				defer func() { recovered = recover() }()
+				_, _ = client.Upload(t.Context(), "running.cfg", "archive.cfg", func(ctx context.Context, _ string) (transfer.Receipt, error) {
+					callbackContexts <- ctx
+					if mode == "panic" {
+						panic("upload stopped")
+					}
+					runtime.Goexit()
+					return transfer.Receipt{}, nil
+				})
+			}()
+			<-done
+			if mode == "panic" && recovered != "upload stopped" {
+				t.Fatalf("panic = %v", recovered)
+			}
+			callbackContext := <-callbackContexts
+			if callbackContext == nil || !errors.Is(callbackContext.Err(), context.Canceled) {
+				t.Fatalf("callback context not canceled after %s: %v", mode, callbackContext)
+			}
+			if err := client.Close(); err != nil {
+				t.Fatal(err)
+			}
+		})
+	}
 }

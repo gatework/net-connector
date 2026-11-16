@@ -189,7 +189,7 @@ func (x *selectedRun) checkOrShow() (code int, done bool) {
 			return r.fail(program, e), true
 		}
 	}
-	switch request.kind {
+	switch request.kind { //nolint:exhaustive // This helper handles only configuration requests; other operations continue below.
 	case requestCheck:
 		if o.mode == "topology" {
 			mode, _ := policy.Value("topology.mode").(string)

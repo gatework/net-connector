@@ -1,6 +1,6 @@
 # Go net-connector
 
-Follow [the gatework Go engineering standard](https://github.com/gatework/go-standards/blob/v1.0.2/STANDARD.md) (go-standards/STANDARD.md); this file adds the connector-specific contracts. Run `make check` before committing.
+Follow [the gatework Go engineering standard](https://github.com/gatework/go-standards/blob/v1.1.0/STANDARD.md) (go-standards/STANDARD.md); this file adds the connector-specific contracts. Run `make check` before committing.
 
 Use the golang-how-to skill for Go implementation, review and debugging.
 

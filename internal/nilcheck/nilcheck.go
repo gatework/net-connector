@@ -10,7 +10,7 @@ func IsNil(v any) bool {
 		return true
 	}
 	r := reflect.ValueOf(v)
-	switch r.Kind() {
+	switch r.Kind() { //nolint:exhaustive // Only nil-capable reflection kinds support IsNil; all other kinds are non-nil.
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
 		return r.IsNil()
 	default:

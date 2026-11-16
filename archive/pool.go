@@ -111,7 +111,9 @@ func NewPool(o PoolOptions) (*Pool, error) {
 
 // Prepare preflights every master, protocol version and archive directory.
 // A non-nil observe receives stage counts without credentials or protocol
-// bodies. Close can cancel and join this work even without a caller deadline.
+// bodies on the calling goroutine. Close can cancel and join this work even
+// without a caller deadline. During initial preparation, an observer panic or
+// Goexit retires the pool.
 func (p *Pool) Prepare(ctx context.Context, observe func(PrepareProgress)) error {
 	return p.prepare(ctx, observe)
 }
@@ -197,8 +199,11 @@ func (p *Pool) ArchiveDirectory() string {
 	return filepath.Join(p.clients[0].root, "archive", p.clients[0].batch)
 }
 
-func (p *Pool) prepare(ctx context.Context, observe func(PrepareProgress)) error {
+func (p *Pool) prepare(ctx context.Context, observe func(PrepareProgress)) (err error) {
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		p.mu.Lock()
 		if p.closed {
 			p.mu.Unlock()
@@ -210,7 +215,7 @@ func (p *Pool) prepare(ctx context.Context, observe func(PrepareProgress)) error
 			if observe != nil {
 				observe(progress)
 			}
-			return nil
+			return ctx.Err()
 		}
 		if p.preparing {
 			done := p.prepareDone
@@ -228,21 +233,30 @@ func (p *Pool) prepare(ctx context.Context, observe func(PrepareProgress)) error
 		p.prepareCancel = cancel
 		p.mu.Unlock()
 
-		err := p.prepareAll(prepCtx, observe)
-		cancel()
-		p.mu.Lock()
-		if p.closed && err == nil {
-			err = context.Canceled
-		}
-		p.preparing = false
-		p.prepareCancel = nil
-		p.prepared = err == nil
-		close(p.prepareDone)
-		p.mu.Unlock()
-		if err != nil {
-			return errors.Join(err, p.Close())
-		}
-		return nil
+		returned := false
+		defer func() {
+			if returned && err == nil {
+				err = prepCtx.Err()
+			}
+			cancel()
+			p.mu.Lock()
+			if p.closed && err == nil {
+				err = context.Canceled
+			}
+			p.preparing = false
+			p.prepareCancel = nil
+			p.prepared = returned && err == nil
+			close(p.prepareDone)
+			p.mu.Unlock()
+			if !returned {
+				_ = p.Close()
+			} else if err != nil {
+				err = errors.Join(err, p.Close())
+			}
+		}()
+		err = p.prepareAll(prepCtx, observe)
+		returned = true
+		return err
 	}
 }
 
@@ -303,20 +317,9 @@ func (c *poolDoneContext) Value(any) any { return nil }
 
 func (p *Pool) prepareRemote(ctx context.Context, observe func(PrepareProgress)) error {
 	workerCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
 	var next atomic.Int64
-	var progressMu sync.Mutex
 	var completed, active int
 	workers := p.preparationWorkers()
-	report := func(stage PrepareStage, activeDelta, completedDelta int) {
-		progressMu.Lock()
-		active += activeDelta
-		completed += completedDelta
-		if observe != nil {
-			observe(PrepareProgress{Completed: completed, Total: len(p.clients), Active: active, Workers: workers, Stage: stage})
-		}
-		progressMu.Unlock()
-	}
 	var errorMu sync.Mutex
 	var firstErr error
 	recordError := func(err error) {
@@ -330,7 +333,33 @@ func (p *Pool) prepareRemote(ctx context.Context, observe func(PrepareProgress))
 		}
 		errorMu.Unlock()
 	}
-	p.runPreparationWorkers(workerCtx, workers, &next, report, recordError)
+	updates := make(chan preparationUpdate)
+	done := make(chan struct{})
+	defer func() {
+		cancel()
+		<-done
+	}()
+	go func() {
+		defer close(done)
+		defer close(updates)
+		report := func(stage PrepareStage, activeDelta, completedDelta int) {
+			select {
+			case updates <- preparationUpdate{stage, activeDelta, completedDelta}:
+			case <-workerCtx.Done():
+			}
+		}
+		p.runPreparationWorkers(workerCtx, workers, &next, report, recordError)
+	}()
+	for update := range updates {
+		if workerCtx.Err() != nil {
+			continue
+		}
+		active += update.activeDelta
+		completed += update.completedDelta
+		if observe != nil {
+			observe(PrepareProgress{Completed: completed, Total: len(p.clients), Active: active, Workers: workers, Stage: update.stage})
+		}
+	}
 
 	errorMu.Lock()
 	err := firstErr
@@ -342,12 +371,16 @@ func (p *Pool) prepareRemote(ctx context.Context, observe func(PrepareProgress))
 		return err
 	}
 	if observe != nil {
-		progressMu.Lock()
-		ready := PrepareProgress{Completed: completed, Total: len(p.clients), Workers: workers, Stage: PrepareStageReady}
-		progressMu.Unlock()
-		observe(ready)
+		observe(PrepareProgress{Completed: completed, Total: len(p.clients), Workers: workers, Stage: PrepareStageReady})
 	}
 	return nil
+}
+
+// preparationUpdate carries worker counts to the Prepare caller, which owns
+// observer invocation and joins workers even when that observer exits abnormally.
+type preparationUpdate struct {
+	stage                       PrepareStage
+	activeDelta, completedDelta int
 }
 
 func (p *Pool) runPreparationWorkers(workerCtx context.Context, workers int, next *atomic.Int64, report func(PrepareStage, int, int), recordError func(error)) {

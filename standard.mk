@@ -2,14 +2,14 @@
 # Source of truth: github.com/gatework/go-standards/standard.mk
 # Distributed by `stdsync write`; do not edit the copies. A repository's
 # Makefile includes this file and may add targets or extend CHECK_EXTRA.
-# standard-version: 1.0.2
+# standard-version: 1.1.0
 
 GO ?= go
 export GOWORK := off
 export GOFLAGS := -mod=readonly
 export GOTOOLCHAIN := local
 
-STANDARDS_VERSION ?= v1.0.2
+STANDARDS_VERSION ?= v1.1.0
 GOLANGCI_LINT ?= $(GO) run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.15.0
 GOVULNCHECK ?= $(GO) run golang.org/x/vuln/cmd/govulncheck@v1.9.0
 

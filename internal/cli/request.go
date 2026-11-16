@@ -92,7 +92,7 @@ func newCommandRequest(o options) (commandRequest, error) {
 
 // newUseCase maps a pipeline command to its business operation.
 func (r commandRequest) newUseCase() useCase {
-	switch r.kind {
+	switch r.kind { //nolint:exhaustive // This query intentionally selects a subset; remaining requests use the documented default.
 	case requestInventory:
 		return inventoryUseCase{}
 	case requestBackupPlan, requestBackupRun:
@@ -115,7 +115,7 @@ func (r commandRequest) newUseCase() useCase {
 }
 
 func (r commandRequest) startsProgress() bool {
-	switch r.kind {
+	switch r.kind { //nolint:exhaustive // This query intentionally selects a subset; remaining requests use the documented default.
 	case requestDefaults, requestInitialize, requestShow, requestCheck, requestExport, requestDiff:
 		return false
 	default:
@@ -128,7 +128,7 @@ func (r commandRequest) needsRunConfirmation() bool {
 }
 
 func (r commandRequest) topologyMode() string {
-	switch r.kind {
+	switch r.kind { //nolint:exhaustive // This query intentionally selects a subset; remaining requests use the documented default.
 	case requestInventory, requestTopologyPlan:
 		return "plan"
 	case requestTopologyDiscover:

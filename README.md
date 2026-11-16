@@ -14,7 +14,7 @@ GOWORK=off go test ./...
 GOWORK=off go build -o bin/ ./cmd/...
 ```
 
-当前版本为 v0.9.0，Go 模块路径为 `github.com/gatework/net-connector`。最近发布的 [v0.8.0](docs/releases/v0.8.0.md) 统一平台术语，新增提交模型平台下发、设备事实采集与本地静态清单。配置使用平铺的 `net-connector.yml`，归档协议为 v2。
+当前版本为 v0.9.1，Go 模块路径为 `github.com/gatework/net-connector`。最近发布的 [v0.8.0](docs/releases/v0.8.0.md) 统一平台术语，新增提交模型平台下发、设备事实采集与本地静态清单。配置使用平铺的 `net-connector.yml`，归档协议为 v2。
 
 系统需要 `ssh`；Telnet 连接另需系统 `telnet`。SSH 归档服务器需要管理员安装 `tftp-archive`，默认路径 `/usr/local/bin/tftp-archive`。客户端只探测协议版本和能力，不上传或安装 worker。
 

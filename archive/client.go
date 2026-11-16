@@ -244,11 +244,8 @@ func (c *Client) upload(ctx, prepare context.Context, filename, archiveName stri
 			return stageFailure("prepare", e)
 		}
 
-		uploadCtx, cancelUpload := context.WithTimeout(ctx, c.timeouts.Upload)
 		var primary error
-		result.Transfer, primary = upload(uploadCtx, filename)
-		primary = errors.Join(primary, uploadCtx.Err())
-		cancelUpload()
+		result.Transfer, primary = c.runUpload(ctx, filename, upload)
 		if primary != nil {
 			primary = stageFailure("upload", primary)
 		}
@@ -264,6 +261,14 @@ func (c *Client) upload(ctx, prepare context.Context, filename, archiveName stri
 
 	})
 	return result, err
+}
+
+// runUpload owns the callback budget even when the callback panics or exits.
+func (c *Client) runUpload(ctx context.Context, filename string, upload func(context.Context, string) (transfer.Receipt, error)) (transfer.Receipt, error) {
+	uploadCtx, cancel := context.WithTimeout(ctx, c.timeouts.Upload)
+	defer cancel()
+	receipt, err := upload(uploadCtx, filename)
+	return receipt, errors.Join(err, uploadCtx.Err())
 }
 
 func (c *Client) verifyUpload(ctx context.Context, p *Protocol, archiveName string, primary error, result *Result) error {

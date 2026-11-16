@@ -2,6 +2,33 @@
 
 记录每次实施的范围、验证命令与证据边界。v0.6.0 之前的历史记录见 Git 历史。
 
+## 2026-11-16 生命周期与检查入口改进
+
+发布候选 v0.9.1 固定已发布的 go-expect v0.6.1；在独立发布工作树中完整 `make check` 通过，包含临时 PostgreSQL、安装 worker、三项各 100,000 次 fuzz 和无替换依赖的消费者检查。发布夹具 11 项与 actionlint 通过。后续发布必须使用相同提交成功 CI 的八个制品，不能用本地重建替代。
+
+在 origin/main `b313568` 的独立工作区实施，保留原工作区改动，未提交或发布。
+
+- 最终回调取消：扩展既有回执用例覆盖直接、操作租约、借用三条路径。修复前前两条路径返回成功且仍连接；修复后返回取消、退役连接，已接受步骤和原文不变。
+- 上传回调：panic/Goexit 回归用例先复现 callback context 遗留，改由 runUpload 以 defer 归还预算，不吞异常。
+- 归档池：准备阶段异常退出必须释放 preparing/prepareDone、取消并等待工作者，进度回调在 Prepare 调用方执行。
+- 使用 go-standards v1.1.0 正式副本；升级兼容的直接依赖和其选定的 x/sync，Go 下限仍为 1.26.0。go-expect 继续固定正式 v0.6.0，候选源码联调单独记录，不使用 replace。
+- scripts/ci 保留 go mod tidy -diff，移除重复的 Git 差异检查，使尚未提交的依赖更新也能运行本地门禁。
+
+验证：Go 1.27.4 的完整 `make check` 通过（全包 race/shuffle、三项各 100,000 次 fuzz、漏洞与架构检查、正式 go-expect v0.6.0 的独立消费者；本机 PostgreSQL 18.7 集成已启用）。准备阶段补充取消边界后，再次通过 standard/fmt/tidy/vet/lint/arch、archive/connector/transfer 的 race/shuffle 与独立消费者。Go 1.26.0 全包测试通过。
+
+候选配对检查原先因漏复制 go-expect 的 internal/redact 而编译失败；现修复内部包与导入前缀复制，并在临时副本中对 connector/archive/transfer/vendors 运行 race 测试。`python3 scripts/verify-consumer.py ../go-expect` 通过，正式 go.mod 仍固定 v0.6.0，无 replace；这证明候选源码联调，不代表新 go-expect 版本已经发布或被正式采用。
+
+本地结果不代表真实设备、远端 CI 或已发布版本。
+
+### 原目录检查入口复核
+
+将候选修复合并回原目录后，`scripts/check-format.py` 通过 Git 的跟踪与非忽略未跟踪文件清单选择 Go 文件，避免格式检查进入 `.work`、`.reference` 等参考源码；有效的新增源码仍参与检查。
+
+2026-11-16 在 `/Users/crate/Works/go/go-expect` 与 `/Users/crate/Works/go/net-connector` 分别执行完整 `make check` 均通过；connector 的临时 PostgreSQL 18.7 集成已启用。原目录再次执行 `python3 scripts/verify-consumer.py ../go-expect` 通过，包括候选源码配对竞态测试、模板及仓库外 CLI/worker 检查。正式依赖仍为 go-expect v0.6.0。
+
+首次并行运行两仓门禁时，`TestSSHMasterExitReapsDescendant` 在准备阶段触及 5 秒期限；单独重复 10 次、按相同随机种子重复 archive 包 3 次和随后串行完整门禁均通过。该偶发超时的根因尚未确认，未延长期限或跳过测试。
+
+
 ## 2026-11-09 Go 惯用法、去样板与批量下发
 
 按已批准方案（`~/.claude/plans/go-go-net-connector-dapper-grove.md`）在工作区实施，未提交、未发布。基线：除 `internal/cli` 的 `TestInteractiveDeclinedOptionalEnvContinues` 在本机 PTY 下挂起至超时（改动前即如此，未修改该用例）外，`GOWORK=off go test ./...` 全部通过。
@@ -100,6 +127,13 @@ Adopt go-standards v1.0.2 through standard.mk, the distributed lint configuratio
 ## 2026-11-12 v0.8.0 发布准备
 
 `VERSION` 定为 v0.8.0，CHANGELOG 的 Unreleased 归入 v0.8.0，新增 `docs/releases/v0.8.0.md` 并更新 README 当前版本。验证：在仅含跟踪与新增文件的干净副本上 `GOWORK=off make check` PASS（含 race、lint、govulncheck、架构、安装 worker、fuzz 与消费者检查）；工作区内 `goimports -l .` 会扫描被忽略的 `.reference/`、`.superpowers/`、`.work/` 参考目录而失败，CI 干净检出不含这些目录。
+
+## 2026-11-13 v0.8.0 发布证据
+
+- PR #5 合并为 `7cf5ad283828221316926c92feb7017e02fe6a92`；该提交的 `Go` 运行 43335603284（attempt 1）矩阵、quality 与 package 全部通过。
+- 制品 `release-7cf5ad283828221316926c92feb7017e02fe6a92-1`（ID 13997231942，GitHub digest `sha256:45a8981e0da7e1d1e3e15cd3372c66a7d650ff8201ae6ea11bf3cd1c48360b87`），MANIFEST 工具链 go1.27.4；在同一 SHA 的干净检出中 `release.py verify` 通过，darwin_arm64 的 `netman`/`tftp-archive --version` 报告 v0.8.0 与该 SHA。
+- 标签 `v0.8.0` 指向该 SHA，GitHub Release 非草稿，8 个文件；重新下载的发布文件与 CI 制品逐字节一致并再次通过 verify；仓库可见性保持 PUBLIC。
+- 未在真实网络设备上验证。
 
 ## v0.9.0 模块路径迁移
 

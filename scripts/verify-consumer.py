@@ -61,9 +61,14 @@ func TestSourceConsumer(t *testing.T){
         for source in expect.glob("*.go"):
             if not source.name.endswith("_test.go"):
                 shutil.copy2(source, paired / source.name)
+        shutil.copytree(expect / "internal", paired / "internal", ignore=shutil.ignore_patterns("*_test.go"))
         for source in package.rglob("*.go"):
-            source.write_text(source.read_text().replace('"github.com/gatework/go-expect"', '"github.com/gatework/net-connector/sourceexpect"'))
+            source.write_text(source.read_text().replace('"github.com/gatework/go-expect', '"github.com/gatework/net-connector/sourceexpect'))
     subprocess.run(["go", "test", "./consumercheck"], cwd=package, env=env, check=True)
+    if expect:
+        # Exercise device and vendor contracts with the candidate matcher too.
+        # This disposable source check never changes the pinned dependency.
+        subprocess.run(["go", "test", "-race", "./connector", "./archive", "./transfer", "./vendors/..."], cwd=package, env=env, check=True)
     dependency = json.loads(subprocess.check_output(["go", "list", "-m", "-json", "github.com/gatework/go-expect"], cwd=package, env=env))
     if dependency.get("Replace") or not dependency.get("Version"):
         raise SystemExit("go-expect must be a versioned GitHub module")

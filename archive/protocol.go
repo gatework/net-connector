@@ -152,7 +152,7 @@ func (p *Protocol) readPhase(ctx context.Context, phase string) (Proof, error) {
 	if e != nil || len(line) > ControlLimit {
 		return Proof{}, protocolFailure(ctx, e)
 	}
-	if e = ctx.Err(); e != nil {
+	if e = protocolContextError(ctx); e != nil {
 		return Proof{}, e
 	}
 	var f frame
@@ -189,5 +189,17 @@ func protocolFailure(ctx context.Context, cause error) error {
 	}
 	// Error.Is supplies the archive sentinel. Keep the actual failure first so
 	// diagnostic consumers do not mistake that sentinel for the primary cause.
-	return &Error{cause: errors.Join(ctx.Err(), deadline, cause)}
+	return &Error{cause: errors.Join(protocolContextError(ctx), deadline, cause)}
+}
+
+// I/O or a peer's timeout can win the scheduler race against the local context
+// timer. Preserve the elapsed deadline as well as the underlying I/O failure.
+func protocolContextError(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if deadline, ok := ctx.Deadline(); ok && !time.Now().Before(deadline) {
+		return context.DeadlineExceeded
+	}
+	return nil
 }

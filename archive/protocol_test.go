@@ -14,6 +14,30 @@ import (
 
 type failedWriter struct{ err error }
 
+// Timer propagation may lag an I/O deadline. The deadline remains authoritative
+// even while Err has not yet been published by a context's timer callback.
+type delayedDeadlineContext struct {
+	context.Context
+	deadline time.Time
+}
+
+func (c delayedDeadlineContext) Deadline() (time.Time, bool) { return c.deadline, true }
+
+func TestProtocolFailureRetainsElapsedDeadline(t *testing.T) {
+	t.Parallel()
+	for _, expired := range []bool{false, true} {
+		deadline := time.Now().Add(time.Hour)
+		if expired {
+			deadline = time.Now().Add(-time.Second)
+		}
+		ctx := delayedDeadlineContext{Context: t.Context(), deadline: deadline}
+		err := protocolFailure(ctx, io.EOF)
+		if !errors.Is(err, io.EOF) || errors.Is(err, context.DeadlineExceeded) != expired {
+			t.Fatalf("expired=%t: lost EOF/deadline evidence: %v", expired, err)
+		}
+	}
+}
+
 func (w failedWriter) Write([]byte) (int, error) { return 0, w.err }
 func TestProtocolDrainsAfterSinkFailureAndChecksDigest(t *testing.T) {
 	c, s := net.Pipe()

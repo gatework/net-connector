@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.9.3 - 2026-11-16
+
+- Update every explicit dependency to its current latest version, including colorprofile, ultraviolet, ANSI, go-colorful, go-runewidth and terminfo.
+- Retain published go-expect v0.6.2 and Go 1.26.0.
+
 ## v0.9.2 - 2026-11-16
 
 - Adopt published go-expect v0.6.2 to reduce receive mailbox allocations, retain progress across interrupted immediate writes and refresh test dependencies.

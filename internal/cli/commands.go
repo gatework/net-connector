@@ -80,7 +80,7 @@ func (r Runtime) commandTree(ctx context.Context, outputErr *error) *cobra.Comma
 		return renderChineseHelp(target, c.OutOrStdout())
 	}}
 	root.SetHelpCommand(help)
-	leaf := r.leafFactory(&configFile, &envFile)
+	leaf := r.leafFactory(&configFile, &envFile) //nolint:contextcheck // Cobra passes ExecuteContext through cmd.Context when the leaf callback runs.
 	addBackupCommands(root, leaf)
 	addInventoryCommands(root, leaf)
 	addTopologyCommands(root, leaf)

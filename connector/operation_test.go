@@ -12,7 +12,7 @@ func TestOperationHoldsLeaseAndExpires(t *testing.T) {
 	e := d.WithOperation(t.Context(), func(ctx context.Context, o *Operation) error {
 		saved = o
 		for range 2 {
-			_, e := o.ExecuteCommand(t.Context(), Command{Text: "show"}, ExecuteOptions{OnReceipt: func(ctx context.Context, _ StepResult) error {
+			_, e := o.ExecuteCommand(ctx, Command{Text: "show"}, ExecuteOptions{OnReceipt: func(ctx context.Context, _ StepResult) error {
 				_, e := o.ExecuteCommand(ctx, Command{Text: "nested"}, ExecuteOptions{})
 				if !errors.Is(e, ErrBusy) {
 					t.Errorf("nested: %v", e)

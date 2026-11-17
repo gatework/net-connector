@@ -96,7 +96,7 @@ func serve(parent context.Context, input io.Reader, output io.Writer, control ti
 			_ = writeFrame(output, frame{OK: false, Error: "tftp_archive_failed"})
 		}
 	}()
-	return serveRequest(func() context.Context { return ctx }, setStage, setDeadline, input, output, control)
+	return serveRequest(func() context.Context { return ctx }, setStage, setDeadline, input, output, control) //nolint:contextcheck // The transaction receives this request context through its current callback.
 }
 
 // archiveTransaction owns one request and its phase state; current returns the

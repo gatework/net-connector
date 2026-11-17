@@ -1,5 +1,10 @@
 # Changelog
 
+## v0.9.2 - 2026-11-16
+
+- Adopt published go-expect v0.6.2 to reduce receive mailbox allocations, retain progress across interrupted immediate writes and refresh test dependencies.
+- Adopt published go-standards v1.2.0 and document intentional independent context lifetimes.
+
 ## v0.9.1 - 2026-11-16
 
 - Preserve parent deadline errors when operation-scope cancellation races with timeout propagation.

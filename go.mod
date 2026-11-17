@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/charmbracelet/x/vt v0.1.0
 	github.com/creack/pty v1.1.24
-	github.com/gatework/go-expect v0.6.1
+	github.com/gatework/go-expect v0.6.2
 	github.com/jackc/pgx/v5 v5.13.0
 	github.com/rivo/uniseg v0.4.7
 	github.com/sirikothe/gotextfsm v1.2.0

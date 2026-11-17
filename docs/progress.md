@@ -24,6 +24,14 @@
 
 发布必须复用最终提交成功 CI 的八个文件并下载回验；本地和 CI 结果不代表真实设备或远端归档部署验证。
 
+### v0.9.1 发布回验
+
+- 发布提交 `acd4dc0cf9a078cb170b4c48b6f252fea7b8c848`；Go workflow `43985477278` attempt 1 的 Linux/macOS × Go 1.26/1.27、quality 与 package 六个任务全部通过。
+- CI 制品 ID `14285945642`，名称 `release-acd4dc0cf9a078cb170b4c48b6f252fea7b8c848-1`，GitHub digest `sha256:dabe934cdba8f0920b1b99f148af2ae79ec1295970f8095c0723cd4e0d54964b`。同提交检出中 release.py verify 通过；Darwin ARM64 两个安装程序的版本与提交号正确，解包源码的独立消费者检查通过。
+- 标签 v0.9.1 指向该提交；GitHub Release 非草稿、非预发布，八个发布文件下载后与 CI 制品逐字节一致，再次通过 release.py verify；仓库可见性保持 PUBLIC。
+- 公共 Go 代理解析 v0.9.1 到该标签提交；模块 ZIP 的 427 个文件与 Git 源码逐一比对一致。新的独立项目通过正式 require 引用 v0.9.1，无 replace，构建及 race 测试通过。模块校验和 `h1:B21zzE1xBMTg1CGnOQvkOyUu8S2pBMMeoSaiLhvrq8I=`。
+- 原工作区与参考工作树的并行修改保留，未进行真实网络设备或远端归档部署验证。
+
 ## 2026-11-09 Go 惯用法、去样板与批量下发
 
 按已批准方案（`~/.claude/plans/go-go-net-connector-dapper-grove.md`）在工作区实施，未提交、未发布。基线：除 `internal/cli` 的 `TestInteractiveDeclinedOptionalEnvContinues` 在本机 PTY 下挂起至超时（改动前即如此，未修改该用例）外，`GOWORK=off go test ./...` 全部通过。

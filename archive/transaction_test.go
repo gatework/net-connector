@@ -194,11 +194,13 @@ func TestLocalPersistenceFailureKeepsServerProofAndCommitReceipt(t *testing.T) {
 }
 
 func TestLocalCommitDoesNotConsumeCleanupWindow(t *testing.T) {
-	c, root := transactionClient(t, Timeouts{Verify: time.Second, Cleanup: 30 * time.Millisecond})
+	const cleanupBudget = time.Second
+	c, root := transactionClient(t, Timeouts{Verify: 5 * time.Second, Cleanup: cleanupBudget})
 	c.persist = func(ctx context.Context, path string, produce func(io.Writer) error) (storage.Receipt, error) {
 		r, err := storage.WriteStream(ctx, path, produce)
-		// Models local commit work after delivered, longer than the cleanup budget.
-		time.Sleep(80 * time.Millisecond)
+		// Exceed the cleanup budget while leaving real filesystem cleanup enough
+		// scheduling headroom under race instrumentation on shared CI runners.
+		time.Sleep(cleanupBudget + 100*time.Millisecond)
 		return r, err
 	}
 	result, err := c.Upload(t.Context(), "running.cfg", "device.cfg", writeUpload(root))

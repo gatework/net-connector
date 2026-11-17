@@ -2,32 +2,27 @@
 
 记录每次实施的范围、验证命令与证据边界。v0.6.0 之前的历史记录见 Git 历史。
 
-## 2026-11-16 生命周期与检查入口改进
+## 2026-11-16 v0.9.1 生命周期与归档边界审查
 
-发布候选 v0.9.1 固定已发布的 go-expect v0.6.1；在独立发布工作树中完整 `make check` 通过，包含临时 PostgreSQL、安装 worker、三项各 100,000 次 fuzz 和无替换依赖的消费者检查。发布夹具 11 项与 actionlint 通过。后续发布必须使用相同提交成功 CI 的八个制品，不能用本地重建替代。
+在 origin/main `b313568` 的独立工作树实施，保留原目录和其他工作树的并行修改。
 
-在 origin/main `b313568` 的独立工作区实施，保留原工作区改动，未提交或发布。
+- 最终回调取消：直接执行、操作租约、借用操作统一在最后一个回调返回后检查 context；取消时退役会话，保留已接受步骤和原文。既有回执用例修复前复现了前两条路径返回成功且仍连接。
+- 上传回调：runUpload 以 defer 归还回调预算，panic/Goexit 继续传播；回归用例修复前复现了 callback context 遗留。
+- 归档池：Prepare 在调用方串行发布进度；异常退出时取消并等待工作者、释放 preparing/prepareDone 和池资源。覆盖 panic、Goexit、最终回调取消和零副作用取消边界。回调不得同步调用同一池的 Close。
+- 操作作用域：当调用方期限已经到达时，由 parent 的取消传播保留 DeadlineExceeded，避免 scope 回调抢先变为 Canceled。修复前回归用例复现了错误类型丢失。
+- 归档协议：I/O 或 worker 先于本地 context 定时器完成时，也依据已到达的期限保留 DeadlineExceeded，同时保留独立 I/O 原因。回归用例修复前失败。
+- 固定已发布 go-expect v0.6.1，采用 go-standards v1.1.0，升级 pgx、pflag、YAML 和 golang.org/x 依赖；Go 下限保持 1.26，不使用 replace。
+- 检查入口：保留 go mod tidy -diff，去掉“依赖更新必须先提交”的重复检查；格式检查只选择 Git 跟踪和非忽略未跟踪文件，避免进入参考源码。
 
-- 最终回调取消：扩展既有回执用例覆盖直接、操作租约、借用三条路径。修复前前两条路径返回成功且仍连接；修复后返回取消、退役连接，已接受步骤和原文不变。
-- 上传回调：panic/Goexit 回归用例先复现 callback context 遗留，改由 runUpload 以 defer 归还预算，不吞异常。
-- 归档池：准备阶段异常退出必须释放 preparing/prepareDone、取消并等待工作者，进度回调在 Prepare 调用方执行。
-- 使用 go-standards v1.1.0 正式副本；升级兼容的直接依赖和其选定的 x/sync，Go 下限仍为 1.26.0。go-expect 继续固定正式 v0.6.0，候选源码联调单独记录，不使用 replace。
-- scripts/ci 保留 go mod tidy -diff，移除重复的 Git 差异检查，使尚未提交的依赖更新也能运行本地门禁。
+先前候选完整 make check 通过，包括 race/shuffle、临时 PostgreSQL 18.7、安装 worker、三项各 100,000 次 fuzz 和独立消费者；发布夹具 11 项与 actionlint 通过。Go 1.26.0 全包测试通过。原目录 go-expect 候选源码配对检查也通过，但正式发布只采用 GitHub 固定版本。
 
-验证：Go 1.27.4 的完整 `make check` 通过（全包 race/shuffle、三项各 100,000 次 fuzz、漏洞与架构检查、正式 go-expect v0.6.0 的独立消费者；本机 PostgreSQL 18.7 集成已启用）。准备阶段补充取消边界后，再次通过 standard/fmt/tidy/vet/lint/arch、archive/connector/transfer 的 race/shuffle 与独立消费者。Go 1.26.0 全包测试通过。
+远端 `43858671171` 的矩阵与 quality 通过，package 解包测试在 TestLocalCommitDoesNotConsumeCleanupWindow 失败：本地文件已 durable、清理确认未完成。该用例原先只给真实文件系统清理 30ms，本机重复 50 次通过；调整为 1s 清理预算、本地提交后延迟 1.1s、验证预算 5s，仍保证本地提交长于清理预算，生产超时不变。
 
-候选配对检查原先因漏复制 go-expect 的 internal/redact 而编译失败；现修复内部包与导入前缀复制，并在临时副本中对 connector/archive/transfer/vendors 运行 race 测试。`python3 scripts/verify-consumer.py ../go-expect` 通过，正式 go.mod 仍固定 v0.6.0，无 replace；这证明候选源码联调，不代表新 go-expect 版本已经发布或被正式采用。
+首次并行两仓门禁时，TestSSHMasterExitReapsDescendant 曾触及 5 秒期限；单独重复 10 次、按相同随机种子重复 archive 包 3 次和随后串行完整门禁通过，未更改生产期限或跳过测试。
 
-本地结果不代表真实设备、远端 CI 或已发布版本。
+最终候选验证：调整后的清理窗口测试 race 连续 10 次通过；完整 `GOWORK=off make check` 通过，含 PostgreSQL 18.7、全包 race/shuffle、lint、漏洞与架构检查、三项各 100,000 次 fuzz 及正式 go-expect v0.6.1 的独立消费者。
 
-### 原目录检查入口复核
-
-将候选修复合并回原目录后，`scripts/check-format.py` 通过 Git 的跟踪与非忽略未跟踪文件清单选择 Go 文件，避免格式检查进入 `.work`、`.reference` 等参考源码；有效的新增源码仍参与检查。
-
-2026-11-16 在 `/Users/crate/Works/go/go-expect` 与 `/Users/crate/Works/go/net-connector` 分别执行完整 `make check` 均通过；connector 的临时 PostgreSQL 18.7 集成已启用。原目录再次执行 `python3 scripts/verify-consumer.py ../go-expect` 通过，包括候选源码配对竞态测试、模板及仓库外 CLI/worker 检查。正式依赖仍为 go-expect v0.6.0。
-
-首次并行运行两仓门禁时，`TestSSHMasterExitReapsDescendant` 在准备阶段触及 5 秒期限；单独重复 10 次、按相同随机种子重复 archive 包 3 次和随后串行完整门禁均通过。该偶发超时的根因尚未确认，未延长期限或跳过测试。
-
+发布必须复用最终提交成功 CI 的八个文件并下载回验；本地和 CI 结果不代表真实设备或远端归档部署验证。
 
 ## 2026-11-09 Go 惯用法、去样板与批量下发
 

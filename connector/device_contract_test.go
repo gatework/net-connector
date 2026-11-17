@@ -67,6 +67,8 @@ func TestSensitiveHookLeaks(t *testing.T) {
 		t.Fatal("OutputSensitive hook output leaked: " + log.String())
 	}
 }
+
+//nolint:contextcheck // An independent call context proves that scope expiry cancels and joins admitted work.
 func TestOperationExpiresAndDrainsAdmittedCall(t *testing.T) {
 	d := reviewDevice(t, fixtureDriver(), nil, []string{"done\nsw#"})
 	entered := make(chan struct{})
@@ -237,6 +239,8 @@ func TestTerminalAndChallengePreflight(t *testing.T) {
 		})
 	}
 }
+
+//nolint:contextcheck // An independent call context proves that scope expiry cancels and joins admitted work.
 func TestHookExpiresAndDrainsAdmittedCall(t *testing.T) {
 	entered := make(chan struct{})
 	cancelled := make(chan struct{})

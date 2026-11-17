@@ -268,6 +268,7 @@ func TestBorrowedRejectionRetiresOnIncompleteOrLateFailure(t *testing.T) {
 						t.Fatalf("late failure lost: %v", err)
 					}
 				}
+				//nolint:contextcheck // A fresh context must not revive a retired operation.
 				if _, nextErr := op.ExecuteCommand(context.Background(), Command{Text: "never"}, ExecuteOptions{}); !errors.Is(nextErr, ErrScope) {
 					t.Fatalf("retired scope reused: %v", nextErr)
 				}
@@ -303,6 +304,7 @@ func TestBorrowedRetireGuardsAndCleanupOwnership(t *testing.T) {
 				if op.Connected() || d.Connected() {
 					t.Fatal("retired session is still connected")
 				}
+				//nolint:contextcheck // A fresh context must not revive a retired operation.
 				if _, err := op.RunningConfig(context.Background()); !errors.Is(err, ErrScope) {
 					t.Fatalf("retired configuration reconnected: %v", err)
 				}
@@ -389,6 +391,7 @@ func TestBorrowedRetireRejectsReentryAndCloseCancelsCallback(t *testing.T) {
 	}
 }
 
+//nolint:contextcheck // An independent call context proves that scope expiry cancels and joins admitted work.
 func TestBorrowedScopeJoinsCallAndRetainsCleanup(t *testing.T) {
 	closeErr := errors.New("transport cleanup failed")
 	d, wire := borrowedFixture(t, fixtureDriver(), ConnectionConfig{}, []borrowedExchange{{"query", "accepted\nsw#", false}}, 2, closeErr)

@@ -73,7 +73,7 @@ func (r *Runner) Backup(ctx context.Context, runtime Runtime, rows []inventory.D
 func (r *Runner) run(ctx context.Context, runtime Runtime, plan fleet.Plan, op Operation, o ExecuteOptions, archives []string) (Result, error) {
 	r.begin()
 	report, err := r.Execute(ctx, runtime, plan, op, o)
-	r.finish(&report)
+	r.finish(&report) //nolint:contextcheck // Final reporting owns its post-cancellation publication lifetime.
 	result := Result{Success: report.Success, Report: &report, ArchiveDirectories: archives}
 	if ctx.Err() != nil {
 		return result, context.Canceled

@@ -42,6 +42,7 @@ func (s *Services) validatePolicy() error {
 		return config.ErrInvalid
 	}
 	mode := stringValue(p, "netdisco.db_sslmode")
+	//nolint:gocritic // The literal is the allowed set; the delimited mode is the membership needle.
 	if mode != "" && !strings.Contains("|disable|allow|prefer|require|verify-ca|verify-full|", "|"+mode+"|") {
 		return config.ErrInvalid
 	}

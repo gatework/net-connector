@@ -316,7 +316,7 @@ func TestCanceledProcessCleanupFailureStaysOwned(t *testing.T) {
 		ctx, cancel := context.WithCancel(ctx)
 		defer cancel()
 		cmd := exec.Command("/bin/sh", "-c", "read value")
-		p, err := startProcess(&cancelAfterStartContext{ctx, cmd, cancel}, cmd)
+		p, err := startProcess(&cancelAfterStartContext{ctx, cmd, cancel}, cmd) //nolint:contextcheck // The wrapper embeds ctx and injects cancellation after process start.
 		if p != nil {
 			p.trust = trust
 		}

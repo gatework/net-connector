@@ -2,7 +2,7 @@
 # Source of truth: github.com/gatework/go-standards/golangci.yml
 # Distributed to each repository as .golangci.yml by scripts/sync; do not edit
 # the copies. Rule IDs refer to STANDARD.md.
-# standard-version: 1.1.0
+# standard-version: 1.2.0
 version: "2"
 
 run:
@@ -20,6 +20,9 @@ linters:
     - ineffassign
     - wastedassign
     - bodyclose
+    - sqlclosecheck
+    - rowserrcheck
+    - gocritic
     - durationcheck
     - asasalint
     - bidichk
@@ -34,6 +37,7 @@ linters:
     # Context and concurrency (CON-*)
     - containedctx
     - noctx
+    - contextcheck
     # Modelling and interfaces (OOP-*, IFC-*, CMP-*)
     - exhaustive
     - recvcheck
@@ -66,6 +70,16 @@ linters:
     - depguard
 
   settings:
+    gocritic:
+      # GEN-5: keep the enforced checks explicit across tool upgrades.
+      disable-all: true
+      enabled-checks:
+        - appendAssign
+        - argOrder
+        - badCall
+        - badCond
+        - dupArg
+        - exitAfterDefer
     govet:
       enable-all: true
       disable:

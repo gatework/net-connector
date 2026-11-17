@@ -143,7 +143,7 @@ func (p *Pool) Upload(ctx context.Context, filename, archiveName string, upload 
 		default:
 		}
 		callCtx, cancel := context.WithCancel(ctx)
-		stop := context.AfterFunc(&poolDoneContext{done: p.stop}, cancel)
+		stop := context.AfterFunc(&poolDoneContext{done: p.stop}, cancel) //nolint:contextcheck // Pool shutdown is an independent cancellation source combined with callCtx.
 		defer func() { stop(); cancel() }()
 		// Prepare admission must also observe Pool.Close, while keeping its
 		// original deadline across the local queue and the server's target lock.

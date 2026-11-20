@@ -1,13 +1,14 @@
-# Shared gates use the published standard unless a checkout is supplied explicitly.
+# Shared gates come from the published go-standards; see standard.mk.
 include standard.mk
 
-CHECK_EXTRA := project-checks
+CHECK_EXTRA := modverify
 
-.PHONY: project-checks project-quality
-project-checks:
-	bash scripts/ci
+.PHONY: modverify fuzz
+modverify:
+	$(GO) mod verify
 
-project-quality:
-	python3 scripts/release.py check-modules
-	$(GO) run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-	python3 scripts/test_release.py -v
+FUZZTIME ?= 30s
+
+fuzz:
+	$(GO) test -run '^$$' -fuzz FuzzResponse -fuzztime $(FUZZTIME) ./terminal
+	$(GO) test -run '^$$' -fuzz FuzzReadOnly -fuzztime $(FUZZTIME) ./driver

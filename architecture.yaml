@@ -1,48 +1,62 @@
-# Import ownership remains transitive, including internal helper packages.
+# net-connector import boundaries (STANDARD.md ARC-1), enforced by archcheck.
+# Layers, bottom up: transport → terminal → driver → vendors → connector.
+# Business workflows (backup, topology, deployment) belong in netops or the
+# tools, never here.
 declared:
-  - ./archive
-  - ./cmd/netman
-  - ./cmd/tftp-archive
-  - ./config
+  - .
+  - ./transport
+  - ./transport/ssh
+  - ./transport/telnet
+  - ./terminal
+  - ./driver
+  - ./vendors
+  - ./vendors/centec
+  - ./vendors/cisco
+  - ./vendors/fortinet
+  - ./vendors/h3c
+  - ./vendors/hillstone
+  - ./vendors/huawei
+  - ./vendors/juniper
+  - ./vendors/paloalto
+  - ./vendors/radware
+  - ./vendors/topsec
+  - ./vendors/internal/family
   - ./connector
-  - ./facts
-  - ./fleet
-  - ./inventory
-  - ./inventoryfile
-  - ./netdisco
-  - ./parallel
-  - ./platform
-  - ./storage
-  - ./textfsm
-  - ./topology
-  - ./transfer
-  - ./vendors/...
-  - ./internal/batchreport
-  - ./internal/bootstrap
-  - ./internal/buildinfo
-  - ./internal/cli
-  - ./internal/display
-  - ./internal/ifname
-  - ./internal/nilcheck
-  - ./internal/progress
-  - ./internal/terminal
-  - ./internal/textcodec
-  - ./internal/textdiff
-  - ./internal/workflow
+  - ./connectortest
+
 rules:
-  - name: libraries do not depend on application orchestration
-    packages: [./archive, ./config, ./connector, ./facts, ./fleet, ./inventory, ./inventoryfile, ./netdisco, ./parallel, ./platform, ./storage, ./textfsm, ./topology, ./transfer, ./vendors/...]
-    deny: [./cmd/..., ./internal/bootstrap, ./internal/cli, ./internal/workflow]
+  - name: root documents the module only
+    packages: [.]
+    deny: [./...]
+
+  - name: net-connector never imports a consumer or a retired module
+    packages: [./...]
+    deny: [github.com/gatework/fabric/..., github.com/gatework/wireless/..., github.com/gatework/firemon/...,
+           github.com/gatework/go-vxlan/..., github.com/gatework/go-netops/..., github.com/gatework/parser/...]
     transitive: true
-  - name: generic device execution does not select vendors
+
+  - name: transport moves bytes only
+    packages: [./transport, ./transport/...]
+    deny: [./terminal, ./driver, ./vendors, ./vendors/..., ./connector, github.com/gatework/go-expect/...]
+
+  - name: terminal knows grammars, not platforms
+    packages: [./terminal]
+    deny: [./transport, ./transport/..., ./driver, ./vendors, ./vendors/..., ./connector, ./connectortest]
+
+  - name: driver defines the platform contract only
+    packages: [./driver]
+    only_local: [./terminal]
+
+  - name: vendor families depend on the contract, not on each other
+    packages: [./vendors/centec, ./vendors/cisco, ./vendors/fortinet, ./vendors/h3c, ./vendors/hillstone,
+               ./vendors/huawei, ./vendors/juniper, ./vendors/paloalto, ./vendors/radware, ./vendors/topsec]
+    only_local: [./driver, ./terminal, ./vendors/internal/family]
+
+  - name: connector does not select vendors
     packages: [./connector]
-    deny: [./vendors/...]
-    transitive: true
-  - name: bootstrap does not depend on CLI composition
-    packages: [./internal/bootstrap]
-    deny: [./cmd/..., ./internal/cli]
-    transitive: true
-  - name: workflows do not own application composition or progress reporting
-    packages: [./internal/workflow]
-    deny: [./cmd/..., ./internal/bootstrap, ./internal/cli, ./internal/progress]
-    transitive: true
+    deny: [./vendors, ./vendors/..., ./transport/ssh, ./transport/telnet, ./connectortest]
+
+  - name: netops reaches devices only through connector
+    packages: [./transport, ./transport/..., ./terminal, ./driver, ./vendors, ./vendors/...]
+    deny: [github.com/gatework/netops/ops, github.com/gatework/netops/apply, github.com/gatework/netops/store,
+           github.com/gatework/netops/store/archive, github.com/gatework/netops/store/journal, github.com/gatework/netops/store/snapshot]

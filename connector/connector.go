@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gatework/expect/record"
 	"github.com/gatework/net-connector/driver"
 	"github.com/gatework/net-connector/terminal"
 	"github.com/gatework/net-connector/transport"
@@ -37,7 +38,11 @@ type Options struct {
 	// tool-specific terminal settings.
 	Preparation map[string][]string
 	Logger      *slog.Logger
-	Now         func() time.Time
+	// Recorder keeps a transcript per session, labelled with the device;
+	// nil uses the EXPECT_RECORD_* environment defaults (on, under
+	// ~/.local/expect) and record.Disabled() turns recording off.
+	Recorder *record.Recorder
+	Now      func() time.Time
 }
 
 // Dialer opens sessions. It is immutable and safe for concurrent use.
@@ -87,7 +92,7 @@ func (d *Dialer) Dial(ctx context.Context, dev device.Device) (*Session, error) 
 	}
 	t, err := terminal.New(stream, g,
 		terminal.Credentials{Username: cr.Username, Password: cr.Password, Enable: cr.EnablePassword},
-		terminal.Options{Timeout: d.o.Timeout, MaxOutput: d.o.MaxOutput, Logger: d.o.Logger, Now: d.o.Now})
+		terminal.Options{Timeout: d.o.Timeout, MaxOutput: d.o.MaxOutput, Logger: d.o.Logger, Recorder: d.o.Recorder, Label: dev.Label(), Now: d.o.Now})
 	if err != nil {
 		return nil, errors.Join(err, stream.Close())
 	}

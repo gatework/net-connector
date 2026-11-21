@@ -57,4 +57,4 @@ opErr, closeErr := d.Open(ctx, dev, func(ctx context.Context, s *connector.Sessi
 
 ## 依赖
 
-go-expect（流匹配）、netops（领域模型与端口）、golang.org/x/crypto/ssh、skeema/knownhosts、golang.org/x/text + saintfish/chardet（编码）、charmbracelet/x/ansi（控制序列）。测试使用 gliderlabs/ssh 与 goleak。
+expect（流匹配、会话录像与脱敏）、netops（领域模型与端口）、golang.org/x/crypto/ssh、skeema/knownhosts、golang.org/x/text + saintfish/chardet（编码）、charmbracelet/x/ansi（控制序列）。测试使用 gliderlabs/ssh 与 goleak。

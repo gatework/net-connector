@@ -32,12 +32,13 @@ rules:
   - name: net-connector never imports a consumer or a retired module
     packages: [./...]
     deny: [github.com/gatework/fabric/..., github.com/gatework/wireless/..., github.com/gatework/firemon/...,
-           github.com/gatework/go-vxlan/..., github.com/gatework/go-netops/..., github.com/gatework/parser/...]
+           github.com/gatework/go-vxlan/..., github.com/gatework/go-netops/..., github.com/gatework/parser/...,
+           github.com/gatework/go-expect/...]
     transitive: true
 
   - name: transport moves bytes only
     packages: [./transport, ./transport/...]
-    deny: [./terminal, ./driver, ./vendors, ./vendors/..., ./connector, github.com/gatework/go-expect/...]
+    deny: [./terminal, ./driver, ./vendors, ./vendors/..., ./connector, github.com/gatework/expect/...]
 
   - name: terminal knows grammars, not platforms
     packages: [./terminal]

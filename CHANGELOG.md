@@ -1,5 +1,9 @@
 # 变更记录
 
+## v0.10.2（2026-11-20）
+
+- 将共享运维内核 netops 更新到 v0.3.0。
+
 ## v0.10.1（2026-11-20）
 
 - 流引擎由 go-expect 换为 `github.com/gatework/expect`；每个会话默认录像（`connector.Options.Recorder`、`terminal.Options.Recorder/Label`，`EXPECT_RECORD_*`）。

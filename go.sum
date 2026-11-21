@@ -10,8 +10,8 @@ github.com/clipperhouse/uax29/v2 v2.7.0 h1:+gs4oBZ2gPfVrKPthwbMzWZDaAFPGYK72F0NJ
 github.com/clipperhouse/uax29/v2 v2.7.0/go.mod h1:EFJ2TJMRUaplDxHKj1qAEhCtQPW2tJSwu5BF98AuoVM=
 github.com/gatework/expect v0.1.0 h1:x5D1jPWu003/c6TzehFXaNFtXdEgbOwQ9JkedMc6Vuc=
 github.com/gatework/expect v0.1.0/go.mod h1:xT5oONwNz3kIeH2pXR7H4kL/JjqJsBB7fMD8Xu7TQxU=
-github.com/gatework/netops v0.1.0 h1:kV0rv3MEGrdZdICN3Njh0/n89wARiF3zEpIa3MOQ+as=
-github.com/gatework/netops v0.1.0/go.mod h1:MAfzp/CLhPBks/3PQvb0uIRjVjpAAfmXJqRDhkJxJRE=
+github.com/gatework/netops v0.3.0 h1:CqfsfMlAteubkb8n+g89pWgn//WMEAmt1JyvWmIbOlY=
+github.com/gatework/netops v0.3.0/go.mod h1:MAfzp/CLhPBks/3PQvb0uIRjVjpAAfmXJqRDhkJxJRE=
 github.com/gliderlabs/ssh v0.3.8 h1:a4YXD1V7xMF9g5nTkdfnja3Sxy1PVDCj1Zg4Wb8vY6c=
 github.com/gliderlabs/ssh v0.3.8/go.mod h1:xYoytBv1sV0aL3CavoDuJIQNURXkkfPA/wxQ1pL1fAU=
 github.com/gofrs/flock v0.13.0 h1:95JolYOvGMqeH31+FC7D2+uULf6mG61mEZ/A8dRYMzw=

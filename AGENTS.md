@@ -22,7 +22,7 @@ net-connector 是设备交互模块：传输、CLI 对话、多厂商驱动，�
 
 ## 构建与检查
 
-依赖使用已发布的 netops v0.1.0。提交前运行 `make check`，以 `GOWORK=off` 验证固定依赖。发布、打 tag 需明确授权。
+依赖使用 `go.mod` 固定的 netops 正式版本。提交前运行 `make check`，以 `GOWORK=off` 验证固定依赖。发布、打 tag 需明确授权。
 
 ```sh
 go test -race ./...

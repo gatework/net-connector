@@ -138,6 +138,7 @@ func clone(g terminal.Grammar) terminal.Grammar {
 	g.Async = slices.Clone(g.Async)
 	g.Questions = slices.Clone(g.Questions)
 	g.Rules = slices.Clone(g.Rules)
+	g.Redact = slices.Clone(g.Redact)
 	return g
 }
 

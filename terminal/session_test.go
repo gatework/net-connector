@@ -2,11 +2,15 @@ package terminal_test
 
 import (
 	"context"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"go.uber.org/goleak"
 
+	"github.com/gatework/expect/record"
 	"github.com/gatework/net-connector/connectortest"
 	"github.com/gatework/net-connector/terminal"
 	"github.com/gatework/netops/failure"
@@ -60,7 +64,7 @@ func creds() terminal.Credentials {
 func session(t *testing.T, script ...connectortest.Step) (*terminal.Session, *connectortest.Device) {
 	t.Helper()
 	stream, dev := connectortest.Start(t, script...)
-	s, err := terminal.New(stream, grammar(), creds(), terminal.Options{Timeout: 2 * time.Second})
+	s, err := terminal.New(stream, grammar(), creds(), terminal.Options{Timeout: 2 * time.Second, Recorder: record.Disabled()})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,6 +97,48 @@ func TestLoginEscalatesAndPrepares(t *testing.T) {
 	}
 	if s.Host() != "sw1" || s.Mode() != terminal.ModePrivileged || s.Prompt() != "sw1#" {
 		t.Errorf("host %q mode %v prompt %q", s.Host(), s.Mode(), s.Prompt())
+	}
+}
+
+func TestTranscriptRedactsFromFirstRead(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	recorder, err := record.New(record.Config{Enabled: true, Dir: dir, Formats: []record.Format{record.FormatLog}, Required: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	g := grammar()
+	g.Redact = []string{`password cipher (\S+)`}
+	script := steps()
+	script[0].Send = "password cipher startup-secret\r\nlogin secret s3cret" + script[0].Send
+	stream, _ := connectortest.Start(t, script...)
+	s, err := terminal.New(stream, g, creds(), terminal.Options{Recorder: recorder, Label: "sw1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if err := s.Login(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.Close(); err != nil {
+		t.Fatal(err)
+	}
+	files, err := filepath.Glob(filepath.Join(dir, "*", "sw1*.log"))
+	if err != nil || len(files) != 1 {
+		t.Fatalf("transcript files = %v, error = %v", files, err)
+	}
+	data, err := os.ReadFile(files[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	log := string(data)
+	if !strings.Contains(log, "password cipher ") || !strings.Contains(log, "login secret ") {
+		t.Fatal("transcript omitted the startup output")
+	}
+	for _, sensitive := range []string{"startup-secret", "s3cret", "en4ble"} {
+		if strings.Contains(log, sensitive) {
+			t.Fatal("transcript contains an unmasked secret")
+		}
 	}
 }
 

@@ -6,14 +6,15 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"reflect"
 	"regexp"
 	"slices"
 	"strings"
 	"sync/atomic"
 	"time"
 
-	expect "github.com/gatework/go-expect"
-
+	"github.com/gatework/expect"
+	"github.com/gatework/expect/record"
 	"github.com/gatework/netops/failure"
 	"github.com/gatework/netops/secret"
 )
@@ -33,6 +34,12 @@ type Options struct {
 	MaxOutput int
 	// Logger receives lifecycle events, never device output.
 	Logger *slog.Logger
+	// Recorder keeps the session transcript; nil records with the
+	// EXPECT_RECORD_* environment defaults (on, under ~/.local/expect), and
+	// record.Disabled() records nothing.
+	Recorder *record.Recorder
+	// Label names the device in transcripts and log attributes.
+	Label string
 	// Now is the clock; nil uses time.Now.
 	Now func() time.Time
 }
@@ -58,7 +65,7 @@ type modePrompt struct {
 }
 
 // New takes ownership of stream on success. It validates the grammar and
-// registers the credentials for redaction; it does not read or write.
+// configures redaction before the expect reader can consume device output.
 func New(stream io.ReadWriteCloser, g Grammar, creds Credentials, o Options) (*Session, error) {
 	c, err := g.compile()
 	if err != nil {
@@ -80,9 +87,40 @@ func New(stream io.ReadWriteCloser, g Grammar, creds Credentials, o Options) (*S
 	if ending == "" {
 		ending = "\n"
 	}
-	x, err := expect.NewSession(stream, expect.WithLineEnding(ending), expect.WithBufferLimit(o.MaxOutput+(64<<10)), expect.WithRemoveNulls(true))
+	opts := []expect.SessionOption{
+		expect.WithLineEnding(ending), expect.WithBufferLimit(o.MaxOutput + (64 << 10)), expect.WithRemoveNulls(true),
+		expect.WithLogger(o.Logger), expect.WithLabel(o.Label), expect.WithWindow(g.LineWidth(), 24),
+	}
+	if o.Recorder != nil {
+		opts = append(opts, expect.WithRecorder(o.Recorder))
+	}
+	s := &Session{c: c, o: o, creds: creds}
+	if err := s.pin(""); err != nil {
+		return nil, err
+	}
+	if nilStream(stream) {
+		return nil, failure.New(failure.CodeInternal, "terminal: nil stream")
+	}
+	input := &sessionStream{ReadWriteCloser: stream, ready: make(chan struct{})}
+	x, err := expect.NewSession(input, opts...)
 	if err != nil {
 		return nil, failure.Wrap(failure.CodeInternal, "terminal: session", err)
+	}
+	err = registerRedaction(x, c.redact, creds)
+	input.active = err == nil
+	close(input.ready)
+	if err != nil {
+		return nil, errors.Join(failure.Wrap(failure.CodeInternal, "terminal: redact", err), x.Close())
+	}
+	s.x = x
+	return s, nil
+}
+
+func registerRedaction(x *expect.Session, patterns []*regexp.Regexp, creds Credentials) error {
+	for _, re := range patterns {
+		if err := x.RedactPattern(re); err != nil {
+			return err
+		}
 	}
 	var secrets []string
 	for _, v := range []string{creds.Password.Reveal(), creds.Enable.Reveal()} {
@@ -91,15 +129,53 @@ func New(stream io.ReadWriteCloser, g Grammar, creds Credentials, o Options) (*S
 		}
 	}
 	if len(secrets) > 0 {
-		if err := x.Redact(secrets...); err != nil {
-			return nil, errors.Join(failure.Wrap(failure.CodeInternal, "terminal: redact", err), x.Close())
-		}
+		return x.Redact(secrets...)
 	}
-	s := &Session{x: x, c: c, o: o, creds: creds}
-	if err := s.pin(""); err != nil {
-		return nil, errors.Join(err, x.Close())
+	return nil
+}
+
+// sessionStream keeps read-ahead behind redaction setup. When setup fails,
+// closing expect releases its pump without closing the caller's stream.
+type sessionStream struct {
+	io.ReadWriteCloser
+	ready  chan struct{}
+	active bool
+}
+
+func (s *sessionStream) Read(p []byte) (int, error) {
+	<-s.ready
+	if !s.active {
+		return 0, io.ErrClosedPipe
 	}
-	return s, nil
+	return s.ReadWriteCloser.Read(p)
+}
+
+func (s *sessionStream) Close() error {
+	if !s.active {
+		return nil
+	}
+	return s.ReadWriteCloser.Close()
+}
+
+func (s *sessionStream) SetWriteDeadline(t time.Time) error {
+	if stream, ok := s.ReadWriteCloser.(interface {
+		SetWriteDeadline(deadline time.Time) error
+	}); ok {
+		return stream.SetWriteDeadline(t)
+	}
+	return errors.ErrUnsupported
+}
+
+func nilStream(stream io.ReadWriteCloser) bool {
+	v := reflect.ValueOf(stream)
+	switch v.Kind() { //nolint:exhaustive // only nil-capable stream types are relevant
+	case reflect.Invalid:
+		return true
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Pointer, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
 }
 
 // Close ends the session and closes the stream.

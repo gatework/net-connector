@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	expect "github.com/gatework/go-expect"
+	"github.com/gatework/expect"
 )
 
 // Mode is the CLI mode a prompt indicates.
@@ -213,6 +213,10 @@ type Grammar struct {
 	Rules []Rule
 	// Abort is sent to cancel an unanswered question; empty means Ctrl-C.
 	Abort string
+	// Redact are regular expressions whose submatches (or whole matches)
+	// are masked in session transcripts, for secrets the device prints in
+	// configuration ("password cipher (\S+)"). Results keep the raw text.
+	Redact []string
 }
 
 // compiled is a validated Grammar.
@@ -225,6 +229,7 @@ type compiled struct {
 	user      []*regexp.Regexp
 	pass      []*regexp.Regexp
 	enable    []*regexp.Regexp
+	redact    []*regexp.Regexp
 }
 
 // Validate checks and compiles the grammar.
@@ -259,6 +264,9 @@ func (g Grammar) compile() (*compiled, error) {
 		return nil, err
 	}
 	if c.async, err = compileAll(g.Async, ""); err != nil {
+		return nil, err
+	}
+	if c.redact, err = compileAll(g.Redact, ""); err != nil {
 		return nil, err
 	}
 	for _, set := range []struct {

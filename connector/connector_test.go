@@ -8,6 +8,7 @@ import (
 
 	"go.uber.org/goleak"
 
+	"github.com/gatework/expect/record"
 	"github.com/gatework/net-connector/connector"
 	"github.com/gatework/net-connector/connectortest"
 	"github.com/gatework/net-connector/driver"
@@ -36,6 +37,7 @@ func dialer(t *testing.T, scripts ...[]step) *connector.Dialer {
 		Credentials: credential.Static{Username: "admin", Password: secret.New("s3cret"), EnablePassword: secret.New("en4ble")},
 		Transport:   connectortest.NewDialer(t, scripts...),
 		Timeout:     2 * time.Second,
+		Recorder:    record.Disabled(),
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -339,7 +341,7 @@ func TestDialFailures(t *testing.T) {
 	if _, err := d.Dial(t.Context(), dev("acme")); code(err) != failure.CodeUnsupported {
 		t.Errorf("unknown platform: %v", err)
 	}
-	nd, _ := connector.NewDialer(connector.Options{Registry: vendors.Builtin(), Credentials: credential.Chain{}, Transport: connectortest.NewDialer(t)})
+	nd, _ := connector.NewDialer(connector.Options{Registry: vendors.Builtin(), Credentials: credential.Chain{}, Transport: connectortest.NewDialer(t), Recorder: record.Disabled()})
 	if _, err := nd.Dial(t.Context(), dev("h3c")); code(err) != failure.CodeNoCreds {
 		t.Errorf("no credentials: %v", err)
 	}

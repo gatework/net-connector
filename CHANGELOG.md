@@ -1,5 +1,9 @@
 # 变更记录
 
+## 未发布
+
+- 将共享运维内核 netops 更新到 v0.5.1（新增事件、调度、设备租约、生命周期、权限与报表能力；本模块实现的 `ops` 端口不变）。
+
 ## v0.10.3（2026-11-21）
 
 - 将会话引擎 `github.com/gatework/expect` 更新到 `v0.2.0`。新录像默认保存到 `~/.local/share/gatework/expect`，也可以继续通过 `EXPECT_RECORD_DIR` 指定目录。

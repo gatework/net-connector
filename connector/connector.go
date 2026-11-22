@@ -40,7 +40,7 @@ type Options struct {
 	Logger      *slog.Logger
 	// Recorder keeps a transcript per session, labelled with the device;
 	// nil uses the EXPECT_RECORD_* environment defaults (on, under
-	// ~/.local/expect) and record.Disabled() turns recording off.
+	// ~/.local/share/gatework/expect) and record.Disabled() turns recording off.
 	Recorder *record.Recorder
 	Now      func() time.Time
 }

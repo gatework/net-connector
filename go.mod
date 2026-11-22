@@ -20,7 +20,7 @@ require (
 
 require (
 	github.com/charmbracelet/x/ansi v0.11.9
-	github.com/gatework/expect v0.1.0
+	github.com/gatework/expect v0.2.0
 	github.com/gatework/netops v0.3.0
 	github.com/gliderlabs/ssh v0.3.8
 	github.com/saintfish/chardet v0.0.0-20230101081208-5e3ef4b5456d

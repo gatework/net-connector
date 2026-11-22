@@ -35,7 +35,7 @@ type Options struct {
 	// Logger receives lifecycle events, never device output.
 	Logger *slog.Logger
 	// Recorder keeps the session transcript; nil records with the
-	// EXPECT_RECORD_* environment defaults (on, under ~/.local/expect), and
+	// EXPECT_RECORD_* environment defaults (on, under ~/.local/share/gatework/expect), and
 	// record.Disabled() records nothing.
 	Recorder *record.Recorder
 	// Label names the device in transcripts and log attributes.
@@ -486,10 +486,11 @@ func (s *Session) reply(ctx context.Context, r Reply) error {
 	return err
 }
 
+// promptCases match prompts without including them in collected output.
 func (s *Session) promptCases() []expect.Case {
 	cases := make([]expect.Case, len(s.prompts))
 	for i, p := range s.prompts {
-		cases[i] = expect.Case{Pattern: pattern(p.re)}
+		cases[i] = expect.Case{Pattern: pattern(p.re), Omit: true}
 	}
 	return cases
 }
@@ -512,11 +513,9 @@ func (s *Session) arrive(r expect.Result) error {
 func (s *Session) escalate(ctx context.Context) error {
 	p := s.c.g.Privilege
 	sent := false
-	var out strings.Builder
 	cases := s.promptCases()
 	for _, re := range s.c.enable {
-		cases = append(cases, expect.Case{Pattern: pattern(re), Handler: func(ctx context.Context, x *expect.Session, r expect.Result) (expect.Action, error) {
-			out.WriteString(r.Before)
+		cases = append(cases, expect.Case{Pattern: pattern(re), Omit: true, Handler: func(ctx context.Context, x *expect.Session, _ expect.Result) (expect.Action, error) {
 			if sent || s.creds.Enable.Empty() {
 				return stop(failure.CodeAuth, ReasonEnableFailed)
 			}
@@ -528,15 +527,14 @@ func (s *Session) escalate(ctx context.Context) error {
 	if _, err := s.x.SendLine(ctx, p.Command); err != nil {
 		return s.fail("terminal: enable", err)
 	}
-	r, err := s.x.Expect(ctx, cases, expect.WithTimeout(s.o.Timeout))
+	r, err := s.x.Expect(ctx, cases, expect.WithTimeout(s.o.Timeout), expect.WithOutput())
 	if err != nil {
 		return s.fail("terminal: enable", err)
 	}
 	if err := s.arrive(r); err != nil {
 		return err
 	}
-	out.WriteString(r.Before)
-	for _, line := range render(out.String()) {
+	for _, line := range render(r.Output) {
 		if _, ok := match(p.Failed, line); ok {
 			return failure.New(failure.CodeAuth, "terminal: enable").Because(string(ReasonEnableFailed))
 		}
@@ -597,7 +595,7 @@ func (s *Session) run(ctx context.Context, cmd Command) (Response, error) {
 	cases := s.promptCases()
 	n := len(cases)
 	cases = append(cases, x.cases(slices.Concat(rules, s.c.g.Rules))...)
-	opts := []expect.MatchOption{expect.WithTimeout(cmp(cmd.Timeout, s.o.Timeout))}
+	opts := []expect.MatchOption{expect.WithTimeout(cmp(cmd.Timeout, s.o.Timeout)), expect.WithOutputLimit(s.o.MaxOutput)}
 	if cmd.Idle > 0 {
 		opts = append(opts, expect.WithIdleTimeout(cmd.Idle))
 	}
@@ -611,14 +609,10 @@ func (s *Session) run(ctx context.Context, cmd Command) (Response, error) {
 	if r.CaseIndex >= n {
 		return Response{}, failure.New(failure.CodeProtocol, "terminal: command")
 	}
-	if err := x.keep(r, false); err != nil {
-		s.abort(ctx)
-		return Response{}, errors.Unwrap(err)
-	}
 	if err := s.arrive(r); err != nil {
 		return Response{}, err
 	}
-	resp := s.response(cmd, x.raw.String(), r.Match)
+	resp := s.response(cmd, r.Output, r.Match)
 	resp.Answered, resp.Duration = x.answered, s.o.Now().Sub(start)
 	return resp, nil
 }
@@ -707,50 +701,34 @@ func (s *Session) failed(ctx context.Context, err error) error {
 		s.abort(ctx)
 		return failure.Wrap(failure.CodeInteraction, "terminal: command", err).Because(string(ReasonStalled))
 	}
+	if errors.Is(err, expect.ErrOutputLimit) {
+		s.abort(ctx)
+		return failure.New(failure.CodeLimit, "terminal: response")
+	}
 	if code := failure.Primary(err); code == failure.CodeInteraction || code == failure.CodeLimit {
 		s.abort(ctx)
 	}
 	return s.fail("terminal: command", err)
 }
 
-// exchange is the state of one command: the text received so far and the
-// questions answered.
+// exchange tracks the questions answered during one command.
 type exchange struct {
 	s        *Session
 	cmd      Command
-	raw      strings.Builder
 	answered []string
 	counts   map[string]int
 }
 
-// keep appends received text and enforces the response bound.
-func (x *exchange) keep(r expect.Result, withMatch bool) error {
-	x.raw.WriteString(r.Before)
-	if withMatch {
-		x.raw.WriteString(r.Match)
-	}
-	if x.raw.Len() > x.s.o.MaxOutput {
-		return &stopError{failure.New(failure.CodeLimit, "terminal: response")}
-	}
-	return nil
-}
-
-// pager answers a pager prompt; its text is not kept.
+// pager answers a pager prompt.
 func (x *exchange) pager(rl Rule) expect.Handler {
-	return func(ctx context.Context, _ *expect.Session, r expect.Result) (expect.Action, error) {
-		if err := x.keep(r, false); err != nil {
-			return expect.Return, err
-		}
+	return func(ctx context.Context, _ *expect.Session, _ expect.Result) (expect.Action, error) {
 		return expect.Continue, x.s.reply(ctx, rl.Reply)
 	}
 }
 
 // rule answers a known question within its risk and limit.
 func (x *exchange) rule(rl Rule) expect.Handler {
-	return func(ctx context.Context, _ *expect.Session, r expect.Result) (expect.Action, error) {
-		if err := x.keep(r, true); err != nil {
-			return expect.Return, err
-		}
+	return func(ctx context.Context, _ *expect.Session, _ expect.Result) (expect.Action, error) {
 		if rl.Risk > x.cmd.Allow {
 			return stop(failure.CodeInteraction, ReasonDisruptive)
 		}
@@ -767,7 +745,7 @@ func (x *exchange) rule(rl Rule) expect.Handler {
 func (x *exchange) cases(rules []Rule) []expect.Case {
 	var cases []expect.Case
 	for _, rl := range x.s.c.g.Pager {
-		cases = append(cases, expect.Case{Pattern: pattern(rl.re), Handler: x.pager(rl)})
+		cases = append(cases, expect.Case{Pattern: pattern(rl.re), Omit: true, Handler: x.pager(rl)})
 	}
 	for _, rl := range rules {
 		cases = append(cases, expect.Case{Pattern: pattern(rl.re), Handler: x.rule(rl)})

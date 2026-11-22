@@ -28,7 +28,7 @@
 
 ## 会话录像
 
-每个会话由 expect 引擎录像（默认开启，`~/.local/expect/<日期>/<设备标签>_<时间>_<会话>.{log,cast}`），`connector.Options.Recorder` 或 `EXPECT_RECORD_*` 环境变量配置，`record.Disabled()`/`EXPECT_RECORD=off` 关闭。凭据与 `Grammar.Redact` 匹配的配置密文在录像中遮蔽；`Response` 仍为原文。测试必须显式关闭录像。
+每个会话由 expect 引擎录像（默认开启，`~/.local/share/gatework/expect/<日期>/<设备标签>_<时间>_<会话>.{log,cast}`），`connector.Options.Recorder` 或 `EXPECT_RECORD_*` 环境变量配置，`record.Disabled()`/`EXPECT_RECORD=off` 关闭。凭据与 `Grammar.Redact` 匹配的配置密文在录像中遮蔽；`Response` 仍为原文。测试必须显式关闭录像。
 
 ## 安全不变量
 

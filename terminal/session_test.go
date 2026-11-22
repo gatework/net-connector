@@ -383,3 +383,31 @@ func TestCommandValidation(t *testing.T) {
 		}
 	}
 }
+
+// TestRunOutputLimit checks that an oversized response fails with
+// CodeLimit across pages, and that the session resynchronizes.
+func TestRunOutputLimit(t *testing.T) {
+	t.Parallel()
+	page := strings.Repeat("interface GigabitEthernet1/0/1\r\n", 4)
+	stream, _ := connectortest.Start(t, steps(
+		connectortest.Reply("show run\n", "show run\r\n"+page+" --More-- "),
+		connectortest.Reply(" ", page+" --More-- "),
+		connectortest.Reply("\x03", "\r\nsw1#"),
+		connectortest.Reply("show clock\n", "show clock\r\n08:00:00 UTC\r\nsw1#"),
+	)...)
+	s, err := terminal.New(stream, grammar(), creds(), terminal.Options{Timeout: 2 * time.Second, Recorder: record.Disabled(), MaxOutput: 200})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = s.Close() })
+	if err := s.Login(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Run(t.Context(), terminal.Command{Text: "show run"}); code(err) != failure.CodeLimit {
+		t.Fatalf("got %v, want CodeLimit", err)
+	}
+	r, err := s.Run(t.Context(), terminal.Command{Text: "show clock"})
+	if err != nil || r.Text() != "08:00:00 UTC" {
+		t.Fatalf("after limit: %q, %v", r.Text(), err)
+	}
+}

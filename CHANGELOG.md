@@ -1,5 +1,10 @@
 # 变更记录
 
+## v0.10.3（2026-11-21）
+
+- 将会话引擎 `github.com/gatework/expect` 更新到 `v0.2.0`。新录像默认保存到 `~/.local/share/gatework/expect`，也可以继续通过 `EXPECT_RECORD_DIR` 指定目录。
+- 由 expect 收集命令输出，分页提示和末尾提示符继续从输出中排除。跨页输出超过 `MaxOutput` 时仍返回 `CodeLimit`，并尝试恢复会话同步。
+
 ## v0.10.2（2026-11-20）
 
 - 将共享运维内核 netops 更新到 v0.3.0。
